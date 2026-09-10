@@ -110,7 +110,9 @@ describe("built dist/index.js equivalence", () => {
       ? "produces an identical AST to node_modules/@babel/parser for every case"
       : "skipped: dist/index.js not found — run `bun run build` in packages/mx-parser first",
     async () => {
-      const { parse: parseDist } = await import(distEntry);
+      // `parse` is the MX entry point; the vendored @babel/parser surface is
+      // exported as `parseBabel`, and that is what must stay equivalent to npm.
+      const { parseBabel: parseDist } = await import(distEntry);
 
       for (const { source } of cases) {
         const distAst = parseDist(source, parserOptions);

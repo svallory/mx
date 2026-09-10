@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "main": "src/index.ts",
-  "types": "src/index.ts",
+  "types": "src/public.d.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

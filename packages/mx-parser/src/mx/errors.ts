@@ -1,0 +1,13 @@
+import { ParseErrorEnum } from "../babel/parse-error.ts";
+
+/**
+ * Parse errors raised while lowering an MX region. These go through Babel's
+ * normal `raise` path so the TypeScript plugin's `tryParse` rollback (which
+ * counts `state.errors`) sees them as ordinary parse errors — the same way a
+ * malformed JSX element would be seen.
+ */
+export const MxErrors = ParseErrorEnum`mx`({
+  HtmlParserError: ({ message }: { message: string }) => message,
+  UnsupportedConstruct: ({ construct }: { construct: string }) =>
+    `${construct} is not supported yet.`,
+});
