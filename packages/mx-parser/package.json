@@ -7,6 +7,7 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "bun build src/index.ts --outdir dist --target node --format esm --define process.env.BABEL_8_BREAKING=false --define process.env.USE_ESM=true --define process.env.IS_PUBLISH=true"
   }
 }

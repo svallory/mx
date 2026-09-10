@@ -10,7 +10,9 @@
     "includes": [
       "**",
       "!**/fixtures/**/__golden__",
-      "!**/fixtures/**/*.solid.mx"
+      "!**/fixtures/**/*.solid.mx",
+      "!packages/mx-parser/src/babel/**",
+      "!packages/mx-parser/dist/**"
     ]
   },
   "formatter": {

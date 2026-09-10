@@ -17,3 +17,27 @@ tasks:
     inputs:
       - "src/**/*"
       - "/vitest.config.ts"
+
+  build:
+    command: "bun"
+    args:
+      [
+        "build",
+        "src/index.ts",
+        "--outdir",
+        "dist",
+        "--target",
+        "node",
+        "--format",
+        "esm",
+        "--define",
+        "process.env.BABEL_8_BREAKING=false",
+        "--define",
+        "process.env.USE_ESM=true",
+        "--define",
+        "process.env.IS_PUBLISH=true",
+      ]
+    inputs:
+      - "src/**/*"
+    outputs:
+      - "dist"
