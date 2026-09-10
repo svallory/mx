@@ -1,0 +1,30 @@
+import { createSignal } from "solid-js";
+import { identity } from "mx-solid/runtime";
+
+interface Todo {
+  id: number;
+  text: string;
+}
+
+export function Todos() {
+  const [todos, setTodos] = createSignal<Todo[]>([]);
+  const [text, setText] = createSignal("");
+
+  const addTodo = () => {
+    setTodos([...todos(), { id: todos().length, text: text() }]);
+    setText("");
+  };
+
+  return (
+    <div>
+      <input value=text() onInput(e) { setText(e.currentTarget.value) }/>
+      <button onClick=addTodo>Add</button>
+      <if=todos().length > 0>
+        <ul>
+          <for|todo, i| of=todos() by=identity><li>${todo.text}</li></for>
+        </ul>
+      </if>
+      <else><p>No todos</p></else>
+    </div>
+  );
+}
