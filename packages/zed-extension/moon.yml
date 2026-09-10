@@ -1,0 +1,17 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "typescript"
+
+tasks:
+  typecheck:
+    command: "tsc"
+    args: ["--noEmit"]
+    inputs:
+      - "tsconfig.json"
+
+  vendor-check:
+    command: "bash"
+    args: ["scripts/vendor.sh", "--check"]
+    inputs:
+      - "scripts/vendor.sh"
+      - "extension.toml"

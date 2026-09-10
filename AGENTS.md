@@ -165,6 +165,36 @@ Goldens live at `packages/mx-html/fixtures-mx/<name>/` with `input.mx`,
 emitted code, so the emitter stays free to improve. `biome.json` ignores
 `**/fixtures-mx`.
 
+## Zed extension
+
+`packages/zed-extension` (`markox`) ships the `MX` language for Zed. It vendors
+the unmodified `marko-js/tree-sitter` grammar by rev (in `extension.toml`) and
+concatenates two upstreams' query files (`marko-js/tree-sitter`'s
+`highlights.scm`/`injections.scm`, `marko-js/zed`'s `brackets.scm`/`outline.scm`
+— the grammar repo ships neither of the latter two) plus `overlay/mx/*.scm`
+into `languages/mx/*.scm` via `scripts/vendor.sh`. Never hand-edit those four
+`.scm` files; edit the overlay or add a `patches/*.patch` and rerun the script.
+
+`scripts/vendor.sh --check` compares the pinned revs against upstream HEAD and
+exits non-zero on drift, without touching disk — the weekly
+`.github/workflows/upstream-check.yml` job runs it and opens a PR when it
+finds drift. `tree-sitter` is not on PATH on the operator's machine; the CLI is
+pinned as an exact-version devDependency (`tree-sitter-cli`) and invoked via
+`bunx --package tree-sitter-cli@<pin>`, never a bare `tree-sitter`.
+
+No Rust: the extension has no `Cargo.toml`/`src/lib.rs` and no
+`[language_servers.*]` block — Zed only requires Rust when `Cargo.toml`
+exists, and dropping the (MX-unaware) `@marko/language-server` install is what
+makes that possible. See `packages/zed-extension/README.md` and `UPSTREAM.md`.
+
+`SolidMX` (`.solid.mx`) is a separate, not-yet-implemented language sharing
+this extension id — do not add it here without also wiring
+`packages/tree-sitter-solidmx`'s grammar. Note: Zed's suffix matcher computes a
+file's "extension" as the text after the *last* dot, so `Foo.solid.mx` matches
+`path_suffixes = ["mx"]` just like `Foo.mx` does — `.solid.mx` will only
+correctly resolve to `SolidMX` once that language's own config declares the
+longer `path_suffixes = ["solid.mx"]`, which wins by matched-length precedence.
+
 ## Design docs
 
 Design docs, specs, and research notes live outside this repo, at the project space root under `notes/` (not inside this worktree).

@@ -1,0 +1,11 @@
+id = "markox"
+name = "MX"
+description = "MX (Marko's syntax with pluggable host-language expressions) language support for Zed."
+version = "0.1.0"
+schema_version = 1
+authors = ["Saulo Vallory <me@saulo.engineer>"]
+repository = "https://github.com/svallory/mx"
+
+[grammars.marko]
+repository = "https://github.com/marko-js/tree-sitter"
+rev = "7fb20382b9b0c97c8bdbceee0e0641bea11dd00f"

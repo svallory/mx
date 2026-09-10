@@ -1,0 +1,52 @@
+name: Zed extension upstream check
+
+on:
+  schedule:
+    # Every Monday at 09:00 UTC.
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/zed-extension
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for upstream drift
+        id: check
+        run: |
+          if ./scripts/vendor.sh --check; then
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Regenerate vendored queries
+        if: steps.check.outputs.drift == 'true'
+        run: ./scripts/vendor.sh
+
+      - name: Open PR on drift
+        if: steps.check.outputs.drift == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          commit-message: "chore(zed-extension): vendor upstream MX query/grammar drift"
+          title: "chore(zed-extension): upstream drift detected"
+          body: |
+            `scripts/vendor.sh --check` found the pinned `marko-js/tree-sitter` and/or
+            `marko-js/zed` revs are behind their upstream HEAD. This PR updates
+            `languages/mx/*.scm` from the new pins — review the diff before merging,
+            and bump the `TS_REV`/`ZED_REV` pins (and `extension.toml`'s
+            `[grammars.marko]` rev, if the grammar moved) in
+            `packages/zed-extension/scripts/vendor.sh` to match.
+
+            See `packages/zed-extension/UPSTREAM.md` "Bump procedure".
+          branch: chore/zed-extension-upstream-bump
+          add-paths: |
+            packages/zed-extension/languages/mx/*.scm

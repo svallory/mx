@@ -100,3 +100,9 @@ needs a browser — so it stays behind the example's own script.
 `examples/mx-site` is a different kind of example: a Hono-on-Bun server
 rendering `.mx` templates to HTML strings with `@markox/html`, no client
 runtime, no Solid. See `examples/mx-site/README.md`.
+
+## Editors
+
+`packages/zed-extension` ships the `MX` language for Zed, backed by the
+unmodified `marko-js/tree-sitter` grammar. See its `README.md` for dev-install
+steps and the upstream bump procedure.

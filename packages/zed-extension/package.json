@@ -1,0 +1,14 @@
+{
+  "name": "@markox/zed-extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "vendor": "scripts/vendor.sh",
+    "vendor:check": "scripts/vendor.sh --check",
+    "parse-fixtures": "scripts/parse-fixtures.sh"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "0.26.9"
+  }
+}
