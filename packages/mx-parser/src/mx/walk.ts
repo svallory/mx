@@ -1,4 +1,4 @@
-import { createParser } from "htmljs-parser";
+import { createParser, TagType } from "htmljs-parser";
 
 /**
  * Raw MX tree produced by walking htmljs-parser over one MX region. Ranges are
@@ -58,6 +58,8 @@ export interface MxElement {
   tagArgs: MxRange | null;
   tagVar: MxRange | null;
   range: MxRange;
+  /** `</name>` range; null for a self-closing or void tag. */
+  closeRange: MxRange | null;
 }
 
 export interface MxWalkError {
@@ -71,6 +73,37 @@ export interface MxWalkResult {
   /** Absolute offset just past the root tag's close. */
   end: number;
   errors: MxWalkError[];
+}
+
+/**
+ * HTML void elements, which have no closing tag and no children. htmljs-parser
+ * is markup-agnostic — it reports `<input value=x>` as an open tag and then
+ * complains the tag was never closed — so the element set has to live here.
+ * Declaring them to htmljs-parser as `TagType.void` (the return value of
+ * `onOpenTagName`) is what makes it stop expecting a close tag, so `<br>` no
+ * longer swallows its siblings' closing tags. A void tag written with children
+ * (`<input>x</input>`) is then rejected by htmljs-parser itself.
+ */
+const VOID_TAGS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
+/** True for a tag that closes itself, whether written `/>` or not. */
+export function isVoidTag(name: string | null): boolean {
+  return name !== null && VOID_TAGS.has(name);
 }
 
 /** Thrown from a handler to stop htmljs-parser once the root tag closes. */
@@ -101,12 +134,13 @@ export function walkMxRegion(source: string, start: number): MxWalkResult {
     end: r.end + start,
   });
 
-  let root: MxElement | null = null;
+  let root: MxElement | null = null as MxElement | null;
   const stack: MxElement[] = [];
   let pending: MxElement | null = null;
   let pendingAttrName: { name: string; range: MxRange } | null = null;
   let end = -1;
   let done = false;
+  let closeStart: number | null = null;
 
   const top = (): MxElement | null =>
     stack.length > 0 ? (stack[stack.length - 1] as MxElement) : null;
@@ -150,6 +184,7 @@ export function walkMxRegion(source: string, start: number): MxWalkResult {
         tagArgs: null,
         tagVar: null,
         range: rel(range),
+        closeRange: null,
       };
     },
 
@@ -165,6 +200,9 @@ export function walkMxRegion(source: string, start: number): MxWalkResult {
         range.expressions.length === 0
           ? data.slice(range.start, range.end)
           : null;
+
+      if (isVoidTag(pending.staticName)) return TagType.void;
+      return undefined;
     },
 
     onTagShorthandClass(range) {
@@ -247,13 +285,14 @@ export function walkMxRegion(source: string, start: number): MxWalkResult {
       flushAttrName();
       const el = pending;
       pending = null;
-      el.selfClosing = range.selfClosed;
+      const closesItself = range.selfClosed || isVoidTag(el.staticName);
+      el.selfClosing = closesItself;
       el.range = { start: el.range.start, end: range.end + start };
 
       if (root === null) root = el;
       else addChild({ kind: "element", element: el });
 
-      if (range.selfClosed) {
+      if (closesItself) {
         if (stack.length === 0) finish(range.end);
       } else {
         stack.push(el);
@@ -280,10 +319,25 @@ export function walkMxRegion(source: string, start: number): MxWalkResult {
       addChild({ kind: "comment", range: rel(range) });
     },
 
+    onCloseTagStart(range) {
+      if (done) return;
+      closeStart = range.start;
+    },
+
     onCloseTagEnd(range) {
       if (done) return;
       const el = stack.pop();
-      if (el) el.range = { start: el.range.start, end: range.end + start };
+      if (el) {
+        el.range = { start: el.range.start, end: range.end + start };
+        // `onCloseTagStart` fires at the `</`; together with this range's end
+        // that is the full `</name>` span, which is what the lowered
+        // JSXClosingElement needs so source maps point at the closing tag.
+        el.closeRange = {
+          start: (closeStart ?? range.start) + start,
+          end: range.end + start,
+        };
+      }
+      closeStart = null;
       if (stack.length === 0) finish(range.end);
     },
 
@@ -318,6 +372,30 @@ export function walkMxRegion(source: string, start: number): MxWalkResult {
       start,
       end: source.length,
     });
+  }
+
+  // A void element closes at its open tag, so htmljs-parser stops before any
+  // `</input>` the author wrote and would leave it for Babel to trip over as
+  // stray syntax. Catch it here instead, where the element is still in hand.
+  if (
+    done &&
+    root !== null &&
+    isVoidTag(root.staticName) &&
+    errors.length === 0
+  ) {
+    const closeTag = `</${root.staticName}>`;
+    // Only the run of plain text right after the tag can belong to it: a `<`
+    // starts something else, and anything past that is no longer this
+    // element's business.
+    const nextTag = source.indexOf("<", end);
+    const closeAt = source.indexOf(closeTag, end);
+    if (closeAt !== -1 && (nextTag === -1 || closeAt <= nextTag)) {
+      errors.push({
+        message: `<${root.staticName}> is a void element and cannot have a closing tag.`,
+        start: closeAt,
+        end: closeAt + closeTag.length,
+      });
+    }
   }
 
   return { root, end, errors };

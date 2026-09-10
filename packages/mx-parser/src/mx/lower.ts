@@ -64,6 +64,13 @@ function positionOf(source: string, offset: number): [number, number] {
  *
  * Nested MX inside the range works for free: this is the same parser, so an
  * attr-method body containing `<span>x</span>` re-enters the MX bridge.
+ *
+ * A SyntaxError from the sub-parse is rethrown as-is. It already describes the
+ * real problem at a real position inside the expression (`${a b}` is a missing
+ * semicolon at the `b`, not "placeholder is not supported"), and its offsets are
+ * absolute because of the `startIndex`/`startLine`/`startColumn` above. Only a
+ * non-SyntaxError — which would mean the range itself was nonsense rather than
+ * the code in it — becomes an "unsupported construct" report.
  */
 function subParse(ctx: LowerContext, range: MxRange, what: string): Expression {
   const text = ctx.source.slice(range.start, range.end);
@@ -75,7 +82,8 @@ function subParse(ctx: LowerContext, range: MxRange, what: string): Expression {
       startLine: line,
       startColumn: column,
     }) as Expression;
-  } catch {
+  } catch (err) {
+    if (err instanceof SyntaxError) throw err;
     return fail(what, range);
   }
 }
@@ -104,15 +112,33 @@ function jsxIdentifier(ctx: LowerContext, name: string, range: MxRange): Node {
 }
 
 /**
- * Marko whitespace rules for MX text, as far as this task needs them: a run of
- * whitespace that touches a tag boundary is dropped, and every internal run
- * collapses to a single space. Returns null when nothing survives.
+ * Marko whitespace rules for MX text, which are not JSX's.
+ *
+ * - A whitespace-only run containing a newline is dropped entirely. This is the
+ *   rule that makes indented markup behave: `<p>\n  ${a}\n  ${b}\n</p>` has no
+ *   text between the two expression containers, so nothing renders between
+ *   them. JSX would keep a space here.
+ * - A whitespace-only run with no newline collapses to a single space, so
+ *   `${a} ${b}` on one line keeps the space the author typed.
+ * - In a run with actual content, internal whitespace collapses to one space,
+ *   and leading/trailing whitespace is trimmed where the run meets a tag
+ *   boundary.
+ *
+ * Authors who need a space the newline rule would drop write `${" "}`.
+ *
+ * Returns null when nothing survives.
  */
 export function normalizeText(
   raw: string,
   atStart: boolean,
   atEnd: boolean,
 ): string | null {
+  if (raw.trim() === "") {
+    // Whitespace-only run: a newline means layout indentation, not content.
+    if (raw.includes("\n")) return null;
+    return atStart || atEnd ? null : " ";
+  }
+
   let text = raw.replace(/\s+/g, " ");
   if (atStart) text = text.replace(/^ /, "");
   if (atEnd) text = text.replace(/ $/, "");
@@ -214,7 +240,8 @@ function lowerAttr(ctx: LowerContext, attr: MxAttr): Node {
           startColumn: pColumn,
         }) as unknown as { params: unknown[] };
         params = probe.params;
-      } catch {
+      } catch (err) {
+        if (err instanceof SyntaxError) throw err;
         return fail("attribute method parameters", attr.params);
       }
 
@@ -239,7 +266,8 @@ function lowerAttr(ctx: LowerContext, attr: MxAttr): Node {
           return fail("attribute method body", attr.body);
         }
         body = first;
-      } catch {
+      } catch (err) {
+        if (err instanceof SyntaxError) throw err;
         return fail("attribute method body", attr.body);
       }
 
@@ -281,14 +309,28 @@ function lowerAttr(ctx: LowerContext, attr: MxAttr): Node {
 
 function lowerChildren(ctx: LowerContext, children: MxChild[]): Node[] {
   const out: Node[] = [];
+  // Comments are dropped from the output, so they do not count as content when
+  // deciding whether a text run touches a tag boundary: the whitespace around
+  // `<!-- x -->` trims exactly as it would if the comment were not written.
+  const isContent = (child: MxChild) => child.kind !== "comment";
+  const firstContent = children.findIndex(isContent);
+  let lastContent = -1;
+  for (let i = children.length - 1; i >= 0; i--) {
+    const child = children[i];
+    if (child && isContent(child)) {
+      lastContent = i;
+      break;
+    }
+  }
+
   children.forEach((child, index) => {
     switch (child.kind) {
       case "text": {
         const raw = ctx.source.slice(child.range.start, child.range.end);
         const text = normalizeText(
           raw,
-          index === 0,
-          index === children.length - 1,
+          index === firstContent,
+          index === lastContent,
         );
         if (text === null) return;
         out.push(
@@ -393,16 +435,23 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
     { start: el.range.start, end: openingEnd },
   );
 
-  const closing = el.selfClosing
-    ? null
-    : at(
-        {
-          type: "JSXClosingElement",
-          name: jsxIdentifier(ctx, name, el.name),
-        },
-        ctx.source,
-        { start: el.range.end, end: el.range.end },
-      );
+  // The closing element spans the real `</name>` when there was one, so source
+  // maps point at the closing tag rather than collapsing to a zero-width span.
+  const closeRange = el.closeRange;
+  const closing =
+    el.selfClosing || closeRange === null
+      ? null
+      : at(
+          {
+            type: "JSXClosingElement",
+            name: jsxIdentifier(ctx, name, {
+              start: closeRange.start + 2,
+              end: closeRange.end - 1,
+            }),
+          },
+          ctx.source,
+          closeRange,
+        );
 
   return at(
     {

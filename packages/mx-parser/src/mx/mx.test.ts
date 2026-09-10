@@ -253,7 +253,9 @@ describe("tokenizer repositioning (review #1)", () => {
     } catch (err) {
       error = err;
     }
-    expect((error as Error | undefined)?.message).toContain("Missing semicolon");
+    expect((error as Error | undefined)?.message).toContain(
+      "Missing semicolon",
+    );
   });
 
   it("allows a real line break to continue the expression", () => {
@@ -362,9 +364,9 @@ describe("whitespace follows Marko, not JSX (review #5)", () => {
 
   it("does not count comments as content when trimming", () => {
     // The whitespace trims exactly as if the comments were not written.
-    expect(childKinds(`const d = <p><!-- c --> hello <!-- e --></p>;`)).toEqual([
-      "text:hello",
-    ]);
+    expect(childKinds(`const d = <p><!-- c --> hello <!-- e --></p>;`)).toEqual(
+      ["text:hello"],
+    );
   });
 });
 
@@ -383,9 +385,11 @@ describe("void elements (review #6)", () => {
 
   it("does not let a void tag swallow its siblings' closing tags", () => {
     const file = parseMx(`const b = <div><input value=x><br>after</div>;`);
-    const names = (collect(file, "JSXElement") as {
-      openingElement: { name: { name: string } };
-    }[]).map((element) => element.openingElement.name.name);
+    const names = (
+      collect(file, "JSXElement") as {
+        openingElement: { name: { name: string } };
+      }[]
+    ).map((element) => element.openingElement.name.name);
     expect(names.sort()).toEqual(["br", "div", "input"]);
   });
 
