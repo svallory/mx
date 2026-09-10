@@ -51,6 +51,8 @@ interface EmitContext {
    * is only correct for a real component's `props` parameter.
    */
   defines: Map<string, string[]>;
+  /** Local bindings introduced by the template's `import` statements. */
+  imports: Set<string>;
   indent: number;
 }
 
@@ -110,12 +112,6 @@ function emitExpression(
 
 function text(ctx: EmitContext, range: MxRange): string {
   return ctx.source.slice(range.start, range.end);
-}
-
-/** True for a tag name that names a component rather than an HTML element. */
-function isComponent(name: string): boolean {
-  const first = name[0];
-  return first !== undefined && first >= "A" && first <= "Z";
 }
 
 /**
@@ -673,9 +669,11 @@ function emitElement(ctx: EmitContext, el: MxElement): void {
     );
   }
 
-  // A `<define>`d name and an imported component are both called, not emitted
-  // as a tag; the define check comes first so a local shadows an import.
-  if (ctx.defines.has(name) || isComponent(name)) {
+  // A tag name that matches an in-scope binding — a `<define>` or an import —
+  // is a component call regardless of case (Marko's own rule for custom
+  // tags); anything else is an HTML element, whatever its case. The define
+  // check comes first so a local shadows an import of the same name.
+  if (ctx.defines.has(name) || ctx.imports.has(name)) {
     emitComponent(ctx, el);
     return;
   }
@@ -775,6 +773,8 @@ function collectStatements(ctx: EmitContext, statements: MxStatement[]): void {
     const line = text(ctx, statement.range).trim();
     if (statement.kind === "import") {
       ctx.hoisted.push(line);
+      const match = /^import\s+(\w+)\s/.exec(line);
+      if (match?.[1]) ctx.imports.add(match[1]);
       continue;
     }
     if (statement.kind === "static") {
@@ -809,6 +809,7 @@ export function emitTemplate(template: MxTemplate, source: string): string {
     hoisted: [],
     inputInterface: null,
     defines: new Map(),
+    imports: new Set(),
     indent: 1,
   };
 
