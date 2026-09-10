@@ -199,6 +199,7 @@ describe("by= is rejected", () => {
   // `by=` and silently discarding it (as the emitter used to) reads as
   // support from the outside when there is none — decision 10.
   it("rejects a for-of loop with by=", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: `${it}` is MX placeholder syntax in template source, not a JS template literal
     const source = '<for|it, i| of=input.items by="id">${it}</for>\n';
     expect(() => compile(source, "by.mx")).toThrow(
       /by= is not supported in a standalone template/,
@@ -206,6 +207,7 @@ describe("by= is rejected", () => {
   });
 
   it("rejects by= regardless of its value", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: `${it}` is MX placeholder syntax in template source, not a JS template literal
     const source = "<for|it, i| of=input.items by=totalGarbage>${it}</for>\n";
     expect(() => compile(source, "by2.mx")).toThrow(
       /by= is not supported in a standalone template/,
