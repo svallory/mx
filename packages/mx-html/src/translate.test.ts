@@ -195,6 +195,70 @@ describe("module shape", () => {
   });
 });
 
+describe("attribute tags outside a component call", () => {
+  // Marko separates `<@name>` children into `node.attributeTags` for EVERY
+  // tag, not just components. A path that walks only `body.body` therefore
+  // renders none of them and reports nothing — the content vanishes from a
+  // successful compile. That is the S8 silent-drop failure in its worst form,
+  // so each parent kind is pinned here with the message that names it.
+  it.each([
+    ["element", "<div><@header>x</@header></div>", "`<div>`"],
+    [
+      "for",
+      "<for|it| of=input.items><@foo>b</@foo><li>x</li></for>",
+      "`<for>`",
+    ],
+    ["if", "<if=true><@foo>b</@foo><p>x</p></if>", "`<if>`"],
+    ["define", "<define/x><@foo>y</@foo></define>", "`<define>`"],
+    ["fragment", "<fragment><@foo>y</@foo><p>z</p></fragment>", "`<fragment>`"],
+  ])("rejects an attribute tag on %s", (_kind, body, parent) => {
+    expect(() => compile(src(body), "at.mx")).toThrow(/attribute tag `@/);
+    expect(() => compile(src(body), "at.mx")).toThrow(
+      new RegExp(`on ${parent.replace(/[`<>]/g, "\\$&")}`),
+    );
+  });
+
+  it("still lowers attribute tags on a component call", () => {
+    const body =
+      'import Card from "./c.mx"\n<Card><@header>x</@header><p>y</p></Card>';
+    const { code } = compile(src(body), "ok.mx");
+    expect(code).toContain("header:");
+    expect(code).toContain("children:");
+  });
+});
+
+describe("node fields the translator does not lower", () => {
+  // Everything Marko's parser fills in that this target has no lowering for.
+  // Each was silently dropped before the round-2 audit; a drop reads as
+  // support from the outside, so each names itself instead.
+  it.each([
+    [
+      "tag arguments on a component",
+      'import Card from "./c.mx"\n<Card("a", 1)>x</Card>',
+      /tag arguments `\(\.\.\.\)`/,
+    ],
+    ["tag variable on an element", "<div/ref>x</div>", /tag variable `\/ref`/],
+    [
+      "type arguments on a component",
+      'import Card from "./c.mx"\n<Card<string> a="1">x</Card>',
+      /type arguments on/,
+    ],
+    ["tag params on an element", "<div|a|>x</div>", /tag params `\|\.\.\.\|`/],
+    [
+      "an attribute modifier",
+      '<div class:foo="x">y</div>',
+      /attribute modifier `class:foo`/,
+    ],
+    [
+      "attributes on <fragment>",
+      '<fragment class="x"><p>z</p></fragment>',
+      /`<fragment>` takes no attributes/,
+    ],
+  ])("rejects %s", (_what, body, message) => {
+    expect(() => compile(src(body), "fields.mx")).toThrow(message);
+  });
+});
+
 describe("a bare top-level placeholder", () => {
   // Concise mode has no separate shape for a `${expr}` line: it arrives as a
   // MarkoTag whose *name* is the expression, with no attributes and no body,

@@ -211,6 +211,64 @@ function blockFunction(ctx: Ctx, children: Node[], params = ""): string {
   return `(${params}) => {\n${lines.join("\n")}\n${INDENT.repeat(outerIndent)}}`;
 }
 
+/**
+ * Rejects the node fields this translator does not read.
+ *
+ * Marko's parser fills in more than the string target lowers: attribute tags,
+ * tag arguments, a tag variable and type arguments are all separated out of
+ * the body at parse time, so a path that walks only `body.body` renders none
+ * of them and reports nothing. That is the silent-drop failure S8 exists to
+ * close — the same class as `by=`, and worse, because whole authored content
+ * disappears from a successful compile.
+ *
+ * One guard rather than a check per emission path: seven scattered copies
+ * would drift, and the next field Marko adds would be dropped by whichever
+ * copy was forgotten.
+ *
+ * `allow` names the fields the calling path genuinely lowers — only a
+ * component call reads `attributeTags`, and only `<define>`/`<const>` read
+ * `var`.
+ */
+function rejectUnsupportedFields(
+  ctx: Ctx,
+  node: Node,
+  what: string,
+  allow: { attributeTags?: boolean; var?: boolean; params?: boolean } = {},
+): void {
+  if (!allow.attributeTags && node.attributeTags?.length) {
+    const first = node.attributeTags[0];
+    const tagName = String(first?.name?.value ?? "@…").replace(/^@/, "");
+    fail(
+      `attribute tag \`@${tagName}\` on ${what}; attribute tags are props of components, so they are only valid directly inside a component call`,
+      first ?? node,
+    );
+  }
+  if (node.arguments) {
+    fail(
+      `tag arguments \`(...)\` on ${what} are not supported in a standalone template`,
+      node,
+    );
+  }
+  if (!allow.var && node.var) {
+    fail(
+      `tag variable \`/${expr(ctx, node.var)}\` on ${what} is not supported in a standalone template`,
+      node,
+    );
+  }
+  if (node.typeArguments || node.body?.typeParameters) {
+    fail(
+      `type arguments on ${what} are not supported in a standalone template`,
+      node,
+    );
+  }
+  if (!allow.params && node.body?.params?.length) {
+    fail(
+      `tag params \`|...|\` on ${what} are not supported in a standalone template`,
+      node,
+    );
+  }
+}
+
 function attrByName(node: Node, name: string): Node | undefined {
   return (node.attributes ?? []).find(
     (a: Node) => a.type === "MarkoAttribute" && a.name === name,
@@ -257,6 +315,16 @@ function emitAttrs(ctx: Ctx, node: Node): void {
         attr,
       );
     }
+    // `class:foo="x"` is a modifier Marko hands over as the base name plus a
+    // modifier. Emitting only the base name renders `class="x"` — not a drop
+    // but a *wrong* attribute, which is worse: the author's intent silently
+    // becomes different markup.
+    if (attr.modifier) {
+      fail(
+        `attribute modifier \`${attr.name}:${attr.modifier}\` is not supported in a standalone template`,
+        attr,
+      );
+    }
 
     const value = attr.value;
     // A bare attribute (`download`, `checked`) is HTML's spelling of `true`.
@@ -286,6 +354,11 @@ function emitAttrs(ctx: Ctx, node: Node): void {
  * named prop after the first binds to `undefined`.
  */
 function emitComponent(ctx: Ctx, node: Node, name: string): void {
+  // A component call is the one path that genuinely lowers attribute tags:
+  // they become named function props. Tag arguments, a tag variable and type
+  // arguments it does not lower, so they are rejected rather than dropped.
+  rejectUnsupportedFields(ctx, node, `\`<${name}>\``, { attributeTags: true });
+
   const props = new Map<string, string>();
   const spreads: string[] = [];
 
@@ -303,6 +376,12 @@ function emitComponent(ctx: Ctx, node: Node, name: string): void {
     if (attr.bound) {
       fail(
         "`:=` is a two-way binding and requires a reactive runtime; standalone MX renders once to a string",
+        attr,
+      );
+    }
+    if (attr.modifier) {
+      fail(
+        `attribute modifier \`${attr.name}:${attr.modifier}\` is not supported in a standalone template`,
         attr,
       );
     }
@@ -372,9 +451,18 @@ function emitFor(ctx: Ctx, node: Node): void {
     fail("`<for step=...>`: step is not supported; use a computed array", node);
   }
 
+  rejectUnsupportedFields(ctx, node, "`<for>`", { params: true });
+
   const params: string[] = (node.body?.params ?? []).map((p: Node) =>
     expr(ctx, p),
   );
+  // A `<for>` with no params names no loop variable. Defaulting it to `item`
+  // would bind the body to a name the author never wrote — resolving to an
+  // outer-scope `item` if one exists, or failing at render time instead of
+  // compile time. The old emitter rejected this and so does this one.
+  if (params.length === 0) {
+    fail("`<for>` needs tag params: `<for|item| of=…>`", node);
+  }
   const [first = "item", second] = params;
   const children = node.body?.body ?? [];
 
@@ -436,6 +524,7 @@ function emitConst(ctx: Ctx, node: Node): void {
       node,
     );
   }
+  rejectUnsupportedFields(ctx, node, "`<const>`", { var: true });
   const value = attrByName(node, "value") ?? node.attributes?.[0];
   if (!value?.value) fail("`<const>` without a value", node);
   push(ctx, `const ${expr(ctx, node.var)} = ${expr(ctx, value.value)};`);
@@ -446,6 +535,10 @@ function emitDefine(ctx: Ctx, node: Node): void {
   if (!node.var) {
     fail("`<define>` without a name (write `<define/name>`)", node);
   }
+  rejectUnsupportedFields(ctx, node, "`<define>`", {
+    var: true,
+    params: true,
+  });
   const name = expr(ctx, node.var);
   const paramNames: string[] = (node.body?.params ?? []).map((p: Node) =>
     expr(ctx, p),
@@ -464,6 +557,7 @@ function emitDefine(ctx: Ctx, node: Node): void {
  */
 function emitIfChain(ctx: Ctx, children: Node[], index: number): number {
   const node = children[index];
+  rejectUnsupportedFields(ctx, node, "`<if>`");
   const cond = attrByName(node, "value") ?? node.attributes?.[0];
   if (!cond?.value) fail("`<if>` without a condition", node);
 
@@ -486,6 +580,7 @@ function emitIfChain(ctx: Ctx, children: Node[], index: number): number {
     }
     if (child.type !== "MarkoTag" || child.name?.value !== "else") break;
 
+    rejectUnsupportedFields(ctx, child, "`<else>`");
     const ifAttr = attrByName(child, "if");
     if (ifAttr) {
       push(ctx, `} else if (${expr(ctx, ifAttr.value)}) {`);
@@ -566,6 +661,13 @@ function emitTag(ctx: Ctx, node: Node): void {
       emitDefine(ctx, node);
       return;
     case "fragment":
+      rejectUnsupportedFields(ctx, node, "`<fragment>`");
+      if ((node.attributes ?? []).length > 0) {
+        fail(
+          "`<fragment>` takes no attributes: it renders nothing of its own, only its children",
+          node,
+        );
+      }
       emitChildren(ctx, node.body?.body ?? []);
       return;
     case "else":
@@ -607,6 +709,8 @@ function emitTag(ctx: Ctx, node: Node): void {
       node,
     );
   }
+
+  rejectUnsupportedFields(ctx, node, `\`<${name}>\``);
 
   emitLiteral(ctx, `<${name}`);
   emitAttrs(ctx, node);
