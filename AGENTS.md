@@ -58,6 +58,23 @@ Two syntax decisions are settled and encoded in the lowering table:
 - **Whitespace follows Marko, not JSX.** A whitespace-only text run containing a newline is dropped entirely, so indented markup renders nothing between children; a whitespace-only run without a newline collapses to one space. `${" "}` is the escape hatch. Comments are dropped from the output and do not count as content when trimming.
 - **Void elements need no slash.** `<input value=x>` parses. The set (`area base br col embed hr img input link meta param source track wbr`) is declared to htmljs-parser as `TagType.void`; a void tag written with a closing tag is a parse error.
 - **Shorthand `class` merges with a string or an object; anything else is a parse error.** Shorthand plus a *string* `class="x"` merges to `class="card x"` (shorthand first). Shorthand plus an **object literal** merges to Solid 2's array form, `class={["card", {...}]}`, the string entry always-on and the object toggling; a static `class="x"` present as well folds into that string entry (`class={["card x", {...}]}`) rather than being emitted as a second `class` attribute. Shorthand plus any *other* dynamic `class=` expression (an identifier, a call, a ternary) is a parse error. `#id` shorthand combined with an explicit `id=` is a parse error. `style=` only accepts an object-literal value (`style={color: c()}` → `style={{color: c()}}`); any other `style=` expression is a parse error for v1.
+- **Tag params and attribute tags are generic, not control-tag-only**
+  (decision 51). `<Tag|p1, p2|>body</Tag>` lowers to
+  `<Tag>{(p1, p2) => body}</Tag>` for *any* tag — components and HTML
+  elements alike — which is what lets Solid's own render-prop components be
+  called from MX (`<For|item, i| each=xs()>`, `<Show|u| when=user()>`).
+  A function child on a DOM element has no meaning in Solid; MX lowers it
+  anyway rather than inventing a rule the target does not have. Inside any
+  tag, `<@name>body</@name>` becomes the prop `name={body}` on the parent,
+  and `<@name|p|>` becomes `name={(p) => body}`; ordinary children stay
+  `children`, and props are emitted as the parent's own attributes in source
+  order followed by the attribute tags in source order. `<try>` is expressed
+  *on top of* this: `lowerTry` reads `<@catch>`/`<@placeholder>` out of the
+  same `collectAttributeTags` every other tag uses, so the special and
+  generic paths cannot drift. Control tags take no attribute tags other than
+  `<try>`'s two. The still-unsupported construct `mx.test.ts` uses to
+  exercise the LowerError-to-SyntaxError path is now the dynamic tag name
+  (`<${x}>`), not an attribute tag.
 - **Tag params (`|a, b|`) come before `=value`.** `<if|u|=user()>`, not `<if=user()|u|>` — the latter parses but folds `|u|` into the condition expression and reports no params, matching `<for|item, i| of=...>`'s own order. `notes/solidmx-spec.md` §5.1 writes `<if=user()|u|>` as loose prose; the real grammar is params-first.
 
 ## Standalone MX (`.mx`) and `@markox/html`

@@ -10,6 +10,43 @@ This package currently only vendors and builds `@babel/parser` unmodified
 (the build spike) — see `UPSTREAM.md` for the exact pin, what was dropped,
 and every local modification. No MX syntax and no JSX plugin edits yet.
 
+## Rules
+
+Two rules are generic over every tag, and are what lets MX call Solid's own
+render-prop components natively (decision 51):
+
+**Tag params make the children a function.** `<Tag|p1, p2| attrs>body</Tag>`
+lowers to `<Tag attrs>{(p1, p2) => body}</Tag>`, for any tag — components and
+HTML elements alike. Solid has no meaning for a function child on a DOM
+element; MX lowers it anyway rather than inventing a rule the target does not
+have, so `<For|item, i| each=xs()>`, `<Show|u| when=user()>` and
+`<Repeat|i| count=n>` all work. Params are parsed exactly as `<for>`'s are,
+destructuring and TypeScript annotations included; `||` lowers to `() =>
+body`. The body follows the ordinary children rules: a single child stays
+bare, several wrap in a fragment, and whitespace is the line-based Marko rule.
+
+**Attribute tags become props.** Inside any tag, `<@name>body</@name>` becomes
+`name={body}` on the parent; with params, `<@name|p|>body</@name>` becomes
+`name={(p) => body}`. Ordinary children remain `children`, and the emitted
+prop order is the parent's own attributes in source order, then the attribute
+tags in source order. `<try>` is expressed on top of this rule rather than
+beside it — it reads `<@catch>`/`<@placeholder>` out of the same collector
+every other tag uses, so the two paths cannot drift.
+
+Parse errors in this area, with their messages:
+
+| Written | Error |
+|---|---|
+| `<@name attr=…>` | ``attribute tags take params or a body, not attributes (v1)`` |
+| the same `<@name>` twice on one parent | ``attribute tag `@name` given twice (repeatable attribute tags are not supported)`` |
+| `<@name>` at the top level | ``attribute tag `<@name>` outside a tag body`` |
+| `<@name>` inside `<if>`/`<else>`/`<for>`/`<fragment>` | ``attribute tag `<@name>` inside `<if>` `` (etc.) |
+| an attribute tag other than `<@catch>`/`<@placeholder>` inside `<try>` | ``attribute tag `<@name>` inside `<try>` `` |
+
+Marko's repeatable attribute tags (which collect into an array prop) are out
+of scope for v1, which is why the duplicate case is an error rather than a
+merge.
+
 ## Build
 
 ```
