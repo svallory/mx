@@ -1,0 +1,2 @@
+export interface Input { name: string }
+${input.name}

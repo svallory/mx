@@ -87,10 +87,125 @@ export const BOUND_ATTR_MESSAGE =
  * Unlike `walkMxRegion` this reports every error it finds rather than stopping
  * at the first, so a template with two unrelated mistakes shows both.
  */
-export function walkMxTemplate(source: string): MxTemplate {
+/**
+ * htmljs-parser stays in concise (indentation) mode until it sees a leading
+ * `<`. A template whose first *rendered* content is a `${}`/`$!{}`
+ * placeholder — nothing at all before it, or only statement tags
+ * (`import`/`static`/`export interface Input`), which consume their own
+ * lines as text and never touch angle-bracket mode either — never triggers
+ * that switch. The tokenizer then reads the placeholder's own `$` as the
+ * start of a concise tag name instead of firing `onPlaceholder` (verified
+ * directly: `${x}` alone yields a bogus dynamic-name element, `$!{x}` alone
+ * yields literal tag-garbage). Markup before the placeholder is unaffected —
+ * an explicit `<tag>` anywhere already switches the tokenizer into
+ * angle-bracket mode for the rest of the file.
+ *
+ * A single regex over the raw source cannot reliably tell "nothing but
+ * statements precede the placeholder" from "real markup precedes it" — the
+ * statement grammar is a full mini-parse in its own right. Detecting the
+ * corruption after the fact and reparsing is simpler and cannot regress a
+ * template that was already fine: the first pass runs unmodified, and a
+ * second, wrapped pass only happens when that first pass's result carries
+ * this bug's unmistakable signature.
+ */
+/**
+ * The corrupted child's index in `result.children`, or `null` if none of
+ * them show the misparse's signature.
+ *
+ * The bug is not really about *first-in-the-whole-template* — it is that
+ * htmljs-parser drops back to concise (indentation) mode at the start of any
+ * line that no explicit `<tag>` has already opened on, and a `${}`/`$!{}`
+ * placeholder starting such a line is read as the start of a concise tag
+ * name. `<p>hi</p>${x}` (same line) is fine; `<p>hi</p>\n${x}` (placeholder
+ * on its own new line) reproduces the bug just as `${x}` alone does. So this
+ * checks every child, not only the first.
+ */
+function findCorruptedPlaceholder(result: MxTemplate): number | null {
+  for (let i = 0; i < result.children.length; i++) {
+    const child = result.children[i];
+    if (child?.kind !== "element") continue;
+    const el = child.element;
+    // The escaped symptom: a dynamic tag name (`staticName: null`) — standalone
+    // MX has no legitimate dynamic tag name (always a parse error in
+    // `emit.ts`), so this shape only ever occurs from the misparse. The raw
+    // symptom: a static name that is itself the mangled placeholder delimiter.
+    if (el.staticName === null || el.staticName.startsWith("$")) return i;
+  }
+  return null;
+}
+
+const WRAP_PREFIX = "<fragment>";
+const WRAP_SUFFIX = "</fragment>";
+
+function childRange(child: MxChild): MxRange {
+  return child.kind === "element" ? child.element.range : child.range;
+}
+
+export function walkMxTemplate(rawSource: string): MxTemplate {
+  const unwrapped = runMxTemplateWalk(rawSource, null);
+  const corruptedAt = findCorruptedPlaceholder(unwrapped);
+  if (corruptedAt === null) return unwrapped;
+  // Wrapping the *whole* source would also swap any statement tags
+  // (`import`/`static`/`export interface Input`) into angle-bracket mode,
+  // where their bare concise-style syntax no longer parses as a tag at all
+  // (they would come out as literal text instead of being recognized). Only
+  // the markup from whatever precedes the corrupted placeholder needs the
+  // wrap: the last statement, or the sibling immediately before it in
+  // `children`, whichever ends later. Neither exists for a bare `${x}` alone,
+  // which is `0` — wrapping from the very start.
+  const lastStatementEnd = unwrapped.statements.reduce(
+    (max, s) => Math.max(max, s.range.end),
+    0,
+  );
+  const previousSibling = unwrapped.children[corruptedAt - 1];
+  const previousSiblingEnd = previousSibling
+    ? childRange(previousSibling).end
+    : 0;
+  const precedingEnd = Math.max(lastStatementEnd, previousSiblingEnd);
+  // Both a statement's range and a sibling element's range stop at the end
+  // of their own content, not past the newline after it. Inserting
+  // `<fragment>` right there — on the same line, with no separator — reads
+  // to htmljs-parser as more of that same line rather than a new tag (a
+  // statement fails outright parsing `<` as more attribute text; a sibling
+  // element merely re-triggers concise mode, since nothing forces angle mode
+  // for what comes right after it on the same line — see
+  // `findCorruptedPlaceholder`). Advancing past that one newline (when there
+  // is anything to advance past at all) keeps the wrapper on its own line,
+  // exactly like a template with real markup already looks.
+  const wrapFrom =
+    precedingEnd === 0
+      ? 0
+      : rawSource.indexOf("\n", precedingEnd) + 1 || rawSource.length;
+  return runMxTemplateWalk(rawSource, wrapFrom);
+}
+
+/**
+ * @param wrapFrom Offset from which the template's markup needs a synthetic
+ * `<fragment>` wrapper to force angle-bracket parsing (see
+ * `isCorruptedLeadingPlaceholder`); `null` disables wrapping.
+ */
+function runMxTemplateWalk(
+  rawSource: string,
+  wrapFrom: number | null,
+): MxTemplate {
   const errors: MxWalkError[] = [];
   const statements: MxStatement[] = [];
   const children: MxChild[] = [];
+
+  // Wrapping the source in a synthetic `<fragment>` forces angle-bracket mode
+  // from the first character after any statements, which is exactly the
+  // workaround fixture authors were already doing by hand. Offsets are
+  // corrected below so callers see the original source's ranges.
+  const needsWrap = wrapFrom !== null;
+  const source = needsWrap
+    ? rawSource.slice(0, wrapFrom) +
+      WRAP_PREFIX +
+      rawSource.slice(wrapFrom) +
+      WRAP_SUFFIX
+    : rawSource;
+  /** How much every offset past `wrapFrom` in `source` must shift back. */
+  const shiftPoint = wrapFrom ?? 0;
+  const offset = needsWrap ? WRAP_PREFIX.length : 0;
 
   const stack: MxElement[] = [];
   let pending: MxElement | null = null;
@@ -98,14 +213,34 @@ export function walkMxTemplate(source: string): MxTemplate {
   let closeStart: number | null = null;
   /** Depth at which a statement tag opened, so its close can be ignored. */
   let statementDepth: number | null = null;
+  /**
+   * `stack.length` at the moment the synthetic wrapper itself is pushed, so
+   * "top level" can still mean the author's top level once it is. `null`
+   * until then: real markup (e.g. a `<define>` block) can legitimately open
+   * and close, at any stack depth, before the wrapper is ever seen, so a
+   * static depth computed up front cannot tell those two states apart.
+   */
+  let wrapperDepth: number | null = null;
 
+  // A position before `wrapFrom` is in the untouched statement prefix and
+  // needs no correction; a position at or after it landed after the inserted
+  // `WRAP_PREFIX` and must shift back by its length.
+  const unshift = (n: number) => (n >= shiftPoint + offset ? n - offset : n);
   const range = (r: { start: number; end: number }): MxRange => ({
-    start: r.start,
-    end: r.end,
+    start: unshift(r.start),
+    end: unshift(r.end),
   });
 
-  const top = (): MxElement | null =>
-    stack.length > 0 ? (stack[stack.length - 1] as MxElement) : null;
+  const top = (): MxElement | null => {
+    // Before the wrapper is seen, every open element is real markup and
+    // "top level" is simply "nothing on the stack". Once it is seen, being
+    // *at* the wrapper's own depth (`stack.length === wrapperDepth + 1`,
+    // i.e. inside the wrapper but not deeper) is *also* top level — the
+    // wrapper is transparent — so only strictly deeper than that counts as
+    // having a real parent.
+    const floor = wrapperDepth === null ? 0 : wrapperDepth + 1;
+    return stack.length > floor ? (stack[stack.length - 1] as MxElement) : null;
+  };
 
   const addChild = (child: MxChild) => {
     const parent = top();
@@ -183,6 +318,9 @@ export function walkMxTemplate(source: string): MxTemplate {
       // A statement tag consumes its whole line as source text, so it must not
       // be treated as markup: telling htmljs-parser it is void stops it from
       // hunting for a closing tag it will never find.
+      // Statement tags can only ever occur before the synthetic wrapper (see
+      // `wrapFrom` above), never inside it, so this always compares against
+      // true top level rather than `topDepth`.
       if (name !== null && STATEMENT_TAGS.has(name) && stack.length === 0) {
         return TagType.void;
       }
@@ -272,6 +410,8 @@ export function walkMxTemplate(source: string): MxTemplate {
 
       const name = el.staticName;
 
+      // See the matching comment in `onOpenTagName`: a statement is always
+      // at true top level, never inside the synthetic wrapper.
       if (name !== null && STATEMENT_TAGS.has(name) && stack.length === 0) {
         statements.push({
           kind: name as MxStatement["kind"],
@@ -290,7 +430,19 @@ export function walkMxTemplate(source: string): MxTemplate {
       const closesItself = r.selfClosed || isVoidTag(name);
       el.selfClosing = closesItself;
 
-      addChild({ kind: "element", element: el });
+      // The synthetic wrapper (see `needsWrap` above) exists only to force
+      // angle-bracket mode; it is not part of the author's template and must
+      // not appear as a child of it. It is identified by exact position —
+      // its open tag starts precisely at `shiftPoint`, the untouched prefix's
+      // length — rather than "the first tag", because real markup (e.g. a
+      // `<define>` block) can legitimately open before the wrap point at
+      // `stack.length === 0` too, and must not be mistaken for the wrapper.
+      // `el.range.start` has already been unshifted, and `shiftPoint` itself
+      // never shifts (it is by definition the boundary the shift starts
+      // past), so the two are directly comparable.
+      const isSyntheticWrapper = needsWrap && el.range.start === shiftPoint;
+      if (isSyntheticWrapper) wrapperDepth = stack.length;
+      else addChild({ kind: "element", element: el });
       if (!closesItself) stack.push(el);
     },
 
