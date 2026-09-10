@@ -51,4 +51,13 @@ declare module "@mx/parser" {
    * native Solid 2 compiler accepts only source text, never an AST.
    */
   export function print(source: string, filename: string): PrintResult;
+
+  /**
+   * Prints an already-parsed MX AST, for callers that must run their own pass
+   * over it first and cannot re-parse afterwards — the oracle strips
+   * TypeScript with `@babel/preset-typescript` before printing, since the
+   * native compiler's JSX frontend has no TypeScript to erase. Shares
+   * `print`'s generator options.
+   */
+  export function printAst(ast: File, filename: string): PrintResult;
 }

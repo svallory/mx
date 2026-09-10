@@ -34,6 +34,37 @@ const generator = (
 ) as typeof generate;
 
 /**
+ * Prints an already-parsed MX AST as JSX source text plus a source map.
+ *
+ * `print` is the entry point for the ordinary case (source in, text out).
+ * This one exists for callers that must run their own pass over the AST
+ * first and cannot re-parse afterwards. The oracle is the motivating case:
+ * `.solid.mx` fixtures use TypeScript syntax (interfaces, annotations,
+ * generics), and the vendored parser accepts that syntax without erasing it,
+ * so the AST has to go through `@babel/preset-typescript` before printing.
+ * Printing the source directly instead would hand `interface Todo { ... }` to
+ * `@solidjs/compiler`, whose JSX frontend has no TypeScript to strip it.
+ *
+ * Both entry points share the generator options below so the two can never
+ * drift: whatever `print` emits for a file, `printAst` emits for that file's
+ * AST.
+ */
+export function printAst(ast: File, filename: string): PrintResult {
+  const result = generator(ast, {
+    sourceMaps: true,
+    sourceFileName: filename,
+    retainLines: true,
+    jsescOption: { minimal: true },
+  });
+
+  if (!result.map) {
+    throw new Error(`@babel/generator returned no source map for ${filename}`);
+  }
+
+  return { code: result.code, map: result.map as RawSourceMap };
+}
+
+/**
  * Parses `source` and prints it back as JSX source text plus a source map.
  *
  * This is MX's product boundary (spec section 3.2): the lowered AST is never
@@ -48,18 +79,5 @@ const generator = (
  * noise that would not match the hand-written twins.
  */
 export function print(source: string, filename: string): PrintResult {
-  const ast: File = parse(source, filename);
-
-  const result = generator(ast, {
-    sourceMaps: true,
-    sourceFileName: filename,
-    retainLines: true,
-    jsescOption: { minimal: true },
-  });
-
-  if (!result.map) {
-    throw new Error(`@babel/generator returned no source map for ${filename}`);
-  }
-
-  return { code: result.code, map: result.map as RawSourceMap };
+  return printAst(parse(source, filename), filename);
 }

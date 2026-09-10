@@ -7,7 +7,7 @@ import {
 
 export type { ParseError, ParseResult, ParserOptions } from "./babel/index.ts";
 export type { PrintResult, RawSourceMap } from "./mx/print.ts";
-export { print } from "./mx/print.ts";
+export { print, printAst } from "./mx/print.ts";
 
 /**
  * The vendored `@babel/parser` entry points, unchanged. Use these to parse

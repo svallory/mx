@@ -421,7 +421,6 @@ describe("whitespace follows Marko, not JSX (review #5)", () => {
 
     it("keeps the explicit-space placeholder working across a line break", () => {
       expect(
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: `${" "}` is MX placeholder syntax under test, not a JS placeholder
         childKinds(`const k = <p>a\${" "}\n  b</p>;`).filter(
           (c) => c !== "JSXExpressionContainer",
         ),

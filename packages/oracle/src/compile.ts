@@ -6,9 +6,9 @@ import {
 } from "@babel/core";
 import typescriptPreset from "@babel/preset-typescript";
 import type { File } from "@babel/types";
+import { printAst } from "@mx/parser";
 import solidBabelPlugin from "@solidjs/babel-plugin";
 import { transform as nativeTransform } from "@solidjs/compiler";
-import { printAst } from "./print";
 
 export class MxParserUnavailable extends Error {
   constructor(filename: string) {
@@ -70,11 +70,16 @@ function isMxPath(filename: string): boolean {
  * compiled output and break byte parity against a twin that went through the
  * ordinary TS pipeline.
  *
- * MX input is printed with `printAst` rather than left to Babel's own output
- * stage, because that printer (and its `retainLines`/`jsescOption` settings)
- * is MX's real product boundary: the text the native compiler will actually
- * receive in the Vite plugin. Compiling anything else here would test a
- * pipeline no consumer runs.
+ * MX input is printed with `@mx/parser`'s `printAst` rather than left to
+ * Babel's own output stage, because that printer (and its
+ * `retainLines`/`jsescOption` settings) is MX's real product boundary: the
+ * text the native compiler will actually receive in the Vite plugin.
+ * Compiling anything else here would test a pipeline no consumer runs.
+ *
+ * `printAst` rather than `print` because `print` parses its own source, which
+ * would skip the TypeScript erasure above — the fixtures use interfaces and
+ * annotations, and the native compiler's JSX frontend has no TypeScript to
+ * strip them.
  */
 function toJsxSource(
   source: string,
