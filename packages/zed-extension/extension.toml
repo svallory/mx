@@ -25,5 +25,5 @@ rev = "7fb20382b9b0c97c8bdbceee0e0641bea11dd00f"
 # the split-off `tree-sitter-solidmx` repo's real GitHub URL and drop `path`
 # (that repo's root will already be the grammar root).
 repository = "file:///Users/svallory/work/mx"
-rev = "38106b7c57bdfa26dafaa0c47d9b4695bc96b28b"
+rev = "e8bb6e170fb306dcc8c7315f5d5aaa36e5585dfa"
 path = "packages/tree-sitter-solidmx"
