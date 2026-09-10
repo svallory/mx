@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import { identity } from "mx-solid/runtime";
+import { identity } from "@mx/solid-runtime";
 
 interface Todo {
   id: number;
