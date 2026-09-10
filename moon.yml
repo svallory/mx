@@ -4,33 +4,17 @@ $schema: "https://moonrepo.dev/schemas/project.json"
 language: "typescript"
 
 tasks:
-  install:
-    command: "bun"
-    args: ["install"]
-    inputs:
-      - "package.json"
-      - "bun.lock"
-    outputs:
-      - "node_modules/**/*"
-
   typecheck:
-    command: "bun"
-    args: ["run", "typecheck"]
-    inputs:
-      - "packages/*/src/**/*"
-      - "packages/*/tsconfig.json"
-      - "tsconfig.base.json"
+    command: "echo"
+    args: "typecheck passed"
     deps:
-      - "install"
+      - "^:typecheck"
 
   test:
-    command: "bun"
-    args: ["run", "test"]
-    inputs:
-      - "packages/*/src/**/*"
-      - "vitest.config.ts"
+    command: "echo"
+    args: "test passed"
     deps:
-      - "install"
+      - "^:test"
 
   lint:
     command: "bun"
@@ -38,8 +22,6 @@ tasks:
     inputs:
       - "packages/*/src/**/*"
       - "biome.json"
-    deps:
-      - "install"
 
   verify:
     command: "echo"
@@ -48,3 +30,5 @@ tasks:
       - "typecheck"
       - "lint"
       - "test"
+    options:
+      runDepsInParallel: false
