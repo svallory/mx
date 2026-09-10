@@ -191,3 +191,212 @@ describe("unsupported constructs raise a clear error", () => {
     });
   }
 });
+
+/**
+ * Round 2: defects found in the independent review of PR #5. Each test here
+ * failed before its fix.
+ */
+describe("tokenizer repositioning (review #1)", () => {
+  /** Finds the first node of `type`. */
+  function find(node: unknown, type: string): Record<string, unknown> | null {
+    if (node === null || typeof node !== "object") return null;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        const hit = find(item, type);
+        if (hit) return hit;
+      }
+      return null;
+    }
+    const record = node as Record<string, unknown>;
+    if (record.type === type) return record;
+    for (const key of Object.keys(record)) {
+      if (key === "loc") continue;
+      const hit = find(record[key], type);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  const enclosing: [string, string, string][] = [
+    ["arrow", `const f = () => <div>x</div>;`, "ArrowFunctionExpression"],
+    ["return", `function g() { return <div>x</div>; }`, "ReturnStatement"],
+    ["property", `const o = { a: <div>x</div> };`, "ObjectProperty"],
+    [
+      "conditional",
+      `const c = t ? <div>x</div> : null;`,
+      "ConditionalExpression",
+    ],
+  ];
+
+  for (const [name, source, type] of enclosing) {
+    it(`ends the enclosing ${name} at the closing tag`, () => {
+      const file = parseMx(source);
+      const node = find(file.program, type) as {
+        start: number;
+        end: number;
+      } | null;
+      expect(node).toBeTruthy();
+      // Before the fix these ended at `<div`, because `next()` copied a stale
+      // `endLoc` (still on the tag-name token) into `lastTokEndLoc`.
+      const text = source.slice(node?.start, node?.end);
+      expect(text).toContain("</div>");
+    });
+  }
+
+  it("does not fake a preceding line break after multi-line MX", () => {
+    // `hasPrecedingLineBreak` reads `lastTokEndLoc`; a stale value made every
+    // multi-line element look like it ended with a newline, which silently
+    // swallowed the missing semicolon here.
+    let error: unknown;
+    try {
+      parseMx(`const x = <div>\n</div> foo`);
+    } catch (err) {
+      error = err;
+    }
+    expect((error as Error | undefined)?.message).toContain("Missing semicolon");
+  });
+
+  it("allows a real line break to continue the expression", () => {
+    expect(() => parseMx(`const y = <div>\n</div>!.foo`)).not.toThrow();
+  });
+});
+
+describe("error reporting (review #2, #3)", () => {
+  it("throws rather than returning null under errorRecovery", () => {
+    // `raise` returns instead of throwing when errorRecovery is on, and the
+    // bridge has no node to hand back — returning null made Babel crash on
+    // `expr.type`. Upstream Babel also throws on an unterminated JSX element
+    // with errorRecovery on, so throwing matches it.
+    for (const source of [
+      `const a = <button>oops;`,
+      `const b = <div ...props>x</div>;`,
+    ]) {
+      let error: unknown;
+      try {
+        parse(source, "test.solid.mx", { errorRecovery: true });
+      } catch (err) {
+        error = err;
+      }
+      expect(error).toBeInstanceOf(SyntaxError);
+      expect(error).not.toBeInstanceOf(TypeError);
+      expect((error as SyntaxError & { loc?: unknown }).loc).toBeTruthy();
+    }
+  });
+
+  it("reports the real error from inside a placeholder", () => {
+    let error: unknown;
+    try {
+      parseMx(`const a = <p>\${a b}</p>;`);
+    } catch (err) {
+      error = err;
+    }
+    const err = error as SyntaxError & { loc?: { index: number } };
+    // Not "placeholder is not supported yet" — the sub-parse's own message,
+    // at the offending character inside the expression.
+    expect(err.message).not.toContain("not supported yet");
+    expect(err.loc?.index).toBe(17);
+  });
+
+  it("reports the real error from inside an attribute value", () => {
+    let error: unknown;
+    try {
+      parseMx(`const b = <p x=(1 +)>y</p>;`);
+    } catch (err) {
+      error = err;
+    }
+    const err = error as SyntaxError & { loc?: { index: number } };
+    expect(err.message).not.toContain("not supported yet");
+    expect(err.loc?.index).toBe(19);
+  });
+});
+
+describe("closing element range (review #4)", () => {
+  it("spans the real closing tag", () => {
+    const source = `const a = <div>x</div>;`;
+    const file = parseMx(source);
+    const element = collect(file, "JSXElement")[0] as {
+      closingElement: {
+        start: number;
+        end: number;
+        name: { start: number; end: number };
+      };
+    };
+    const closing = element.closingElement;
+    expect(source.slice(closing.start, closing.end)).toBe("</div>");
+    expect(source.slice(closing.name.start, closing.name.end)).toBe("div");
+  });
+});
+
+describe("whitespace follows Marko, not JSX (review #5)", () => {
+  const childKinds = (source: string) => {
+    const file = parseMx(source);
+    const element = collect(file, "JSXElement")[0] as {
+      children: { type: string; value?: string }[];
+    };
+    return element.children.map((child) =>
+      child.type === "JSXText" ? `text:${child.value}` : child.type,
+    );
+  };
+
+  it("drops a whitespace-only run containing a newline", () => {
+    // Indented markup renders nothing between the two containers.
+    expect(childKinds(`const a = <p>\n  \${x()}\n  \${y()}\n</p>;`)).toEqual([
+      "JSXExpressionContainer",
+      "JSXExpressionContainer",
+    ]);
+  });
+
+  it("collapses a whitespace-only run without a newline to one space", () => {
+    expect(childKinds(`const b = <p>\${x()} \${y()}</p>;`)).toEqual([
+      "JSXExpressionContainer",
+      "text: ",
+      "JSXExpressionContainer",
+    ]);
+  });
+
+  it("collapses internal runs and trims at tag boundaries", () => {
+    expect(childKinds(`const c = <p>  hello   world  </p>;`)).toEqual([
+      "text:hello world",
+    ]);
+  });
+
+  it("does not count comments as content when trimming", () => {
+    // The whitespace trims exactly as if the comments were not written.
+    expect(childKinds(`const d = <p><!-- c --> hello <!-- e --></p>;`)).toEqual([
+      "text:hello",
+    ]);
+  });
+});
+
+describe("void elements (review #6)", () => {
+  it("parses a void tag written without a slash", () => {
+    const file = parseMx(`const a = <input value=x>;`);
+    const element = collect(file, "JSXElement")[0] as {
+      openingElement: { selfClosing: boolean };
+      closingElement: unknown;
+      children: unknown[];
+    };
+    expect(element.openingElement.selfClosing).toBe(true);
+    expect(element.closingElement).toBeNull();
+    expect(element.children).toHaveLength(0);
+  });
+
+  it("does not let a void tag swallow its siblings' closing tags", () => {
+    const file = parseMx(`const b = <div><input value=x><br>after</div>;`);
+    const names = (collect(file, "JSXElement") as {
+      openingElement: { name: { name: string } };
+    }[]).map((element) => element.openingElement.name.name);
+    expect(names.sort()).toEqual(["br", "div", "input"]);
+  });
+
+  it("rejects a void tag with a closing tag", () => {
+    let error: unknown;
+    try {
+      parseMx(`const c = <input>oops</input>;`);
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toBeInstanceOf(SyntaxError);
+    expect((error as Error).message).toContain("void element");
+  });
+});
