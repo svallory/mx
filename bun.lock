@@ -72,6 +72,13 @@
       "name": "@markox/eslint-plugin",
       "version": "0.0.0",
     },
+    "packages/mx-html": {
+      "name": "@markox/html",
+      "version": "0.0.0",
+      "dependencies": {
+        "@markox/parser": "workspace:*",
+      },
+    },
     "packages/mx-parser": {
       "name": "@markox/parser",
       "version": "0.0.0",
@@ -255,6 +262,8 @@
     "@markox/example-counter-app": ["@markox/example-counter-app@workspace:examples/counter-app"],
 
     "@markox/example-todomvc": ["@markox/example-todomvc@workspace:examples/todomvc"],
+
+    "@markox/html": ["@markox/html@workspace:packages/mx-html"],
 
     "@markox/oracle": ["@markox/oracle@workspace:packages/oracle"],
 

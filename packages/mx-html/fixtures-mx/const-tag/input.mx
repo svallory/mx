@@ -1,0 +1,4 @@
+export interface Input { first: string; last: string }
+<const/full=input.first + " " + input.last/>
+<p>${full}</p>
+<p>${full.toUpperCase()}</p>

@@ -1,0 +1,1 @@
+{ "danger": "<script>alert(\"x & y\")</script>" }

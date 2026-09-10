@@ -1,0 +1,6 @@
+export interface Input { title: string; header: () => string; children: () => string }
+<section.card>
+  <h2>${input.title}</h2>
+  $!{input.header()}
+  $!{input.children()}
+</section>

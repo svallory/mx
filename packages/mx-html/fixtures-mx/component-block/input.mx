@@ -1,0 +1,8 @@
+import Card from "./card.mx"
+export interface Input { name: string }
+<Card title="Profile">
+  <@header>
+    <em>hi</em>
+  </@header>
+  <p>${input.name}</p>
+</Card>

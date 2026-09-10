@@ -1,0 +1,8 @@
+<ol>
+  <for|n| from=1 to=3>
+    <li>${n}</li>
+  </for>
+  <for|n| from=0 until=2>
+    <li>u${n}</li>
+  </for>
+</ol>
