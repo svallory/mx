@@ -122,6 +122,7 @@ function lowerClassOrStyle(
   attr: Extract<MxAttr, { kind: "dynamic" }>,
   hasShorthandClass: boolean,
   shorthandClassValue: string | null,
+  staticClassValue: string | null,
 ): Node {
   const expression = ctx.subParse(attr.value, "attribute value");
 
@@ -159,8 +160,20 @@ function lowerClassOrStyle(
     // array, so `<div.a.b class={c: on()}>` merges into `class={["a b",
     // {c: on()}]}` — the string entry is always-on, the object toggles.
     // Order matters (shorthand first) because later array entries win.
+    //
+    // A static `class="x"` on the same tag folds into that same string entry
+    // rather than staying its own attribute: `<div.card class="x"
+    // class={c: on()}>` is `class={["card x", {c: on()}]}`. Emitting both a
+    // `class="card x"` and a `class={[...]}` would put the name twice on one
+    // element, and every backend keeps only the last — silently dropping
+    // whichever half came first. `lower.ts` skips the static attribute when
+    // this path will absorb it.
+    const stringEntry = [shorthandClassValue, staticClassValue]
+      .filter((part): part is string => part !== null && part !== "")
+      .join(" ");
+
     const value: Node =
-      hasShorthandClass && shorthandClassValue !== null
+      stringEntry !== ""
         ? ctx.at(
             {
               type: "ArrayExpression",
@@ -168,10 +181,10 @@ function lowerClassOrStyle(
                 ctx.at(
                   {
                     type: "StringLiteral",
-                    value: shorthandClassValue,
+                    value: stringEntry,
                     extra: {
-                      raw: `"${shorthandClassValue}"`,
-                      rawValue: shorthandClassValue,
+                      raw: `"${stringEntry}"`,
+                      rawValue: stringEntry,
                     },
                   },
                   attr.value,
@@ -224,9 +237,16 @@ export function lowerDynamicAttr(
   attr: Extract<MxAttr, { kind: "dynamic" }>,
   hasShorthandClass: boolean,
   shorthandClassValue: string | null = null,
+  staticClassValue: string | null = null,
 ): Node {
   if (attr.name === "class" || attr.name === "style") {
-    return lowerClassOrStyle(ctx, attr, hasShorthandClass, shorthandClassValue);
+    return lowerClassOrStyle(
+      ctx,
+      attr,
+      hasShorthandClass,
+      shorthandClassValue,
+      staticClassValue,
+    );
   }
   if (attr.name === "ref") {
     return lowerRef(ctx, attr);

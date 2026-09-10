@@ -87,6 +87,44 @@ describe("class shorthand", () => {
     );
   });
 
+  it("folds a static class into the array's string entry, emitting class once", () => {
+    // `<div.card class="x" class={c: on()}>` must be a single
+    // `class={["card x", {c: on()}]}`. Emitting both `class="card x"` and
+    // `class={[...]}` puts the name twice on one element and every backend
+    // keeps only the last, silently dropping the other half.
+    const attrs = attrsOf(
+      `const el = <div.card class="x" class={c: on()}>y</div>;`,
+    );
+    const classAttrs = (attrs as { name: { name: string } }[]).filter(
+      (a) => a.name.name === "class",
+    );
+    expect(classAttrs).toHaveLength(1);
+    const attr = classAttrs[0] as unknown as {
+      value: {
+        expression: {
+          type: string;
+          elements: [{ type: string; value: string }, { type: string }];
+        };
+      };
+    };
+    expect(attr.value.expression.type).toBe("ArrayExpression");
+    expect(attr.value.expression.elements[0].value).toBe("card x");
+    expect(attr.value.expression.elements[1].type).toBe("ObjectExpression");
+  });
+
+  it("folds a static class into the array even without shorthand", () => {
+    const attrs = attrsOf(`const el = <div class="x" class={c: on()}>y</div>;`);
+    const classAttrs = (attrs as { name: { name: string } }[]).filter(
+      (a) => a.name.name === "class",
+    );
+    expect(classAttrs).toHaveLength(1);
+    const attr = classAttrs[0] as unknown as {
+      value: { expression: { type: string; elements: [{ value: string }] } };
+    };
+    expect(attr.value.expression.type).toBe("ArrayExpression");
+    expect(attr.value.expression.elements[0].value).toBe("x");
+  });
+
   it("merges shorthand with an object class into the array form", () => {
     // Solid 2's `class` accepts a recursive array, so shorthand plus an
     // object is a merge rather than the conflict it was against 1.x's
