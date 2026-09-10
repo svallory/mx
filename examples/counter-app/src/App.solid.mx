@@ -1,0 +1,10 @@
+import { Counter } from "./Counter.solid.mx";
+
+export function App() {
+  return (
+    <main>
+      <h1>MX counter</h1>
+      <Counter />
+    </main>
+  );
+}
