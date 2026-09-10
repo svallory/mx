@@ -38,7 +38,13 @@ export default function (input: Input): string {
   HTML element, whatever its case (hyphenated custom elements included). This
   is Marko's own rule, not an MX invention: `import layout from "./layout.mx"`
   then `<layout>` calls the component, while `<my-widget>` with no matching
-  binding stays a literal element.
+  binding stays a literal element. A `<define>` shadows a real HTML element
+  of the same name for the rest of the file — `<define/section|x|>` makes
+  `<section>` call the define, not emit `<section>`, so naming a `<define>`
+  after a common element makes that element uncallable as a tag afterward. A
+  capitalized tag with no matching binding is a compile error rather than a
+  literal element, since no HTML element is ever capitalized — it can only be
+  a missing or misspelled import/define.
 - `<const/x=...>` emits a `const` at render scope; `static` blocks and
   `import`s hoist to module scope.
 - String building concatenates into a local rather than joining an array —

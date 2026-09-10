@@ -111,11 +111,23 @@ Marko's own rule (custom tags are lowercase there), not an MX invention.
 `<my-widget>` with no matching binding stays a literal element. Before this
 was resolved by binding, dispatch was a first-character `A`-`Z` check, so a
 lowercase import or `<define>` name silently rendered as an unknown custom
-element with the import never called — no error. See
-`packages/mx-html/fixtures-mx/lowercase-component` and
-`.../unknown-element` for fixtures pinning both branches. SolidMX's own
-PascalCase-means-component convention (`lower.ts`) is unrelated and unchanged
-by this — it follows JSX, template mode is a separate lowering path.
+element with the import never called — no error. A capitalized tag with no
+matching binding is a compile error, not a literal element — no HTML element
+is ever capitalized, so silently falling back to the element branch there
+would reintroduce the same silent-misroute defect in the other direction. A
+`<define>` shadows a same-named HTML element for the rest of the file
+(`<define/section|x|>` makes `<section>` uncallable as a plain tag
+afterward) — the define-before-import precedence in `emitElement` is
+intentional, this is its consequence. Import binding names are extracted by
+parsing the hoisted import line with `parseBabel` (default, namespace,
+named, aliased, and combined forms), not by regex — a partial extraction
+here is exactly the bug class this rule exists to fix. See
+`packages/mx-html/fixtures-mx/lowercase-component` and `.../unknown-element`
+for fixtures pinning both branches, and `fixtures.test.ts`'s "import binding
+forms are recognised" and "unbound PascalCase tag is rejected" suites for
+the rest. SolidMX's own PascalCase-means-component convention (`lower.ts`)
+is unrelated and unchanged by this — it follows JSX, template mode is a
+separate lowering path.
 
 ## Running tests in a fresh worktree
 

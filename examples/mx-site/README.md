@@ -18,15 +18,15 @@ the exact same `src/pages/*.mx` templates.
 Every page is wrapped in `src/pages/layout.mx`, so the layout/partial pattern
 runs on every route, not just `/`.
 
-Every component tag in this app is capitalized (`<Layout>`, `<Callout>`).
-The emitter decides component-vs-HTML-element dispatch by the tag name's
-first character: `A`-`Z` calls it as a component, anything else emits it as a
-literal HTML element — so `<layout ...>` (lowercase) silently renders as an
-unknown custom element instead of calling the imported component, with no
-error. The intended rule, ruled on but not yet implemented, is that a tag
-name matching an in-scope binding (an `import` or a `<define>`) is a
-component call regardless of case; only a name matching neither is an HTML
-element. Until that lands, capitalize every component/define tag you call.
+Every component tag in this app is capitalized (`<Layout>`, `<Callout>`), but
+that is a style choice, not a requirement: the emitter decides
+component-vs-HTML-element dispatch by whether the tag name matches an
+in-scope binding — an `import` or a `<define>` — regardless of case, not by
+the tag name's first character. `<layout ...>` (lowercase) calls the
+imported component exactly like `<Layout ...>` would, as long as `layout` is
+in scope. A tag name matching no binding stays a plain HTML element,
+whatever its case; a capitalized tag matching no binding is a compile error,
+since no HTML element is ever capitalized.
 
 `<for>`'s `by=` attribute (identity/custom keying) is not supported by
 `@markox/html`'s emitter and is silently dropped if written — not just here,
