@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@marko/compiler": "5.42.5",
     "@markox/parser": "workspace:*"
   }
 }

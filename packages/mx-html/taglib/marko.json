@@ -1,0 +1,32 @@
+{
+  "taglibId": "mx-html",
+  "<if>": {
+    "@value": { "type": "expression" }
+  },
+  "<else>": {
+    "@if": { "type": "expression" }
+  },
+  "<for>": {
+    "@of": { "type": "expression" },
+    "@in": { "type": "expression" },
+    "@from": { "type": "expression" },
+    "@to": { "type": "expression" },
+    "@until": { "type": "expression" },
+    "@step": { "type": "expression" },
+    "@by": { "type": "expression" }
+  },
+  "<const>": {
+    "@value": { "type": "expression" }
+  },
+  "<define>": {},
+  "<fragment>": {},
+  "<import>": {
+    "parseOptions": { "statement": true, "rawOpenTag": true }
+  },
+  "<static>": {
+    "parseOptions": { "statement": true, "rawOpenTag": true }
+  },
+  "<export>": {
+    "parseOptions": { "statement": true, "rawOpenTag": true }
+  }
+}
