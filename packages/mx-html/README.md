@@ -16,7 +16,9 @@ import { compile } from "@markox/html";
 const { code, map } = compile(source, "greeting.mx");
 ```
 
-`compile(source, filename)` parses and lowers a `.mx` file to a TS module:
+`@marko/compiler` parses, validates and supplies the tag registry; this
+package supplies only the translator (ADR 0001). `compile(source, filename)`
+drives it and returns a TS module:
 
 ```ts
 import { escape } from "@markox/html";
@@ -54,7 +56,11 @@ export default function (input: Input): string {
 ## API
 
 - `compile(source: string, filename: string): { code: string, map: ... }` —
-  parses and lowers a `.mx` file to the module shape above.
+  compiles a `.mx` file to the module shape above, by running MX's translator
+  under `@marko/compiler`. The returned map is an identity placeholder for
+  now: the translator builds text directly rather than printing an AST.
+- `TranslateError` — thrown for a construct that parses as Marko but has no
+  string lowering, carrying `line`/`column`.
 - `escape(value: unknown): string` — escapes the five HTML text/attribute
   characters `& < > " '`. Non-string values are `String()`-coerced;
   `null`/`undefined` render as the empty string, not the literal words
@@ -78,17 +84,15 @@ in which case that file sits alongside `input.mx` in the same directory.
 `notes/standalone-mx-parity.md` (space root, not part of this repo) maps
 every JSX and Pug feature to its MX spelling and the fixture that proves it,
 or states why it is not supported. The short version: standalone MX has no
-reactive runtime — `<let>`, `<effect>`, `<await>`, and two-way binding are
-not supported here (they exist only in the Solid target). Everything else in
-Pug and JSX has an MX spelling; that note's "Caveats" section lists the
-implementation gaps found while proving that — comments are always dropped
-(both `<!-- -->` and `//`), calling a `<define>` as a tag is broken for
-**any** parameter count of one or more (not just multi-parameter — a single
-plain-value parameter also breaks, and a single block parameter throws),
-a bare escaped placeholder as the first content in a template is misparsed
-as a dynamic tag name and throws, a bare raw placeholder in that same
-position silently miscompiles instead of throwing, and `by=` on `<for>`
-is silently accepted and ignored rather than rejected (it is meant to be a
-parse error — no fixture exercises it as of this package's current state).
-None of those are fixed here; they are tracked as findings, not silently
-worked around.
+reactive runtime — `<let>`, `<effect>`, `<script>`, `<lifecycle>`,
+`<await>`, `<try>`, `<client>`, `<server>` and two-way binding (`:=`) are
+not supported here (they exist only in the Solid target). Each raises a
+translate-stage error naming the construct rather than being dropped
+silently, and each has a test pinning its message.
+
+The gaps that note's "Caveats" section once listed are closed and pinned by
+fixtures and tests: HTML comments survive (only `//` line comments are
+author-only), calling a `<define>` as a tag passes its arguments positionally
+for any parameter count, a bare placeholder as a template's first content
+compiles as a placeholder in both the escaped and raw forms, and `by=` on
+`<for>` is a translate error naming the reason.

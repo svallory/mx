@@ -29,6 +29,7 @@ All dependencies below are pinned to an exact version (no `^`/`~`) at the root `
 | `@babel/traverse` | 7.29.8 |
 | `@babel/types` | 7.29.8 |
 | `htmljs-parser` | 5.15.0 |
+| `@marko/compiler` | 5.42.5 |
 | `solid-js` | 2.0.0-rc.7 |
 | `@solidjs/web` | 2.0.0-rc.7 |
 | `@solidjs/babel-plugin` | 2.0.0-rc.7 |

@@ -85,47 +85,50 @@ Two syntax decisions are settled and encoded in the lowering table:
 
 ## Standalone MX (`.mx`) and `@markox/html`
 
-MX has **two lowering targets in one parser package**, selected by a parse
-option:
+MX has **two lowering targets in two packages**, and since ADR 0001 they no
+longer share a parser:
 
-- `parse(source, filename)` — the default, `mxMode: "expression"`. A
-  `.solid.mx` file: a TypeScript module in which `<` in expression position
-  opens an MX element, lowered to Solid 2 JSX. Unchanged by template mode.
-- `parse(source, filename, { mxMode: "template" })` — a whole-file `.mx`
-  template, lowered to a string-returning TS module by `@markox/html`.
+- `parse(source, filename)` in `@markox/parser` — a `.solid.mx` file: a
+  TypeScript module in which `<` in expression position opens an MX element,
+  lowered to Solid 2 JSX. This is the parser package's only mode; there is no
+  `mxMode` option.
+- `compile(source, filename)` in `@markox/html` — a whole-file `.mx` template.
+  `@marko/compiler` parses, validates and supplies the tag registry; MX
+  supplies only a translator (`packages/mx-html/src/translate.ts`) and its own
+  taglib (`packages/mx-html/taglib/marko.json`). `@markox/parser` is not on
+  this path at all beyond `parseBabel`, used to read `import` bindings.
 
-The two share the tokenizer but **not** the entry point.
-`src/mx/walk.ts` (`walkMxRegion`) stops at the first element's close and hands
-the tokenizer back to Babel; `src/mx/template.ts` (`walkMxTemplate`) owns the
-whole file and never stops early. Keeping them separate is what makes template
-mode additive — nothing in it runs for a `.solid.mx` parse, so the oracle
-cannot move.
+Template mode used to be `parse(src, file, { mxMode: "template" })` over
+`src/mx/template.ts`'s second walk. That option, that file and the old string
+emitter (`packages/mx-html/src/emit.ts`) are **deleted** — a whole-file `.mx`
+never reaches `@markox/parser` now.
 
-In template mode `parse` returns a `File` whose `program.body` is **empty** and
-whose `extra.mxTemplate` holds the parsed template. A standalone template is
-markup plus a few statement tags, not a TypeScript program, so there is no
-honest Babel-node representation of it.
+Four Marko facts that are easy to get wrong (all measured against
+`@marko/compiler` 5.42.5, all cost real debugging time):
 
-Two htmljs-parser facts that are easy to get wrong (both verified against
-5.15.0, both cost real debugging time):
+- **Marko's `onText` already implements decision 33.** `<p>\n  a\n</p>` gives
+  `MarkoText "a"` — a whitespace-only run containing a newline is dropped —
+  and `a   b` gives `"a b"`. The string translator therefore does **not**
+  re-normalize, and does not call `normalizeText()`. Do not add a second
+  normalization pass on that path; it would double-collapse.
+- **`import` / `static` / `export` parse as *tags*, not statements**, whose
+  attributes are the remaining words. To recover the statement text, slice by
+  **`loc` line/column**: `start` and `end` are **`undefined`** on these nodes.
+  (An earlier version of this file said "the tag's range is the statement's
+  source span" — true of `loc`, not of `start`/`end`.) Import binding names
+  are then re-parsed with `parseBabel`, never regex-scraped.
+- **A bare top-level `${expr}` line is a `MarkoTag` whose `name` is the
+  expression**, not a `MarkoPlaceholder` — concise mode has no other shape for
+  it. A tag with an expression name, no attributes and no body is that
+  placeholder; treating every expression-named tag as a dynamic tag error
+  breaks a template whose first content is a placeholder.
+- **`<!doctype html>` arrives as a `MarkoDocumentType` node** whose `value` is
+  `doctype html` (delimiters stripped), so it is re-emitted as `<!${value}>`.
+  Marko strips comment delimiters too, which is why an HTML comment and a `//`
+  line comment are told apart by re-reading the source at the node's `loc`.
 
-- **In concise mode `onOpenTagStart` never fires.** A line like
-  `import Button from "./b.mx"` or `div.card` opens with the tag *name*, so
-  `onOpenTagName` is the first event for the tag. A handler that assumes
-  `onOpenTagStart` ran and bails on a null `pending` silently drops every
-  concise-mode tag — including every statement tag.
-- **`import` / `static` / `export` parse as *tags*, not statements.**
-  htmljs-parser has no JS grammar, so `import Button from "./b.mx"` is a tag
-  named `import` whose attributes are the remaining words. The tag's range is
-  the statement's source span, so the text is sliced back out and re-parsed.
-  They are declared `TagType.void` so the parser does not hunt for a close tag.
-
-- **`<!doctype html>` reaches you only through `onDoctype`.** It fires no text
-  or element event, so a handler set without `onDoctype` silently drops the
-  doctype from a full HTML page. Template mode records it as a `doctype` child
-  and emits it verbatim.
-
-`@markox/html`'s emitter (`emit.ts`'s `emitElement`) decides component-vs-HTML
+`@markox/html`'s translator (`translate.ts`'s `emitTag`) decides
+component-vs-HTML
 dispatch by **in-scope binding, not case**: a tag name matching an `import` or
 a `<define>` is a component call whatever its case; anything else is an HTML
 element whatever its case, hyphenated custom elements included. This is
@@ -140,15 +143,19 @@ is ever capitalized, so silently falling back to the element branch there
 would reintroduce the same silent-misroute defect in the other direction. A
 `<define>` shadows a same-named HTML element for the rest of the file
 (`<define/section|x|>` makes `<section>` uncallable as a plain tag
-afterward) — the define-before-import precedence in `emitElement` is
+afterward) — the define-before-import precedence in `emitTag` is
 intentional, this is its consequence. Import binding names are extracted by
 parsing the hoisted import line with `parseBabel` (default, namespace,
 named, aliased, and combined forms), not by regex — a partial extraction
 here is exactly the bug class this rule exists to fix. See
 `packages/mx-html/fixtures-mx/lowercase-component` and `.../unknown-element`
-for fixtures pinning both branches, and `fixtures.test.ts`'s "import binding
-forms are recognised" and "unbound PascalCase tag is rejected" suites for
-the rest. SolidMX's own PascalCase-means-component convention (`lower.ts`)
+for fixtures pinning both branches, and `translate.test.ts`'s "tag dispatch
+resolves by binding, not case" and "unknown tags" suites for the rest. An
+unbound *lowercase* tag that is neither hyphenated nor a real HTML/SVG
+element is now a translate error (``unknown tag `<x>` ``), closing ADR
+0001's named silent-failure mode: MX's taglib deliberately does not load
+`runtime-tags`' HTML/SVG taglibs, so `translate.ts` carries that element set
+itself. SolidMX's own PascalCase-means-component convention (`lower.ts`)
 is unrelated and unchanged by this — it follows JSX, template mode is a
 separate lowering path.
 
@@ -170,18 +177,25 @@ resolved relative to the root.
 
 - `escape(value)` — the *entire* runtime. Escapes `& < > " '`; `null` and
   `undefined` render as `""`, not their names.
-- `compile(source, filename)` -> `{ code, map }`. The map is currently an
-  identity placeholder: the emitter builds text directly rather than printing an
-  AST, so there are no node positions to derive mappings from yet.
+- `compile(source, filename)` -> `{ code, map }`, driving MX's translator
+  under `@marko/compiler`. The map is currently an identity placeholder: the
+  translator builds text directly rather than printing an AST. Marko's nodes
+  do carry real `loc`, so genuine mappings are now possible — a separate task.
+- `TranslateError` (was `EmitError`) — a construct that parses as Marko but
+  has no string lowering, carrying `line`/`column` rather than byte offsets,
+  because that is what Marko's nodes have.
 
 Emitted module shape: the `escape` import, the author's hoisted `import`s and
 `static` blocks, their `export interface Input` verbatim, and
 `export default function (input: Input): string` building one local by `out +=`
 concatenation (**not** an array join — the goldens diff this code).
 
-Whitespace is `normalizeText()` from `src/mx/lower.ts`, exported from the
-parser and reused by both targets. Do not write a second implementation; that
-is the whole point of exporting it.
+Whitespace on the **SolidMX** path is `normalizeText()` from
+`src/mx/lower.ts`, exported from the parser. Do not write a second
+implementation for that target. The **string** target does not use it at all:
+Marko's own `onText` already applies the same decision-33 rule before the
+translator sees a `MarkoText` (see the four Marko facts above), so calling
+`normalizeText()` there would collapse twice.
 
 Goldens live at `packages/mx-html/fixtures-mx/<name>/` with `input.mx`,
 `input.json` and `expected.html`, and are asserted on **rendered HTML**, not on
