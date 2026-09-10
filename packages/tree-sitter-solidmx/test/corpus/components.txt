@@ -97,6 +97,90 @@ const a = <Tabs><@tab>Tab 1</@tab><@tab>Tab 2</@tab></Tabs>;
       value: (mx_element))))
 
 ================================================================================
+Spread alongside an attribute tag scans well-formed
+================================================================================
+
+const a = <Layout ...props><@id>x</@id></Layout>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Attribute tag colliding with a same-named attribute scans well-formed
+================================================================================
+
+const a = <Layout id="x"><@id>y</@id></Layout>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Nested attribute tag scans well-formed
+================================================================================
+
+const a = <Layout><@header><@inner>x</@inner></@header></Layout>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Tag params on a plain HTML tag
+================================================================================
+
+const a = <div|x|><span>${x}</span></div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Empty tag param list
+================================================================================
+
+const a = <Wrap||><b>x</b></Wrap>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Typed and destructured tag params
+================================================================================
+
+const a = <fragment><Show|u: User| when=user()><b>${u.name}</b></Show><Show|{ name }| when=user()><i>${name}</i></Show></fragment>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
 Tag variable (checklist 25 note)
 ================================================================================
 

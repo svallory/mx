@@ -25,7 +25,7 @@ mapfile -t FILES < <(
 #
 # Hardcoded for the same reason as parse-all.sh: an env-overridable floor can be
 # set to 0 by any caller, which makes the guard advisory rather than binding.
-MIN_FILES=12
+MIN_FILES=14
 
 # Testing hook: may only RAISE the floor, never lower it, so it cannot disable
 # the guard.
