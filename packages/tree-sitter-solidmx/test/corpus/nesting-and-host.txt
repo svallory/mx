@@ -1,0 +1,194 @@
+================================================================================
+HTML comment inside MX (checklist 51, 52)
+================================================================================
+
+const a = <div><!-- a comment --></div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+HTML comment containing markup-like text (scanner-rules 10)
+================================================================================
+
+const a = <div><!-- <span>not a tag</span> --></div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+MX nested inside an attribute method body (checklist 53)
+================================================================================
+
+const a = <button onClick() { return <div>Clicked</div> }>Click</button>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+MX nested inside a placeholder expression (checklist 54)
+================================================================================
+
+const a = <div>${items().map(i => <li>${i.name}</li>)}</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+MX in a return statement inside a function (checklist 70)
+================================================================================
+
+export function Card() {
+  return <div.card>body</div>;
+}
+
+--------------------------------------------------------------------------------
+
+(program
+  (export_statement
+    declaration: (function_declaration
+      name: (identifier)
+      parameters: (formal_parameters)
+      body: (statement_block
+        (return_statement
+          (mx_element))))))
+
+================================================================================
+MX in a parenthesized return (fixtures/counter)
+================================================================================
+
+export function Counter() {
+  return (
+    <button onClick() { setCount(count() + 1) }>${count()}</button>
+  );
+}
+
+--------------------------------------------------------------------------------
+
+(program
+  (export_statement
+    declaration: (function_declaration
+      name: (identifier)
+      parameters: (formal_parameters)
+      body: (statement_block
+        (return_statement
+          (parenthesized_expression
+            (mx_element)))))))
+
+================================================================================
+TypeScript host constructs are unaffected (checklist 70)
+================================================================================
+
+import { createSignal } from "solid-js";
+
+interface Row {
+  id: number;
+  label: string;
+}
+
+const [rows, setRows] = createSignal<Row[]>([]);
+
+--------------------------------------------------------------------------------
+
+(program
+  (import_statement
+    (import_clause
+      (named_imports
+        (import_specifier
+          name: (identifier))))
+    source: (string
+      (string_fragment)))
+  (interface_declaration
+    name: (type_identifier)
+    body: (interface_body
+      (property_signature
+        name: (property_identifier)
+        type: (type_annotation
+          (predefined_type)))
+      (property_signature
+        name: (property_identifier)
+        type: (type_annotation
+          (predefined_type)))))
+  (lexical_declaration
+    (variable_declarator
+      name: (array_pattern
+        (identifier)
+        (identifier))
+      value: (call_expression
+        function: (identifier)
+        type_arguments: (type_arguments
+          (array_type
+            (type_identifier)))
+        arguments: (arguments
+          (array))))))
+
+================================================================================
+MX as a function argument
+================================================================================
+
+render(<div>x</div>, root);
+
+--------------------------------------------------------------------------------
+
+(program
+  (expression_statement
+    (call_expression
+      function: (identifier)
+      arguments: (arguments
+        (mx_element)
+        (identifier)))))
+
+================================================================================
+MX in a ternary
+================================================================================
+
+const a = cond() ? <div>yes</div> : <span>no</span>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (ternary_expression
+        condition: (call_expression
+          function: (identifier)
+          arguments: (arguments))
+        consequence: (mx_element)
+        alternative: (mx_element)))))
+
+================================================================================
+MX in an arrow function body
+================================================================================
+
+const a = () => <div>x</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (arrow_function
+        parameters: (formal_parameters)
+        body: (mx_element)))))

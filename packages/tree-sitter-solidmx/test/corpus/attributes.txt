@@ -1,0 +1,299 @@
+================================================================================
+String attribute (checklist 6)
+================================================================================
+
+const a = <a href="/home">Link</a>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Expression attribute (checklist 7)
+================================================================================
+
+const a = <a href=getUrl()>Link</a>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Boolean attribute (checklist 8)
+================================================================================
+
+const a = <button disabled>Click</button>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Spread attribute (checklist 9)
+================================================================================
+
+const a = <div ...attrs/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Class shorthand (checklist 10)
+================================================================================
+
+const a = <div.card>Content</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Multiple class shorthand (checklist 11)
+================================================================================
+
+const a = <div.card.big.active>Content</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+ID shorthand (checklist 12)
+================================================================================
+
+const a = <div#main>Content</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Combined class and ID shorthand (checklist 13)
+================================================================================
+
+const a = <div.card#main>Content</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Class shorthand with an object class attribute (checklist 14)
+================================================================================
+
+const a = <div.card class={active: on()}>Content</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Object-literal class attribute (checklist 15)
+================================================================================
+
+const a = <div class={active: isActive()}>Content</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Style object attribute (checklist 16)
+================================================================================
+
+const a = <div style={color: textColor()}>Content</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Event handler reference (checklist 17)
+================================================================================
+
+const a = <button onClick=handleClick>Click</button>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Attribute method with a block body (checklist 18)
+================================================================================
+
+const a = <button onClick(e) { handleClick(e) }>Click</button>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+prop: namespace (checklist 19)
+================================================================================
+
+const a = <Component prop:myprop=value/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Ref attribute (checklist 25)
+================================================================================
+
+const a = <div ref=containerEl>Content</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Quoted attribute value containing a greater-than (scanner-rules 6)
+================================================================================
+
+const a = <div a="q>q">t</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Braced attribute value containing a less-than (scanner-rules 6)
+================================================================================
+
+const a = <Foo a={x < y}>t</Foo>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Arrow in an attribute value: => does not end the tag (scanner-rules 6)
+================================================================================
+
+const a = <Foo cb=(x => x.id)>t</Foo>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Division in an unquoted attribute value (scanner-rules 7)
+================================================================================
+
+const a = <div a=x/2>t</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Regex in an unquoted attribute value (scanner-rules 7)
+================================================================================
+
+const a = <div a=/re>/ >t</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Multiple attributes across several lines
+================================================================================
+
+const a = <div
+  id="panel"
+  data-count=color()
+  disabled
+  ...props.extra
+  class={active: active()}
+>text</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))

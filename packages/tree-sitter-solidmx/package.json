@@ -1,0 +1,16 @@
+{
+  "name": "@markox/tree-sitter-solidmx",
+  "version": "0.0.0",
+  "private": true,
+  "//type": "No \"type\" field on purpose: tree-sitter loads grammar.js as CommonJS, and \"type\": \"module\" makes its require() call fail. Upstream's tsx package.json omits it for the same reason.",
+  "scripts": {
+    "vendor": "./scripts/vendor.sh",
+    "vendor:check": "./scripts/vendor.sh --check",
+    "generate": "flock /tmp/mx-zed-generate.lock bunx tree-sitter generate",
+    "test": "./scripts/test.sh"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "0.24.7",
+    "tree-sitter-javascript": "0.23.1"
+  }
+}

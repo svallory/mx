@@ -1,0 +1,167 @@
+================================================================================
+if tag (checklist 35)
+================================================================================
+
+const a = <if=condition()><p>True</p></if>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+if tag with params (checklist 33, 36)
+================================================================================
+
+const a = <if=user()|u|><p>${u().name}</p></if>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+if / else if / else chain (checklist 37, 38)
+================================================================================
+
+const a = <fragment><if=x()>A</if><else if=y()>B</else><else>C</else></fragment>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+for with of, unkeyed (checklist 39)
+================================================================================
+
+const a = <for|item, i| of=items()><li>${item().name}</li></for>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+for with by=identity (checklist 40)
+================================================================================
+
+const a = <for|item, i| of=items() by=identity><li>${item.id}</li></for>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+for with by="field" (checklist 41)
+================================================================================
+
+const a = <for|item, i| of=items() by="id"><li>${item().name}</li></for>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+for with a by= key function (checklist 42)
+================================================================================
+
+const a = <for|item, i| of=items() by=(r => r.label)><li>${item().userId}</li></for>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+for over an inclusive range (checklist 43)
+================================================================================
+
+const a = <for|i| from=0 to=10><p>${i()}</p></for>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+for over an exclusive range (checklist 44)
+================================================================================
+
+const a = <for|i| from=0 until=n()><p>${i()}</p></for>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+for over object entries (checklist 34, 45)
+================================================================================
+
+const a = <for|key, val| in=obj()><p>${key}: ${val()}</p></for>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+try with placeholder and catch (checklist 47, 48, 49)
+================================================================================
+
+const a = <try><@placeholder>Loading</@placeholder><@catch|e, reset|>Error: ${e}</@catch></try>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+try with a one-parameter catch (checklist 49)
+================================================================================
+
+const a = <try><@catch|e|>Error: ${e}</@catch></try>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))

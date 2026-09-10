@@ -1,0 +1,210 @@
+================================================================================
+HTML element with text (checklist 1, 3)
+================================================================================
+
+const a = <h1>Hello</h1>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Self-closing element (checklist 2)
+================================================================================
+
+const a = <img src="x"/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Void element without a slash (checklist 2, Z12)
+================================================================================
+
+const a = <input value=x>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Void element as a child does not swallow the parent's close tag (Z12)
+================================================================================
+
+const a = <div><br><span>after</span></div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Every void element name is depth-neutral (walk.ts VOID_TAGS, all 14)
+================================================================================
+
+const a = <div><area><base><br><col><embed><hr><img><input><link><meta><param><source><track><wbr></div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Nested elements (checklist 1)
+================================================================================
+
+const a = <div><span><b>deep</b></span></div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Text placeholder ${} (checklist 4)
+================================================================================
+
+const a = <div>${label()}</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+HTML-unsafe placeholder $!{} (checklist 5)
+================================================================================
+
+const a = <div>$!{rawHtml}</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Escaped placeholder is literal text (scanner-rules 8)
+================================================================================
+
+const a = <div>\${notAPlaceholder}</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Brace text is not a placeholder (checklist 67)
+================================================================================
+
+const a = <div>{notPh}</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Placeholder containing a nested template literal and braces (scanner-rules 7)
+================================================================================
+
+const a = <div>${ `t${ {k:'}'} }` }</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Less-than in text position is literal (scanner-rules 9.2)
+================================================================================
+
+const a = <div>a < b</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Whitespace-only run with a newline (checklist 62)
+================================================================================
+
+const a = <div>
+</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Escaped-space placeholder (checklist 65)
+================================================================================
+
+const a = <div>${" "}</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Fragment tag (checklist 50, 72)
+================================================================================
+
+const a = <fragment><div>A</div><div>B</div></fragment>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))

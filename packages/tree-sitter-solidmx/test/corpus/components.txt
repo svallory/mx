@@ -1,0 +1,111 @@
+================================================================================
+PascalCase component, self-closing (checklist 26)
+================================================================================
+
+const a = <Card title="x"/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Component with children (checklist 27)
+================================================================================
+
+const a = <Card>Hello</Card>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Dynamic component with a runtime tag name (checklist 28)
+================================================================================
+
+const a = <${getComponent()} ...attrs/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Tag type arguments are not a nested element (scanner-rules 9.3)
+================================================================================
+
+const a = <Foo<Bar> x=1/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Attribute tag (checklist 29)
+================================================================================
+
+const a = <Layout><@header><Nav/></@header></Layout>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Attribute tag with params (checklist 30)
+================================================================================
+
+const a = <Layout><@row|item|><li>${item.name}</li></@row></Layout>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Repeated attribute tag (checklist 31)
+================================================================================
+
+const a = <Tabs><@tab>Tab 1</@tab><@tab>Tab 2</@tab></Tabs>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Tag variable (checklist 25 note)
+================================================================================
+
+const a = <div/el>Content</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))

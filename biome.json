@@ -13,7 +13,11 @@
       "!**/fixtures/**/*.solid.mx",
       "!**/fixtures-mx",
       "!packages/mx-parser/src/babel",
-      "!packages/mx-parser/dist"
+      "!packages/mx-parser/dist",
+      "!packages/tree-sitter-solidmx/vendor",
+      "!packages/tree-sitter-solidmx/src",
+      "!packages/tree-sitter-solidmx/test/corpus",
+      "!packages/tree-sitter-solidmx/fixtures"
     ]
   },
   "formatter": {

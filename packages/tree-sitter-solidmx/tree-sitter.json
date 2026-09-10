@@ -1,0 +1,38 @@
+{
+  "grammars": [
+    {
+      "name": "solidmx",
+      "camelcase": "SolidMx",
+      "scope": "source.solidmx",
+      "path": ".",
+      "external-files": [
+        "src/scanner_mx.c",
+        "vendor/tree-sitter-typescript/common/scanner.h"
+      ],
+      "file-types": ["solid.mx"],
+      "highlights": ["queries/highlights.scm"],
+      "injection-regex": "^(solidmx|solid\\.mx)$"
+    }
+  ],
+  "metadata": {
+    "version": "0.0.0",
+    "license": "MIT",
+    "description": "tree-sitter grammar for SolidMX (.solid.mx)",
+    "authors": [
+      {
+        "name": "mx contributors"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/svallory/mx"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": false,
+    "node": false,
+    "python": false,
+    "rust": false,
+    "swift": false
+  }
+}

@@ -1,0 +1,16 @@
+export function Elements() {
+  return (
+    <div>
+      <h1>Hello</h1>
+      <img src="x"/>
+      <input value=v>
+      <br>
+      <span>after the void tags</span>
+      <!-- a comment -->
+      ${label()}
+      $!{rawHtml}
+      <p>a < b</p>
+      <fragment><b>A</b><i>B</i></fragment>
+    </div>
+  );
+}

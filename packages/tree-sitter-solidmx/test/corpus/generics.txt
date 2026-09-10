@@ -1,0 +1,125 @@
+================================================================================
+Generic arrow with trailing comma is NOT an MX element
+================================================================================
+
+const f = <T,>(x: T) => x;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (arrow_function
+        type_parameters: (type_parameters
+          (type_parameter
+            name: (type_identifier)))
+        parameters: (formal_parameters
+          (required_parameter
+            pattern: (identifier)
+            type: (type_annotation
+              (type_identifier))))
+        body: (identifier)))))
+
+================================================================================
+Generic arrow with an extends constraint is NOT an MX element
+================================================================================
+
+const g = <T extends U>(x: T) => x;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (arrow_function
+        type_parameters: (type_parameters
+          (type_parameter
+            name: (type_identifier)
+            constraint: (constraint
+              (type_identifier))))
+        parameters: (formal_parameters
+          (required_parameter
+            pattern: (identifier)
+            type: (type_annotation
+              (type_identifier))))
+        body: (identifier)))))
+
+================================================================================
+Generic arrow with multiple type parameters is NOT an MX element
+================================================================================
+
+const h = <A, B>(a: A, b: B) => a;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (arrow_function
+        type_parameters: (type_parameters
+          (type_parameter
+            name: (type_identifier))
+          (type_parameter
+            name: (type_identifier)))
+        parameters: (formal_parameters
+          (required_parameter
+            pattern: (identifier)
+            type: (type_annotation
+              (type_identifier)))
+          (required_parameter
+            pattern: (identifier)
+            type: (type_annotation
+              (type_identifier))))
+        body: (identifier)))))
+
+================================================================================
+A plain element in the same position IS an MX element
+================================================================================
+
+const el = <div>hello</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Less-than comparison is not an MX element
+================================================================================
+
+const lt = a < b;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (binary_expression
+        left: (identifier)
+        right: (identifier)))))
+
+================================================================================
+A generic call is not an MX element
+================================================================================
+
+const r = fn<number>(1);
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (call_expression
+        function: (identifier)
+        type_arguments: (type_arguments
+          (predefined_type))
+        arguments: (arguments
+          (number))))))

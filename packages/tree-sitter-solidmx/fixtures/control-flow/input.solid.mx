@@ -1,0 +1,17 @@
+export function ControlFlow() {
+  return (
+    <div>
+      <if=user()|u|><p>${u().name}</p></if>
+      <else if=loading()><Spin/></else>
+      <else><Login/></else>
+      <for|item, i| of=items()><li>${item().name}</li></for>
+      <for|item, i| of=items() by="id"><li>${item().name}</li></for>
+      <for|i| from=0 to=10><span>${i}</span></for>
+      <for|k, v| in=obj()><p>${k}=${v()}</p></for>
+      <try>
+        <@placeholder>Loading</@placeholder>
+        <@catch|e, reset|>Error: ${e}</@catch>
+      </try>
+    </div>
+  );
+}

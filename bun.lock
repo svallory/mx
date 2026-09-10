@@ -124,6 +124,14 @@
         "@markox/parser": "workspace:*",
       },
     },
+    "packages/tree-sitter-solidmx": {
+      "name": "@markox/tree-sitter-solidmx",
+      "version": "0.0.0",
+      "devDependencies": {
+        "tree-sitter-cli": "0.24.7",
+        "tree-sitter-javascript": "0.23.1",
+      },
+    },
   },
   "packages": {
     "@ampproject/remapping": ["@ampproject/remapping@2.3.0", "", { "dependencies": { "@jridgewell/gen-mapping": "^0.3.5", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw=="],
@@ -285,6 +293,8 @@
     "@markox/oracle": ["@markox/oracle@workspace:packages/oracle"],
 
     "@markox/parser": ["@markox/parser@workspace:packages/mx-parser"],
+
+    "@markox/tree-sitter-solidmx": ["@markox/tree-sitter-solidmx@workspace:packages/tree-sitter-solidmx"],
 
     "@markox/tsc": ["@markox/tsc@workspace:packages/mx-tsc"],
 
@@ -536,6 +546,10 @@
 
     "nanoid": ["nanoid@3.3.18", "", { "bin": { "nanoid": "bin/nanoid.cjs" } }, "sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w=="],
 
+    "node-addon-api": ["node-addon-api@8.9.2", "", {}, "sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg=="],
+
+    "node-gyp-build": ["node-gyp-build@4.8.4", "", { "bin": { "node-gyp-build": "bin.js", "node-gyp-build-optional": "optional.js", "node-gyp-build-test": "build-test.js" } }, "sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ=="],
+
     "node-releases": ["node-releases@2.0.55", "", {}, "sha512-mIrE/Cw9y+9Au6dS5vDKDhQza9YvG6w+ZrS6X+ZzA7yFW/soAeaups4Qzn1bL6g5FVy8WtP79+0j82oPIbqRjQ=="],
 
     "parse5": ["parse5@7.3.0", "", { "dependencies": { "entities": "^6.0.0" } }, "sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw=="],
@@ -591,6 +605,10 @@
     "todomvc-app-css": ["todomvc-app-css@2.4.3", "", {}, "sha512-mSnWZaKBWj9aQcFRsGguY/a8O8NR8GmecD48yU1rzwNemgZa/INLpIsxxMiToFGVth+uEKBrQ7IhWkaXZxwq5Q=="],
 
     "todomvc-common": ["todomvc-common@1.0.5", "", {}, "sha512-D8kEJmxVMQIWwztEdH+WeiAfXRbbSCpgXq4NkYi+gduJ2tr8CNq7sYLfJvjpQ10KD9QxJwig57rvMbV2QAESwQ=="],
+
+    "tree-sitter-cli": ["tree-sitter-cli@0.24.7", "", { "bin": { "tree-sitter": "cli.js" } }, "sha512-o4gnE82pVmMMhJbWwD6+I9yr4lXii5Ci5qEQ2pFpUbVy1YiD8cizTJaqdcznA0qEbo7l2OneI1GocChPrI4YGQ=="],
+
+    "tree-sitter-javascript": ["tree-sitter-javascript@0.23.1", "", { "dependencies": { "node-addon-api": "^8.2.2", "node-gyp-build": "^4.8.2" }, "peerDependencies": { "tree-sitter": "^0.21.1" }, "optionalPeers": ["tree-sitter"] }, "sha512-/bnhbrTD9frUYHQTiYnPcxyHORIw157ERBa6dqzaKxvR/x3PC4Yzd+D1pZIMS6zNg2v3a8BZ0oK7jHqsQo9fWA=="],
 
     "tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 

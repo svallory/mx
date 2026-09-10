@@ -1,0 +1,12 @@
+// Both directions of the MX-vs-generic-arrow decision in one file.
+// The generic arrows must NOT be MX elements; the tags must be.
+const identity = <T,>(x: T) => x;
+const constrained = <U extends object>(x: U) => x;
+const pair = <A, B>(a: A, b: B) => [a, b];
+
+export function Generics() {
+  const el = <div.card>plain element</div>;
+  const cmp = a < b;
+  const call = parse<number>("1");
+  return <fragment>${identity(1)}${el}</fragment>;
+}

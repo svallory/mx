@@ -1,0 +1,21 @@
+export function Attributes() {
+  return (
+    <div
+      id="panel"
+      data-count=color()
+      disabled
+      ...props.extra
+      class={active: active()}
+      style={color: color()}
+      ref=el
+      onScroll(_e) { setActive(true) }
+      prop:value=color()
+      a="q>q"
+      b=x/2
+    >
+      <p.badge.big#lead class={on: active()}>shorthand</p>
+      <Card title="x"/>
+      <button onClick() { return <em>nested</em> }>click</button>
+    </div>
+  );
+}

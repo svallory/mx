@@ -1,0 +1,26 @@
+# https://moonrepo.dev/docs/config/project
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "javascript"
+
+tasks:
+  # `tree-sitter generate` output is committed (Zed compiles src/parser.c
+  # directly and never runs generate), so there is no build task here — the
+  # generated files are inputs to every consumer, not artifacts of this build.
+  test:
+    command: "bash"
+    args: ["scripts/test.sh"]
+    inputs:
+      - "grammar.js"
+      - "queries/**/*"
+      - "src/**/*"
+      - "test/**/*"
+      - "fixtures/**/*"
+      - "scripts/**/*"
+      - "vendor/**/*"
+
+  typecheck:
+    # No TypeScript sources: this package is a tree-sitter grammar (JS + C).
+    # The task exists so the root `moon run :typecheck` aggregate resolves.
+    command: "true"
+    inputs: []
