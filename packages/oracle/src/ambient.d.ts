@@ -1,11 +1,11 @@
-declare module "babel-preset-solid" {
+declare module "@solidjs/babel-plugin" {
   import type { PluginItem } from "@babel/core";
 
-  const preset: (
+  const plugin: (
     api: unknown,
     options?: Record<string, unknown>,
   ) => { plugins?: PluginItem[]; presets?: PluginItem[] };
-  export default preset;
+  export default plugin;
 }
 
 declare module "@babel/preset-typescript" {

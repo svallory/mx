@@ -1,10 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  BACKENDS,
   type CompileOptions,
   compileFile,
   MxParserUnavailable,
+  type SolidBackend,
   VARIANTS,
+  variantKey,
 } from "./compile";
 import { lineDiff } from "./diff";
 import {
@@ -23,6 +26,7 @@ export type CompareStatus =
 
 export interface CompareResult {
   name: string;
+  backend: SolidBackend;
   variant: string;
   status: CompareStatus;
   diff?: string;
@@ -35,9 +39,14 @@ export interface CompareOptions extends CompileOptions {
 }
 
 /**
- * Compiles input.solid.mx and twin.tsx for every Solid generate variant and
- * compares the normalized output. Also maintains golden snapshots of the
- * twin.tsx output so a babel-preset-solid/solid-js pin bump is caught.
+ * Compiles input.solid.mx and twin.tsx for every Solid backend and generate
+ * variant, and compares the normalized output. Also maintains golden
+ * snapshots of the twin.tsx output so a Solid 2 pin bump is caught.
+ *
+ * The backend axis is checked because MX must produce output that survives
+ * either Solid 2 compiler: `@solidjs/babel-plugin` and the default native
+ * `@solidjs/compiler` are separate codegen implementations, so passing one
+ * says nothing about the other.
  */
 export function compare(
   fixtureDir: string,
@@ -59,79 +68,80 @@ export function compare(
   // never a failure, and --strict fails on it just like skipped.
   const pendingPath = join(fixtureDir, "PENDING");
   if (existsSync(pendingPath)) {
-    for (const variant of VARIANTS) {
-      results.push({
-        name,
-        variant: `${variant.generate}${variant.hydratable ? "-hydratable" : ""}`,
-        status: "pending",
-      });
+    for (const backend of BACKENDS) {
+      for (const variant of VARIANTS) {
+        results.push({
+          name,
+          backend,
+          variant: variantKey(variant),
+          status: "pending",
+        });
+      }
     }
     return results;
   }
 
-  for (const variant of VARIANTS) {
-    const variantKey = `${variant.generate}${variant.hydratable ? "-hydratable" : ""}`;
-    const twinOutput = normalize(compileFile(twinPath, variant, opts));
+  for (const backend of BACKENDS) {
+    for (const variant of VARIANTS) {
+      const key = variantKey(variant);
+      const twinOutput = normalize(
+        compileFile(twinPath, variant, backend, opts),
+      );
 
-    if (!existsSync(goldenDir)) mkdirSync(goldenDir, { recursive: true });
-    const goldenPath = join(goldenDir, `twin.${variantKey}.js`);
-    let goldenWritten = false;
-    if (!existsSync(goldenPath) || opts.updateGoldens) {
-      writeFileSync(goldenPath, twinOutput);
-      goldenWritten = true;
-    }
-    const golden = readFileSync(goldenPath, "utf8");
-    if (golden !== twinOutput) {
-      results.push({
-        name,
-        variant: variantKey,
-        status: "fail",
-        diff: lineDiff(golden, twinOutput),
-      });
-      continue;
-    }
-
-    let mxOutput: string;
-    try {
-      mxOutput = normalize(compileFile(mxPath, variant, opts));
-    } catch (err) {
-      if (err instanceof MxParserUnavailable) {
+      if (!existsSync(goldenDir)) mkdirSync(goldenDir, { recursive: true });
+      const goldenPath = join(goldenDir, `twin.${backend}.${key}.js`);
+      let goldenWritten = false;
+      if (!existsSync(goldenPath) || opts.updateGoldens) {
+        writeFileSync(goldenPath, twinOutput);
+        goldenWritten = true;
+      }
+      const golden = readFileSync(goldenPath, "utf8");
+      if (golden !== twinOutput) {
         results.push({
           name,
-          variant: variantKey,
-          status: "skipped",
+          backend,
+          variant: key,
+          status: "fail",
+          diff: lineDiff(golden, twinOutput),
+        });
+        continue;
+      }
+
+      let mxOutput: string;
+      try {
+        mxOutput = normalize(compileFile(mxPath, variant, backend, opts));
+      } catch (err) {
+        if (err instanceof MxParserUnavailable) {
+          results.push({
+            name,
+            backend,
+            variant: key,
+            status: "skipped",
+            goldenWritten,
+          });
+          continue;
+        }
+        throw err;
+      }
+
+      const divergence = findDivergence(divergences, name, key);
+      if (twinOutput === mxOutput) {
+        results.push({
+          name,
+          backend,
+          variant: key,
+          status: "pass",
           goldenWritten,
         });
         continue;
       }
-      throw err;
-    }
 
-    const divergence = findDivergence(divergences, name, variantKey);
-    if (twinOutput === mxOutput) {
+      const diff = lineDiff(twinOutput, mxOutput);
       results.push({
         name,
-        variant: variantKey,
-        status: "pass",
-        goldenWritten,
-      });
-      continue;
-    }
-
-    const diff = lineDiff(twinOutput, mxOutput);
-    if (divergence) {
-      results.push({
-        name,
-        variant: variantKey,
-        status: "divergent",
-        diff,
-        goldenWritten,
-      });
-    } else {
-      results.push({
-        name,
-        variant: variantKey,
-        status: "fail",
+        backend,
+        variant: key,
+        status: divergence ? "divergent" : "fail",
         diff,
         goldenWritten,
       });

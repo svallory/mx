@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { compare } from "./compare";
-import { compileFile, VARIANTS } from "./compile";
+import { BACKENDS, compileFile, VARIANTS } from "./compile";
 import { discoverFixtures } from "./fixtures";
 import { normalize } from "./normalize";
 
@@ -24,34 +24,40 @@ describe("compile: .tsx pipeline", () => {
   const domVariant = VARIANTS.find((v) => v.generate === "dom");
   if (!domVariant) throw new Error("expected a dom variant in VARIANTS");
 
-  it("compiling twin.tsx twice yields identical output", () => {
-    const first = compileFile(counterTwin, domVariant);
-    const second = compileFile(counterTwin, domVariant);
-    expect(first).toBe(second);
-  });
+  for (const backend of BACKENDS) {
+    it(`${backend}: compiling twin.tsx twice yields identical output`, () => {
+      const first = compileFile(counterTwin, domVariant, backend);
+      const second = compileFile(counterTwin, domVariant, backend);
+      expect(first).toBe(second);
+    });
 
-  it("extra whitespace matches after normalize", () => {
-    const dir = mkdtempSync(join(tmpdir(), "mx-oracle-"));
-    try {
-      const reformatted = join(dir, "reformatted.tsx");
-      const source = readFileSync(counterTwin, "utf8");
-      const spaced = source.replace(/ /g, "   ").replace(/\n/g, "\n\n");
-      writeFileSync(reformatted, spaced);
+    it(`${backend}: extra whitespace matches after normalize`, () => {
+      const dir = mkdtempSync(join(tmpdir(), "mx-oracle-"));
+      try {
+        const reformatted = join(dir, "reformatted.tsx");
+        const source = readFileSync(counterTwin, "utf8");
+        const spaced = source.replace(/ /g, "   ").replace(/\n/g, "\n\n");
+        writeFileSync(reformatted, spaced);
 
-      const original = normalize(compileFile(counterTwin, domVariant));
-      const reformattedOutput = normalize(compileFile(reformatted, domVariant));
-      expect(reformattedOutput).toBe(original);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
+        const original = normalize(
+          compileFile(counterTwin, domVariant, backend),
+        );
+        const reformattedOutput = normalize(
+          compileFile(reformatted, domVariant, backend),
+        );
+        expect(reformattedOutput).toBe(original);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
 });
 
 describe("compare: fixtures never report fail without a real divergence", () => {
   for (const fixture of fixtures) {
-    it(`${fixture}: all variants report skipped, pass, or divergent`, () => {
+    it(`${fixture}: every backend/variant reports skipped, pass, or divergent`, () => {
       const results = compare(join(fixturesRoot, fixture), { divergencesPath });
-      expect(results.length).toBe(VARIANTS.length);
+      expect(results.length).toBe(VARIANTS.length * BACKENDS.length);
       for (const r of results) {
         expect(r.status).not.toBe("fail");
       }
@@ -68,9 +74,13 @@ describe("compare: golden snapshots", () => {
     it(`${fixture}: golden files exist after compare`, () => {
       const goldenDir = join(fixturesRoot, fixture, "__golden__");
       compare(join(fixturesRoot, fixture), { divergencesPath });
-      for (const variant of VARIANTS) {
-        const key = `${variant.generate}${variant.hydratable ? "-hydratable" : ""}`;
-        expect(existsSync(join(goldenDir, `twin.${key}.js`))).toBe(true);
+      for (const backend of BACKENDS) {
+        for (const variant of VARIANTS) {
+          const key = `${variant.generate}${variant.hydratable ? "-hydratable" : ""}`;
+          expect(existsSync(join(goldenDir, `twin.${backend}.${key}.js`))).toBe(
+            true,
+          );
+        }
       }
     });
   }

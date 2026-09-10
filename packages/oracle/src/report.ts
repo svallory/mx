@@ -13,7 +13,12 @@ const strict = args.includes("--strict");
 const updateGoldens = args.includes("--update");
 
 const fixtures = discoverFixtures(fixturesRoot);
-const rows: { name: string; variant: string; status: string }[] = [];
+const rows: {
+  name: string;
+  backend: string;
+  variant: string;
+  status: string;
+}[] = [];
 let failed = false;
 
 for (const fixture of fixtures) {
@@ -23,21 +28,27 @@ for (const fixture of fixtures) {
     mxParser,
   });
   for (const r of results) {
-    rows.push({ name: r.name, variant: r.variant, status: r.status });
+    rows.push({
+      name: r.name,
+      backend: r.backend,
+      variant: r.variant,
+      status: r.status,
+    });
     if (r.status === "fail") failed = true;
   }
 }
 
 const nameWidth = Math.max(8, ...rows.map((r) => r.name.length));
+const backendWidth = Math.max(7, ...rows.map((r) => r.backend.length));
 const variantWidth = Math.max(7, ...rows.map((r) => r.variant.length));
 const statusWidth = Math.max(6, ...rows.map((r) => r.status.length));
 
 console.log(
-  `${"fixture".padEnd(nameWidth)}  ${"variant".padEnd(variantWidth)}  ${"status".padEnd(statusWidth)}`,
+  `${"fixture".padEnd(nameWidth)}  ${"backend".padEnd(backendWidth)}  ${"variant".padEnd(variantWidth)}  ${"status".padEnd(statusWidth)}`,
 );
 for (const r of rows) {
   console.log(
-    `${r.name.padEnd(nameWidth)}  ${r.variant.padEnd(variantWidth)}  ${r.status.padEnd(statusWidth)}`,
+    `${r.name.padEnd(nameWidth)}  ${r.backend.padEnd(backendWidth)}  ${r.variant.padEnd(variantWidth)}  ${r.status.padEnd(statusWidth)}`,
   );
 }
 
