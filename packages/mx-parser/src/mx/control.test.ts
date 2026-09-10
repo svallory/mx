@@ -1,6 +1,7 @@
 import type { PluginObj, TransformOptions } from "@babel/core";
 import { transformSync } from "@babel/core";
 import generate from "@babel/generator";
+import type { Expression } from "@babel/types";
 import solidPreset from "babel-preset-solid";
 import { describe, expect, it } from "vitest";
 import { parse } from "../index.ts";
@@ -11,7 +12,7 @@ const parseMx = (source: string) => parse(source, "test.solid.mx");
 function printFirstExpression(source: string): string {
   const file = parseMx(source);
   const stmt = file.program.body[0] as unknown as {
-    declarations: [{ init: unknown }];
+    declarations: [{ init: Expression }];
   };
   const init = stmt.declarations[0].init;
   return generate(init).code;

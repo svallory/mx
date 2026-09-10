@@ -28,4 +28,27 @@ declare module "@mx/parser" {
     input: string,
     options?: MxParseOptions,
   ): Expression;
+
+  /** A source map as `@babel/generator` emits it, which is what Vite accepts. */
+  export interface RawSourceMap {
+    version: number;
+    file?: string;
+    sourceRoot?: string;
+    sources: string[];
+    sourcesContent?: (string | null)[];
+    names: string[];
+    mappings: string;
+  }
+
+  export interface PrintResult {
+    code: string;
+    map: RawSourceMap;
+  }
+
+  /**
+   * Parses `source` and prints it back as JSX source text plus a source map.
+   * This is the artifact every consumer receives (spec section 3.2): the
+   * native Solid 2 compiler accepts only source text, never an AST.
+   */
+  export function print(source: string, filename: string): PrintResult;
 }
