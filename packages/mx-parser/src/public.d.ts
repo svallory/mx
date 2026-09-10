@@ -12,15 +12,117 @@ declare module "@markox/parser" {
   export interface MxParseOptions {
     sourceType?: "script" | "module" | "unambiguous";
     plugins?: unknown[];
+    /**
+     * Which MX grammar the source is written in. `"expression"` (the default)
+     * is the `.solid.mx` case; `"template"` is a whole-file standalone `.mx`
+     * template. See `src/index.ts` for the full contract.
+     */
+    mxMode?: "expression" | "template";
     [option: string]: unknown;
   }
 
-  /** Parses a `.solid.mx` file into a Babel `File` of standard node types. */
+  /**
+   * Parses an MX file into a Babel `File` of standard node types.
+   *
+   * In `mxMode: "template"` the returned `File` carries the parsed template at
+   * `file.extra.mxTemplate` and its `program.body` is empty: a standalone
+   * template is markup, not statements, so there is nothing for Babel's own
+   * node types to represent. `@markox/html` reads that field.
+   */
   export function parse(
     source: string,
     filename: string,
     options?: MxParseOptions,
-  ): File;
+  ): File & { extra?: { mxTemplate?: MxTemplate } };
+
+  export interface MxRange {
+    start: number;
+    end: number;
+  }
+
+  export interface MxTagName extends MxRange {
+    quasis: MxRange[];
+    expressions: MxRange[];
+  }
+
+  export type MxAttr =
+    | { kind: "static"; name: string; nameRange: MxRange; value: MxRange }
+    | { kind: "dynamic"; name: string; nameRange: MxRange; value: MxRange }
+    | { kind: "boolean"; name: string; nameRange: MxRange }
+    | {
+        kind: "method";
+        name: string;
+        nameRange: MxRange;
+        params: MxRange;
+        body: MxRange;
+        async: boolean;
+        range: MxRange;
+      }
+    | { kind: "spread"; value: MxRange; range: MxRange }
+    | { kind: "bound"; name: string; nameRange: MxRange; value: MxRange };
+
+  export type MxChild =
+    | { kind: "text"; range: MxRange }
+    | {
+        kind: "placeholder";
+        range: MxRange;
+        value: MxRange;
+        escape: boolean;
+      }
+    | { kind: "element"; element: MxElement }
+    | { kind: "comment"; range: MxRange };
+
+  export interface MxElement {
+    name: MxTagName;
+    staticName: string | null;
+    attrs: MxAttr[];
+    children: MxChild[];
+    selfClosing: boolean;
+    shorthandClasses: MxRange[];
+    shorthandIds: MxRange[];
+    params: MxRange | null;
+    tagArgs: MxRange | null;
+    tagVar: MxRange | null;
+    range: MxRange;
+    closeRange: MxRange | null;
+  }
+
+  export interface MxWalkError {
+    message: string;
+    start: number;
+    end: number;
+  }
+
+  /** A top-level `import`, `static` or `export` statement in a template. */
+  export interface MxStatement {
+    kind: "import" | "static" | "export";
+    range: MxRange;
+  }
+
+  /** A whole-file `.mx` template: its statements and its top-level markup. */
+  export interface MxTemplate {
+    statements: MxStatement[];
+    children: MxChild[];
+    errors: MxWalkError[];
+  }
+
+  /** Walks a whole `.mx` file. `parse` with `mxMode: "template"` wraps this. */
+  export function walkMxTemplate(source: string): MxTemplate;
+
+  /** True for an HTML void element, which takes no closing tag. */
+  export function isVoidTag(name: string | null): boolean;
+
+  /**
+   * MX's Marko-derived whitespace rule, shared by every lowering target so the
+   * targets cannot disagree about what an indented template renders: a
+   * whitespace run containing a newline is dropped, one without collapses to a
+   * single space. Returns null when nothing survives.
+   */
+  export function normalizeText(
+    raw: string,
+    atStart: boolean,
+    atEnd: boolean,
+  ): string | null;
 
   /** The vendored `@babel/parser` entry points, for plain `.ts`/`.tsx`. */
   export function parseBabel(input: string, options?: MxParseOptions): File;
