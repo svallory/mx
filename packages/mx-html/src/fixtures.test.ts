@@ -2,7 +2,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { emitTemplate } from "./emit.ts";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the compiled templates call `escape` by this name, so the harness must bind it under the same one
 import { escape } from "./escape.ts";
 import { compile } from "./index.ts";
@@ -82,8 +81,10 @@ const fixtures = readdirSync(fixturesDir, { withFileTypes: true })
 describe("golden fixtures", () => {
   it("finds the fixture suite", () => {
     // A glob that silently matches nothing would make every assertion below
-    // vacuous, so the count is asserted rather than assumed.
-    expect(fixtures.length).toBeGreaterThanOrEqual(10);
+    // vacuous, so the count is asserted exactly rather than as a floor — a
+    // floor is how a gate passes on fewer fixtures than anyone intended
+    // (decision 55). Update this number deliberately when adding a fixture.
+    expect(fixtures.length).toBe(30);
   });
 
   for (const name of fixtures) {
@@ -185,12 +186,6 @@ describe("whitespace", () => {
   it('honours ${" "} as the escape hatch', () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: same — this string is MX source, not JS
     expect(html('<p>a</p>${" "}<p>b</p>\n')).toBe("<p>a</p> <p>b</p>");
-  });
-});
-
-describe("emitTemplate", () => {
-  it("is exported for callers that already have a parsed template", () => {
-    expect(typeof emitTemplate).toBe("function");
   });
 });
 
