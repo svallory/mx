@@ -102,6 +102,21 @@ Two htmljs-parser facts that are easy to get wrong (both verified against
   doctype from a full HTML page. Template mode records it as a `doctype` child
   and emits it verbatim.
 
+`@markox/html`'s emitter (`emit.ts`'s `emitElement`) decides component-vs-HTML
+dispatch by **in-scope binding, not case**: a tag name matching an `import` or
+a `<define>` is a component call whatever its case; anything else is an HTML
+element whatever its case, hyphenated custom elements included. This is
+Marko's own rule (custom tags are lowercase there), not an MX invention.
+`import layout from "./layout.mx"` then `<layout>` calls the component;
+`<my-widget>` with no matching binding stays a literal element. Before this
+was resolved by binding, dispatch was a first-character `A`-`Z` check, so a
+lowercase import or `<define>` name silently rendered as an unknown custom
+element with the import never called — no error. See
+`packages/mx-html/fixtures-mx/lowercase-component` and
+`.../unknown-element` for fixtures pinning both branches. SolidMX's own
+PascalCase-means-component convention (`lower.ts`) is unrelated and unchanged
+by this — it follows JSX, template mode is a separate lowering path.
+
 ## Running tests in a fresh worktree
 
 `@markox/parser`'s `main` is `dist/index.js`, so a freshly created worktree

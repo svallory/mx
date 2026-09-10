@@ -33,6 +33,12 @@ export default function (input: Input): string {
 - Void elements self-close per HTML.
 - Components are plain imports called as functions returning `string`;
   attribute-tag children (`<@name>`) become named function props on the call.
+- A tag name is a component call when it matches an in-scope binding — an
+  `import` or a `<define>` — **regardless of case**; any other tag name is an
+  HTML element, whatever its case (hyphenated custom elements included). This
+  is Marko's own rule, not an MX invention: `import layout from "./layout.mx"`
+  then `<layout>` calls the component, while `<my-widget>` with no matching
+  binding stays a literal element.
 - `<const/x=...>` emits a `const` at render scope; `static` blocks and
   `import`s hoist to module scope.
 - String building concatenates into a local rather than joining an array —
