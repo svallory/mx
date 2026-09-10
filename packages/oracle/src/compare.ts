@@ -56,7 +56,7 @@ export function compare(
     if (!existsSync(goldenDir)) mkdirSync(goldenDir, { recursive: true });
     const goldenPath = join(goldenDir, `twin.${variantKey}.js`);
     let goldenWritten = false;
-    if (!existsSync(goldenPath)) {
+    if (!existsSync(goldenPath) || opts.updateGoldens) {
       writeFileSync(goldenPath, twinOutput);
       goldenWritten = true;
     }
