@@ -6,7 +6,7 @@ import type {
   MxStatement,
   MxTemplate,
 } from "@markox/parser";
-import { isVoidTag, normalizeText } from "@markox/parser";
+import { isVoidTag, normalizeText, parseBabel } from "@markox/parser";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the compiler calls the same helper the emitted module imports, so a static value and a runtime one are escaped by one implementation
 import { escape } from "./escape.ts";
 
@@ -678,6 +678,19 @@ function emitElement(ctx: EmitContext, el: MxElement): void {
     return;
   }
 
+  // No HTML element is ever spelled with an uppercase first letter, so an
+  // unbound PascalCase tag is not a plain element that happens to be
+  // capitalized — it is a missing or misspelled import/define. Emitting it
+  // as a literal element would be exactly the silent misroute this rule
+  // exists to eliminate, just moved to a different case; failing loudly
+  // instead turns a typo into a compile error rather than quietly wrong HTML.
+  if (/^[A-Z]/.test(name)) {
+    fail(
+      `\`<${name}>\` has no matching import or \`<define>\` in scope; a capitalized tag is always a component call`,
+      el.name,
+    );
+  }
+
   emitLiteral(ctx, `<${name}`);
   emitAttrs(ctx, el);
 
@@ -760,6 +773,26 @@ export function emitChildren(ctx: EmitContext, children: MxChild[]): void {
 }
 
 /**
+ * The local binding names an `import` statement introduces — default,
+ * namespace, and every named import (`as`-aliased or not), in any
+ * combination.
+ *
+ * Parsed for real rather than regex-scraped: a tag name is only a component
+ * call when it names one of these bindings, so an incomplete extraction here
+ * silently misroutes exactly the class of tag this file exists to route
+ * correctly. `parseBabel` gives the same import grammar the author's `.ts`
+ * would see; htmljs-parser only hands back the statement's source text
+ * (AGENTS.md's "imports parse as tags" note), so it is re-parsed here the
+ * same way `print`'s TypeScript erasure re-parses hoisted statements.
+ */
+function importBindings(line: string): string[] {
+  const file = parseBabel(line, { sourceType: "module" });
+  const declaration = file.program.body[0];
+  if (declaration?.type !== "ImportDeclaration") return [];
+  return declaration.specifiers.map((specifier) => specifier.local.name);
+}
+
+/**
  * Splits the author's statement lines into module-scope code and the `Input`
  * interface.
  *
@@ -773,8 +806,7 @@ function collectStatements(ctx: EmitContext, statements: MxStatement[]): void {
     const line = text(ctx, statement.range).trim();
     if (statement.kind === "import") {
       ctx.hoisted.push(line);
-      const match = /^import\s+(\w+)\s/.exec(line);
-      if (match?.[1]) ctx.imports.add(match[1]);
+      for (const name of importBindings(line)) ctx.imports.add(name);
       continue;
     }
     if (statement.kind === "static") {

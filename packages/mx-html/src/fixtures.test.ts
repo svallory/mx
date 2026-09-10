@@ -214,3 +214,42 @@ describe("by= is rejected", () => {
     );
   });
 });
+
+describe("unbound PascalCase tag is rejected", () => {
+  // No HTML element is ever capitalized, so a PascalCase tag with no
+  // matching import or <define> is not a plain element that happens to be
+  // capitalized — it is a missing or misspelled binding. Emitting it as a
+  // literal element (the pre-fix behaviour for any capitalized name with no
+  // binding) would be the same silent misroute this rule exists to remove.
+  it("fails to compile rather than emitting a literal element", () => {
+    const source = "<Card>hi</Card>\n";
+    expect(() => compile(source, "unbound-pascal.mx")).toThrow(
+      /`<Card>` has no matching import or `<define>` in scope/,
+    );
+  });
+
+  it("still calls a PascalCase name that IS bound", () => {
+    const source = 'import Card from "./card.mx"\n<Card title="x"></Card>\n';
+    const { code } = compile(source, "bound-pascal.mx");
+    expect(code).toContain("Card({");
+  });
+});
+
+describe("import binding forms are recognised", () => {
+  // The tag-dispatch predicate only routes a tag to emitComponent when its
+  // name matches an import's LOCAL binding. Each of these forms binds a
+  // different way (default, namespace, named, aliased, combined); missing
+  // any one silently misroutes that form's tag to the plain-element branch,
+  // which is the exact defect class this file exists to fix.
+  it.each([
+    ['import Card from "./c.mx"', "Card"],
+    ['import * as Card from "./c.mx"', "Card"],
+    ['import { Card } from "./c.mx"', "Card"],
+    ['import { Card as Renamed } from "./c.mx"', "Renamed"],
+    ['import Card, { Other } from "./c.mx"', "Card"],
+  ])("%s -> calls %s(...)", (importLine, localName) => {
+    const source = `${importLine}\n<${localName}></${localName}>\n`;
+    const { code } = compile(source, "import-forms.mx");
+    expect(code).toContain(`${localName}({`);
+  });
+});
