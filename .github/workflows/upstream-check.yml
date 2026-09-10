@@ -62,11 +62,15 @@ jobs:
           fi
 
   vendored-files-match:
-    # Regenerates languages/mx/*.scm from the pinned revs (no live upstream
-    # HEAD lookup — just what vendor.sh's normal mode already does) and
-    # diffs against what's committed. Catches a hand-edit of those files,
-    # which UPSTREAM.md says never to do, without depending on network
-    # drift state (that's the separate `check` job below, cron/dispatch only).
+    # Regenerates languages/{mx,solidmx}/*.scm (no live upstream HEAD lookup —
+    # just what vendor.sh's normal mode already does) and diffs against
+    # what's committed. Catches a hand-edit of those files, which UPSTREAM.md
+    # says never to do, without depending on network drift state (that's the
+    # separate `check` job below, cron/dispatch only).
+    #
+    # SolidMX's highlights.scm source (packages/tree-sitter-solidmx/queries)
+    # is a sibling package in this same checkout, not a network fetch, so
+    # this job needs no extra setup for it beyond running vendor.sh.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     defaults:
@@ -76,9 +80,10 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./scripts/vendor.sh
       - run: |
-          if ! git diff --exit-code -- languages/mx; then
-            echo "languages/mx/*.scm doesn't match what vendor.sh generates from the pinned revs." >&2
-            echo "Never hand-edit those files — edit overlay/mx/*.scm or add a patches/*.patch and rerun vendor.sh." >&2
+          if ! git diff --exit-code -- languages/mx languages/solidmx; then
+            echo "languages/{mx,solidmx}/*.scm doesn't match what vendor.sh generates." >&2
+            echo "Never hand-edit those files — edit overlay/<lang>/*.scm, base/solidmx/*.scm," >&2
+            echo "or add a patches/*.patch (MX only) and rerun vendor.sh." >&2
             exit 1
           fi
 
