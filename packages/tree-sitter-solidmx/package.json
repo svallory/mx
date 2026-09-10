@@ -7,7 +7,8 @@
     "vendor": "./scripts/vendor.sh",
     "vendor:check": "./scripts/vendor.sh --check",
     "generate": "flock /tmp/mx-zed-generate.lock bunx tree-sitter generate",
-    "test": "./scripts/test.sh"
+    "test": "./scripts/test.sh",
+    "zed-compile-check": "./scripts/zed-compile-check.sh"
   },
   "devDependencies": {
     "tree-sitter-cli": "0.24.7",

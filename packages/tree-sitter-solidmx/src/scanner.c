@@ -3,8 +3,10 @@
 // Two scanners meet here, and they are kept in separate files on purpose
 // (plan decision 5, Z2):
 //
-//   * `common/scanner.h` is upstream tree-sitter-typescript's, vendored
-//     untouched. It provides the tsx tokens — automatic semicolons, template
+//   * `tree_sitter_typescript_scanner.h` is upstream tree-sitter-typescript's
+//     `common/scanner.h`, copied verbatim (byte-identical — see UPSTREAM.md
+//     "Committed copy of scanner.h" for the refresh procedure and pinned
+//     checksum). It provides the tsx tokens — automatic semicolons, template
 //     chars, the ternary `?`, regex patterns and so on.
 //
 //   * `scanner_mx.c` is MX's own, holding every MX addition. Keeping it out of
@@ -14,8 +16,15 @@
 //
 // This file is the thin entry point tree-sitter compiles: it dispatches to the
 // MX scanner when the MX token is valid, and otherwise defers to upstream.
+//
+// The header is copied into src/ (not included from ../vendor/) because
+// vendor/ is .gitignore'd — only src/ is committed, and Zed's file:// dev
+// install compiles nothing but what is committed at the pinned rev. An
+// include reaching outside src/ compiles fine from a working tree (where
+// scripts/vendor.sh has populated vendor/) but fails in Zed's clean clone
+// with "file not found" (see UPSTREAM.md "A real defect this caused").
 
-#include "../vendor/tree-sitter-typescript/common/scanner.h"
+#include "tree_sitter_typescript_scanner.h"
 
 // `scanner_mx.c` is included rather than compiled separately: tree-sitter
 // builds exactly one `src/scanner.c` per grammar, and Zed's extension builder

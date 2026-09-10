@@ -20,6 +20,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENDOR_DIR="$HERE/vendor/tree-sitter-typescript"
 PATCH_DIR="$HERE/patches"
 
+# vendor/ is .gitignore'd, but src/scanner.c #includes the tsx scanner
+# header — Zed's file:// dev install compiles only what's committed at the
+# pinned rev (never vendor/), so a copy of that header must live in src/
+# itself. See UPSTREAM.md "A real defect this caused" for what happens
+# without this (Zed's clean clone: "file not found").
+COMMITTED_SCANNER_HEADER="$HERE/src/tree_sitter_typescript_scanner.h"
+VENDORED_SCANNER_HEADER="$VENDOR_DIR/common/scanner.h"
+
 CHECK_MODE=0
 if [[ "${1:-}" == "--check" ]]; then
   CHECK_MODE=1
@@ -93,6 +101,16 @@ if [[ "$CHECK_MODE" -eq 1 ]]; then
     fi
   done
 
+  # The committed copy of scanner.h (src/tree_sitter_typescript_scanner.h)
+  # must be byte-identical to the vendored one — see "A real defect this
+  # caused" in UPSTREAM.md. A hand-copied header nothing refreshes is exactly
+  # the drift surface patches/ and overlay/ exist to prevent elsewhere.
+  if ! diff -u "$TMP/expected/common/scanner.h" "$COMMITTED_SCANNER_HEADER" >/dev/null 2>&1; then
+    echo "vendor.sh --check: DRIFT in src/tree_sitter_typescript_scanner.h (committed copy of common/scanner.h)" >&2
+    diff -u "$TMP/expected/common/scanner.h" "$COMMITTED_SCANNER_HEADER" >&2 || true
+    status=1
+  fi
+
   if [[ "$status" -ne 0 ]]; then
     echo "vendor.sh --check: vendor/ does not match upstream $PIN_TAG + patches/" >&2
     echo "  Re-run ./scripts/vendor.sh, or capture your edit as a patch." >&2
@@ -104,4 +122,9 @@ fi
 
 fetch_upstream "$VENDOR_DIR"
 apply_patches "$VENDOR_DIR"
+
+# Refresh the committed copy so it cannot silently drift from the pin.
+cp "$VENDORED_SCANNER_HEADER" "$COMMITTED_SCANNER_HEADER"
+echo "vendor.sh: refreshed ${COMMITTED_SCANNER_HEADER#"$HERE"/} from vendor/"
+
 echo "vendor.sh: vendored $PIN_TAG ($PIN_SHA) into ${VENDOR_DIR#"$HERE"/} + patches applied"

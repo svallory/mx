@@ -55,6 +55,51 @@ binary.
 expected cost of `tree-sitter test` / `parse` / `highlight` after a regenerate,
 not a symptom of a problem.
 
+## Committed copy of `scanner.h`
+
+`src/tree_sitter_typescript_scanner.h` is a byte-identical copy of
+`vendor/tree-sitter-typescript/common/scanner.h`, refreshed automatically by
+`./scripts/vendor.sh` (its normal, non-`--check` mode) and diffed against the
+freshly-fetched pin by `./scripts/vendor.sh --check`. `src/scanner.c`
+`#include`s this copy, never the `vendor/` path directly.
+
+This exists because `vendor/` is `.gitignore`'d (see "A real defect this
+caused" below) — it is reconstructed from the pin on demand, not committed.
+`src/`, by contrast, is committed in full, because Zed compiles it directly
+and never runs `tree-sitter generate` (see "A real defect this caused"). A
+header `src/scanner.c` needs to compile must therefore live inside `src/`
+itself, copied rather than included from outside it.
+
+## A real defect this caused
+
+**Zed's file:// dev install of this grammar failed to compile** the first
+time it was tried (`~/Library/Logs/Zed/Zed.log`):
+
+```
+failed to compile grammar 'solidmx': failed to compile solidmx parser with clang:
+.../grammars/solidmx/packages/tree-sitter-solidmx/src/scanner.c:18:10:
+fatal error: '../vendor/tree-sitter-typescript/common/scanner.h' file not found
+```
+
+Root cause: `src/scanner.c` originally `#include`d
+`"../vendor/tree-sitter-typescript/common/scanner.h"` directly.
+That path resolves fine from a working tree, where `scripts/vendor.sh` has
+populated `vendor/` — every check that ran before this was caught
+(`tree-sitter test`, `scripts/parse-all.sh`, `scripts/highlight-smoke.sh`, CI)
+compiles from the working tree and could not see the problem. Zed's `file://`
+dev install, per Z7, git-clones this repo **at the pinned committed rev** and
+compiles only what's there — `vendor/` is `.gitignore`'d, so it simply isn't
+present in that clone.
+
+Fixed by copying the header into `src/tree_sitter_typescript_scanner.h` (see
+above) and changing the `#include` to the relative, in-`src/` path. Guarded
+by `scripts/zed-compile-check.sh`, which reproduces Zed's own compile step
+against a **clean clone of HEAD** (never the working tree) — the class of
+gate that would have caught this before a real dev install did. Run via
+`bun run zed-compile-check` or as the last step of `bun run test`
+(`scripts/test.sh`). Confirmed failing against the pre-fix commit and passing
+after — see `scratch/reports/zed-solidmx.md`.
+
 ## Local modifications
 
 All of them live in `patches/*.patch`, produced with `git format-patch` and
