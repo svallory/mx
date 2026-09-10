@@ -89,6 +89,10 @@ function childRange(child: MxChild): MxRange {
     case "text":
     case "placeholder":
     case "comment":
+    // A doctype only occurs in a whole-file template, never inside a
+    // `.solid.mx` expression, so this arm is unreachable from here — it is
+    // listed to keep the switch exhaustive over `MxChild`.
+    case "doctype":
       return child.range;
     case "element":
       return child.element.range;

@@ -633,6 +633,12 @@ export function emitChildren(ctx: EmitContext, children: MxChild[]): void {
         emitElement(ctx, child.element);
         break;
 
+      case "doctype":
+        // Emitted verbatim, exactly as the author spelled it: `<!doctype html>`
+        // and `<!DOCTYPE html>` are both legal and neither is worth rewriting.
+        emitLiteral(ctx, text(ctx, child.range));
+        break;
+
       case "comment":
         break;
     }

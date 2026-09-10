@@ -65,6 +65,16 @@ describe("mxMode: template", () => {
     expect(template?.children.length).toBeGreaterThan(0);
   });
 
+  it("records a doctype as a child, in document order", () => {
+    // htmljs-parser drops `<!doctype html>` from text and element events
+    // entirely and reports it only through `onDoctype`; without that handler a
+    // full HTML page silently loses its doctype.
+    const template = walkMxTemplate("<!doctype html>\n<html></html>\n");
+    const [first] = template.children;
+    expect(first?.kind).toBe("doctype");
+    expect(template.errors).toEqual([]);
+  });
+
   it("reports a parse error with a position", () => {
     const err = templateError("<div>\n  <p>unterminated\n");
     expect(err.message).toMatch(/test\.mx:\d+:\d+/);

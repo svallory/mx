@@ -70,7 +70,9 @@ declare module "@markox/parser" {
         escape: boolean;
       }
     | { kind: "element"; element: MxElement }
-    | { kind: "comment"; range: MxRange };
+    | { kind: "comment"; range: MxRange }
+    /** `<!doctype html>`; only reachable in template mode. */
+    | { kind: "doctype"; range: MxRange };
 
   export interface MxElement {
     name: MxTagName;

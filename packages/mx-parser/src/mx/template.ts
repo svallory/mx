@@ -316,6 +316,14 @@ export function walkMxTemplate(source: string): MxTemplate {
       addChild({ kind: "comment", range: range(r) });
     },
 
+    // `<!doctype html>` fires its own event and is otherwise dropped entirely
+    // — no text, no element — so a full HTML page would silently lose its
+    // doctype. Recording it as a child keeps it in document order, which is
+    // the only position it is valid in.
+    onDoctype(r) {
+      addChild({ kind: "doctype", range: range(r) });
+    },
+
     onCloseTagStart(r) {
       closeStart = r.start;
     },

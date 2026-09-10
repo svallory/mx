@@ -41,7 +41,12 @@ export type MxChild =
   | { kind: "text"; range: MxRange }
   | { kind: "placeholder"; range: MxRange; value: MxRange; escape: boolean }
   | { kind: "element"; element: MxElement }
-  | { kind: "comment"; range: MxRange };
+  | { kind: "comment"; range: MxRange }
+  /**
+   * `<!doctype html>`. Only reachable in template mode: a `.solid.mx` file is
+   * a TypeScript module and has nowhere to put one.
+   */
+  | { kind: "doctype"; range: MxRange };
 
 export interface MxElement {
   name: MxTagName;
