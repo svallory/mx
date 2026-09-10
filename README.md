@@ -91,7 +91,7 @@ cd examples/counter-app && bun run dev
 cd examples/todomvc && bun run dev
 ```
 
-`bun run build` builds it, and `bun run e2e` drives the dev server and the
+`bun run build` builds them, and `bun run e2e` drives the dev server and the
 production build through a headless Chromium (needs `bunx playwright install
 chromium` once). The e2e suite is not part of the root `bun run test` — it
 needs a browser — so it stays behind the example's own script.

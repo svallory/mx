@@ -9,15 +9,17 @@ export function TodoItem(props: {
 }) {
   const [editing, setEditing] = createSignal(false);
   const [draft, setDraft] = createSignal("");
-  let editInput: HTMLInputElement | undefined;
+  let done = false;
 
   const startEdit = () => {
+    done = false;
     setDraft(props.todo.text);
     setEditing(true);
-    queueMicrotask(() => editInput?.focus());
   };
 
   const commitEdit = () => {
+    if (done) return;
+    done = true;
     const text = draft().trim();
     if (text.length === 0) {
       props.onDestroy(props.todo.id);
@@ -27,7 +29,11 @@ export function TodoItem(props: {
     setEditing(false);
   };
 
-  const cancelEdit = () => setEditing(false);
+  const cancelEdit = () => {
+    if (done) return;
+    done = true;
+    setEditing(false);
+  };
 
   return (
     <li class={completed: props.todo.completed, editing: editing()}>
@@ -46,7 +52,7 @@ export function TodoItem(props: {
       <else>
         <input
           class="edit"
-          ref=editInput
+          ref(el) { el.focus() }
           value=draft()
           onInput(e) { setDraft(e.currentTarget.value) }
           onBlur() { commitEdit() }

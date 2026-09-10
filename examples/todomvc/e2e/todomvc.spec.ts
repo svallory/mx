@@ -78,8 +78,16 @@ async function assertTodoFlow(page: Page): Promise<void> {
   await expect.poll(() => items.count()).toBe(2);
 
   const activeLabel = page.locator(".todo-list li:not(.completed) label");
+
+  // Escape cancels the edit and keeps the original title.
   await activeLabel.dblclick();
   const editInput = page.locator(".todo-list li.editing .edit");
+  await editInput.fill("Discarded edit");
+  await editInput.press("Escape");
+  await expect.poll(() => activeLabel.textContent()).toBe("Walk the dog");
+
+  // Enter commits the edit.
+  await activeLabel.dblclick();
   await editInput.fill("Walk the cat");
   await editInput.press("Enter");
   await expect.poll(() => activeLabel.textContent()).toBe("Walk the cat");

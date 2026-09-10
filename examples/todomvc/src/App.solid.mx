@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { Footer } from "./Footer.solid.mx";
 import { TodoItem } from "./TodoItem.solid.mx";
 import type { Filter, Todo } from "./types";
@@ -14,6 +14,13 @@ function loadTodos(): Todo[] {
   }
 }
 
+let nextId = 0;
+
+function newId(): number {
+  nextId += 1;
+  return nextId;
+}
+
 function filterFromHash(): Filter {
   const hash = location.hash.replace("#/", "");
   if (hash === "active" || hash === "completed") return hash;
@@ -21,12 +28,15 @@ function filterFromHash(): Filter {
 }
 
 export function App() {
-  const [todos, setTodos] = createSignal<Todo[]>(loadTodos());
+  const initialTodos = loadTodos();
+  nextId = Math.max(0, ...initialTodos.map((t) => t.id));
+  const [todos, setTodos] = createSignal<Todo[]>(initialTodos);
   const [filter, setFilter] = createSignal<Filter>(filterFromHash());
   const [newTodo, setNewTodo] = createSignal("");
 
   const onHashChange = () => setFilter(filterFromHash());
   window.addEventListener("hashchange", onHashChange);
+  onCleanup(() => window.removeEventListener("hashchange", onHashChange));
 
   createEffect(
     () => todos(),
@@ -49,7 +59,7 @@ export function App() {
   const addTodo = () => {
     const text = newTodo().trim();
     if (text.length === 0) return;
-    setTodos([...todos(), { id: Date.now(), text, completed: false }]);
+    setTodos([...todos(), { id: newId(), text, completed: false }]);
     setNewTodo("");
   };
 
