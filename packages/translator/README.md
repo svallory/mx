@@ -141,6 +141,7 @@ byte-identical with and without the construct.
 | `<const/x=expr/>` | `const x = expr` |
 | `attr:=expr` | The initial value renders; there is no write-back path. |
 | `<define>`, `static`, `import`, `export interface Input` | Bound / hoisted to module scope. |
+| a `server` block | **Runs.** This *is* the server render, so its statements execute and its bindings are readable from the template — verified against Marko, where `server const S = 41 + 1` then `${S}` renders `42`. Hoisted exactly as `static` is. (Its counterpart, a `client` block, is inert.) |
 
 ### Lowered — everything with output bytes
 
@@ -159,6 +160,11 @@ Plain `<!-- -->` comments are **stripped**, because Marko strips them.
 | `<await>` | Suspends on a promise. This target is a synchronous `(input) => string`. Marko itself refuses to render one to a string: *"Cannot consume asynchronous render with 'toString'"*. |
 | `<try>` with `<@placeholder>` | Needs a second render pass over suspended content, with nowhere to schedule it. A `<try>` **without** a placeholder lowers to a plain `try`/`catch`, with `<@catch>` as the catch block. |
 | `<let/input=…>`, `<const/input=…>` | Declares `input` at render scope, where the emitted `function (input: Input)` already binds it — the template's own input would become unreachable. Marko rejects the same thing: *"Duplicate declaration of `input`"*. A tag *param* (`<for|input|>`) is a nested scope and is fine; see below. |
+| `<return>` | Provides a value to the **parent** template that rendered this one. A module compiled to `(input) => string` has no parent to return to — its only output is the string. Marko emits no markup for it either, so accepting it silently would read as support for something that cannot work here. |
+
+A valueless `<const/x/>` is an error, as it is in Marko (*"the `<const>` tag
+requires a value"*). A valueless `<let/x/>` is fine and renders empty, also
+matching Marko.
 
 ### Not Marko syntax
 

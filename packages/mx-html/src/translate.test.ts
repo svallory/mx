@@ -102,6 +102,30 @@ describe("every <for> form lowers", () => {
   });
 });
 
+describe("bindings may not shadow the input parameter", () => {
+  // The emitted module is `function (input: Input)`, so a `const input = …`
+  // inside it makes the template's own input unreachable with no diagnostic.
+  // AGENTS.md states this rule for `.mx` as well as for the stock translator,
+  // and both policies now enforce it through the same core hook.
+  it("rejects <const> binding `input`", () => {
+    expect(() => compile(src("<const/input=1/>"), "shadow.mx")).toThrow(
+      /collides with the template input parameter/,
+    );
+  });
+
+  it("accepts a tag param shadowing `input`, which opens a nested scope", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+    const body = "<for|input| of=input.items><li>${input}</li></for>";
+    expect(() => compile(src(body), "param.mx")).not.toThrow();
+  });
+
+  it("leaves any other binding name alone", () => {
+    expect(compile(src("<const/x=1/>"), "ok.mx").code).toContain(
+      "const x = 1;",
+    );
+  });
+});
+
 describe("unknown tags", () => {
   // The silent-failure mode ADR 0001 names: without a registry, a core tag MX
   // cannot lower renders as an HTML element and nobody is told.

@@ -176,6 +176,28 @@ describe("inert constructs (decision 65): accepted, no output", () => {
   });
 });
 
+describe("statement blocks", () => {
+  it("runs a `server` block and hoists it, as Marko does", () => {
+    // Verified against Marko: a server block runs during a server render and
+    // its bindings are readable from the template. Classifying it as inert
+    // would silently drop a binding the rest of the template reads.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: Marko placeholder syntax in template source
+    const body = "server const S = 41 + 1\n<p>${S}</p>";
+    const { code } = compile(src(body), file);
+    expect(code).toContain("const S = 41 + 1");
+    expect(code.indexOf("const S = 41 + 1")).toBeLessThan(
+      code.indexOf("export default function"),
+    );
+    expect(code).toContain("escape(S)");
+  });
+
+  it("rejects <return>, naming the parent template it cannot reach", () => {
+    expect(() => compile(src("<return=42/>"), file)).toThrow(
+      /`<return>` provides a value to the \*parent\* template/,
+    );
+  });
+});
+
 describe("evaluate-initial-value constructs (decision 65)", () => {
   it("<let> binds its initial value", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: Marko placeholder syntax in template source

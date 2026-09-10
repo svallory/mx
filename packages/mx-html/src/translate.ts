@@ -339,6 +339,48 @@ function emitSpecial(ctx: Ctx, node: Node, name: string): boolean {
   return true;
 }
 
+/**
+ * Rejects a render-scope binding that would shadow the `input` parameter.
+ *
+ * The emitted module is `function (input: Input)`, so `<const/input=1/>`
+ * lowers to `const input = 1` inside it and every later `${input.x}` reads the
+ * local instead — the template's own input becomes unreachable with no
+ * diagnostic. The same rule as `@markox/translator`'s, and the same one Marko
+ * enforces ("Duplicate declaration of `input`"), applied here because the
+ * emitted module shape is identical.
+ *
+ * Tag params are deliberately not checked: `<for|input|>` opens a nested scope
+ * where an ordinary JS shadow is correct.
+ */
+function rejectInputShadowing(target: Node, what: string): void {
+  if (!bindingNames(target).includes("input")) return;
+  fail(
+    `\`input\` on ${what} collides with the template input parameter: the emitted render function takes \`input\`, so this binding would shadow it and make the template's own input unreachable`,
+    target,
+  );
+}
+
+/** Every identifier a binding pattern introduces. */
+function bindingNames(pattern: Node): string[] {
+  if (!pattern || typeof pattern !== "object") return [];
+  switch (pattern.type) {
+    case "Identifier":
+      return [pattern.name];
+    case "ObjectPattern":
+      return (pattern.properties ?? []).flatMap((p: Node) =>
+        bindingNames(p.value ?? p.argument),
+      );
+    case "ArrayPattern":
+      return (pattern.elements ?? []).flatMap((e: Node) => bindingNames(e));
+    case "AssignmentPattern":
+      return bindingNames(pattern.left);
+    case "RestElement":
+      return bindingNames(pattern.argument);
+    default:
+      return [];
+  }
+}
+
 export const policy: Policy = {
   tags: UNSUPPORTED_TAGS,
   isElement: isHtmlElement,
@@ -346,6 +388,7 @@ export const policy: Policy = {
   // A tag matching an in-scope binding is a component call whatever its case
   // (decision 47); a `<define>` shadows a same-named import.
   isComponent: (name, ctx) => ctx.defines.has(name) || ctx.imports.has(name),
+  checkBinding: rejectInputShadowing,
   escapeFrom: "@markox/html",
   emitSpecial,
   keepComments: true,

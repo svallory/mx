@@ -46,6 +46,7 @@ import {
   push,
   quote,
   rejectUnsupportedFields,
+  sliceLoc,
 } from "@markox/html/core";
 
 export { TranslateError } from "@markox/html/core";
@@ -132,10 +133,15 @@ const TAGS: Record<string, Disposition> = {
     reason:
       "`<await>` suspends on a promise; this target is a synchronous `(input) => string` and cannot await. Marko itself refuses to render one to a string (\"Cannot consume asynchronous render with 'toString'\")",
   },
+  return: {
+    kind: "error",
+    reason:
+      "`<return>` provides a value to the *parent* template that rendered this one. A module compiled to `(input) => string` has no parent to return to — its only output is the string. Marko emits no markup for it either, so accepting it silently would read as support for something that cannot work here",
+  },
 };
 
 /**
- * `<let>`, `<const>` and `<return>` bind a value; `server` blocks run.
+ * `<let>` and `<const>` bind a value at render scope.
  *
  * `<let>` is reactive state in full Marko, but its *initial value* is an
  * ordinary expression that Marko's own server render evaluates and renders
@@ -154,8 +160,10 @@ function emitBinding(ctx: Ctx, node: Node, name: string): boolean {
   rejectUnsupportedFields(ctx, node, `\`<${name}>\``, { var: true });
   rejectInputShadowing(node.var, `\`<${name}>\``);
   const value = attrByName(node, "value") ?? node.attributes?.[0];
-  // `<let/x/>` with no value is a declared-but-unset binding; Marko renders
-  // `undefined` for it, and so does an initialiser-less `const` here.
+  // `<let/x/>` with no value is a declared-but-unset binding, which Marko
+  // renders as the empty string. `<const/x/>` never reaches here — the core
+  // switch dispatches `const` to `emitConst`, which requires a value, and
+  // Marko itself refuses a valueless `<const>` ("requires a value").
   const init = value?.value ? expr(ctx, value.value) : "undefined";
   push(ctx, `const ${expr(ctx, node.var)} = ${init};`);
   return true;
@@ -363,6 +371,17 @@ function emitSpecial(ctx: Ctx, node: Node, name: string): boolean {
     return true;
   }
   if (emitBinding(ctx, node, name)) return true;
+
+  // A `server` block is server-side code, and this *is* the server render, so
+  // it runs. Verified against Marko: `server const S = 41 + 1` followed by
+  // `${S}` renders `42`. It hoists to module scope exactly as `static` does —
+  // classifying it as inert (an earlier reading) would have silently dropped
+  // a binding the rest of the template reads.
+  if (name === "server") {
+    const line = sliceLoc(ctx, node.loc).trim();
+    ctx.hoisted.push(line.replace(/^server\s+/, ""));
+    return true;
+  }
 
   if (name === "html-comment") {
     rejectUnsupportedFields(ctx, node, "`<html-comment>`");

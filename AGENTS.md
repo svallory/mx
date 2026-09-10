@@ -432,7 +432,12 @@ a preference, and each was measured against Marko 5.42.5's own server render:
 Policy table (decision 65): the target renders what Marko's server render
 emits, minus resume markers. **Inert** (accepted, no output, each verified
 byte-identical against Marko): `<effect>`, `<lifecycle>`, `<script>`, `<id>`,
-`<log>`, `<debug>`, `client` blocks, and `by=` on `<for>`. **Evaluate initial
+`<log>`, `<debug>`, `client` blocks (client-only), and `by=` on `<for>`. A
+`server` block is **not** inert — this is the server render, so it runs and
+hoists like `static`, and its bindings are readable from the template
+(verified: `server const S = 41 + 1` then `${S}` renders `42`). `<return>` is
+an error: it hands a value to a parent template, and a module compiled to
+`(input) => string` has no parent. **Evaluate initial
 value**: `<let>`, `<const>`, `:=`. **Error** — only what the target genuinely
 cannot: `<await>` (Marko itself refuses to render one to a string) and
 `<try>` with a `<@placeholder>` (needs a second pass). A plain `<try>` with
