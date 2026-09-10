@@ -12,28 +12,20 @@ declare module "@markox/parser" {
   export interface MxParseOptions {
     sourceType?: "script" | "module" | "unambiguous";
     plugins?: unknown[];
-    /**
-     * Which MX grammar the source is written in. `"expression"` (the default)
-     * is the `.solid.mx` case; `"template"` is a whole-file standalone `.mx`
-     * template. See `src/index.ts` for the full contract.
-     */
-    mxMode?: "expression" | "template";
     [option: string]: unknown;
   }
 
   /**
-   * Parses an MX file into a Babel `File` of standard node types.
+   * Parses a `.solid.mx` file into a Babel `File` of standard node types.
    *
-   * In `mxMode: "template"` the returned `File` carries the parsed template at
-   * `file.extra.mxTemplate` and its `program.body` is empty: a standalone
-   * template is markup, not statements, so there is nothing for Babel's own
-   * node types to represent. `@markox/html` reads that field.
+   * Whole-file `.mx` templates are not parsed here: `@markox/html` drives
+   * `@marko/compiler` with its own translator instead (ADR 0001).
    */
   export function parse(
     source: string,
     filename: string,
     options?: MxParseOptions,
-  ): File & { extra?: { mxTemplate?: MxTemplate } };
+  ): File;
 
   export interface MxRange {
     start: number;
@@ -94,22 +86,6 @@ declare module "@markox/parser" {
     start: number;
     end: number;
   }
-
-  /** A top-level `import`, `static` or `export` statement in a template. */
-  export interface MxStatement {
-    kind: "import" | "static" | "export";
-    range: MxRange;
-  }
-
-  /** A whole-file `.mx` template: its statements and its top-level markup. */
-  export interface MxTemplate {
-    statements: MxStatement[];
-    children: MxChild[];
-    errors: MxWalkError[];
-  }
-
-  /** Walks a whole `.mx` file. `parse` with `mxMode: "template"` wraps this. */
-  export function walkMxTemplate(source: string): MxTemplate;
 
   /** True for an HTML void element, which takes no closing tag. */
   export function isVoidTag(name: string | null): boolean;

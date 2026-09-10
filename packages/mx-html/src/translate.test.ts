@@ -195,6 +195,27 @@ describe("module shape", () => {
   });
 });
 
+describe("a bare top-level placeholder", () => {
+  // Concise mode has no separate shape for a `${expr}` line: it arrives as a
+  // MarkoTag whose *name* is the expression, with no attributes and no body,
+  // rather than as a MarkoPlaceholder. Getting this wrong drops the value
+  // silently or reports a bogus dynamic-tag error, so it is pinned here as
+  // well as at the `placeholder-first` fixture.
+  it("renders as an escaped placeholder, not a dynamic tag", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+    const { code } = compile(src("${input.name}"), "top.mx");
+    expect(code).toContain("escape(input.name)");
+  });
+
+  it("still rejects a genuine dynamic tag name", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+    const body = '<${input.tag} class="x">body</>';
+    expect(() => compile(src(body), "dyn.mx")).toThrow(
+      /dynamic tag name is not supported/,
+    );
+  });
+});
+
 describe("placeholders", () => {
   it("escapes ${} and passes $!{} through raw", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
