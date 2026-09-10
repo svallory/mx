@@ -1,4 +1,4 @@
 {
   "marko": "divergence",
-  "reason": "Same escaping-strategy difference as escaping: Marko leaves < and > unescaped in interpolated text."
+  "reason": "Distinct from the escaping/attr-dynamic-escape/raw-interpolation family: when a single placeholder is the entire template body with no wrapping element, Marko emits the interpolated value completely unescaped (raw output for input {name:'<b>X</b>'} is literally '<<b>X</b>></<b>X</b>>', not '&lt;b&gt;X&lt;/b&gt;'), unlike a placeholder inside any element, which Marko escapes correctly (see escaping/attr-dynamic-escape/raw-interpolation, all settled passes after semantic HTML comparison). Verified by direct render() call with a plain string. Filed as a Marko-side quirk specific to element-less templates, not something @markox/html should imitate."
 }

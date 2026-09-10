@@ -1,4 +1,0 @@
-{
-  "marko": "divergence",
-  "reason": "Marko emits a resume/hydration marker (HTML comment plus an inline script) for this fixture even under output html with optimize enabled; dynamic spread attributes appear to opt Marko into runtime reactivity tracking regardless. Filed as an open item; the harness does not yet suppress it."
-}

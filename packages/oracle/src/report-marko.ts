@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderWithMarko } from "./marko-compile";
 import { renderMxHtml } from "./mx-html-render";
-import { normalizeHtml } from "./normalize-html";
+import { htmlEquals } from "./normalize-html";
 
 /**
  * `oracle:marko` (decision 51/55): parity check between Marko's own
@@ -114,27 +114,23 @@ for (const name of entries) {
   const input = JSON.parse(
     readFileSync(join(dir, "input.json"), "utf8"),
   ) as unknown;
-  const expected = normalizeHtml(
-    readFileSync(join(dir, "expected.html"), "utf8"),
-  );
+  const expected = readFileSync(join(dir, "expected.html"), "utf8");
   const mxSource = readFileSync(join(dir, "input.mx"), "utf8");
 
   let markoStatus: string;
   try {
-    markoStatus =
-      normalizeHtml(await renderWithMarko(dir, input)) === expected
-        ? "pass"
-        : "mismatch";
+    markoStatus = htmlEquals(await renderWithMarko(dir, input), expected)
+      ? "pass"
+      : "mismatch";
   } catch (err) {
     markoStatus = `error: ${(err as Error).message.slice(0, 60)}`;
   }
 
   let mxStatus: string;
   try {
-    mxStatus =
-      normalizeHtml(renderMxHtml(dir, mxSource, input)) === expected
-        ? "pass"
-        : "mismatch";
+    mxStatus = htmlEquals(renderMxHtml(dir, mxSource, input), expected)
+      ? "pass"
+      : "mismatch";
   } catch (err) {
     mxStatus = `error: ${(err as Error).message.slice(0, 60)}`;
   }

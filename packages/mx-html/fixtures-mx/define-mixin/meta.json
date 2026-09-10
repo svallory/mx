@@ -1,4 +1,4 @@
 {
   "marko": "divergence",
-  "reason": "<fragment> as an explicit multi-root wrapper is MX-only syntax; Marko rejects it as an unresolvable custom tag (same as define-block)."
+  "reason": "Same placeholder-first parser workaround as define-block (notes/team-standalone-mx.md, defect 3) — not MX-only multi-root syntax. Marko rejects <fragment> as an unresolvable custom tag."
 }

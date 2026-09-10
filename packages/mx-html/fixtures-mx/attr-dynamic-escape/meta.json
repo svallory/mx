@@ -1,4 +1,0 @@
-{
-  "marko": "divergence",
-  "reason": "Same escaping-strategy difference as escaping: Marko leaves angle brackets unescaped in attribute values too, not only in text."
-}

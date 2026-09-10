@@ -1,4 +1,0 @@
-{
-  "marko": "divergence",
-  "reason": "Marko escapes only ampersand and double-quote in text/attribute content, not angle brackets; @markox/html escapes all four. Both prevent attribute/tag breakout; this is an escaping-strategy difference, not an mx-html bug."
-}

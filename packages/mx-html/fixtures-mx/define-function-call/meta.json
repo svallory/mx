@@ -1,4 +1,4 @@
 {
   "marko": "divergence",
-  "reason": "MX calls a <define>d tag as a plain function value from expression position; Marko's own tag-variable calling convention differs. Filed as an open item rather than a settled divergence."
+  "reason": "MX calls a <define>d tag as a plain function value from expression position — S11 (notes/standalone-mx-decisions.md) names a <define> as an in-scope binding callable like any component, settling this on the mx-html side. Marko's own tag-variable calling convention differs (a Marko dynamic tag is invoked as a tag, not called as a plain JS function value), which this fixture hits directly — a genuine toolchain difference, not an open question."
 }

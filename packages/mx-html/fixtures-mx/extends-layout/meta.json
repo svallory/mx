@@ -1,4 +1,4 @@
 {
   "marko": "divergence",
-  "reason": "Same attribute-tag calling-convention gap as component-block."
+  "reason": "Same S3-settled attribute-tag-as-function-prop calling convention as component-block (notes/standalone-mx-decisions.md) — not an open item on the mx-html side. Marko's own attribute-tag mechanism differs, which this fixture's Marko translation hits directly."
 }

@@ -1,4 +1,4 @@
 {
   "marko": "divergence",
-  "reason": "MX attribute-tag props (<@name>) are exposed to the callee as plain callable props (input.header()); this fixture's Marko translation exposes them as Marko's own attribute-tag mechanism, whose calling convention differs (not a plain function prop) and needs further reconciliation. Filed as an open item rather than a settled divergence."
+  "reason": "S3 'Output module shape' (notes/standalone-mx-decisions.md) settles MX's own convention: 'Components are imports called as functions returning string; attribute tags become named function props on the call' — input.header() is exactly that settled calling convention, not an open question on the mx-html side. Marko's own attribute-tag mechanism uses a different calling convention (not a plain callable prop), which this fixture's Marko translation hits directly — a genuine, understood toolchain difference between the two systems' component models, not a bug in either."
 }

@@ -181,11 +181,22 @@ fixture under `packages/mx-html/fixtures-mx/<name>/` two ways — through the
 real Marko 6 toolchain (`@marko/compiler` + `marko/translator`, `.mx` files
 copied to `.marko` with imports rewritten, since Marko has no `.mx`
 extension) and through `@markox/html`'s own `compile()` — and compares both
-against that fixture's `expected.html`, after `normalizeHtml()`
-(`packages/oracle/src/normalize-html.ts`; collapses inter-tag whitespace,
-unifies void-element self-closing spelling, requotes attribute values to
-double quotes, and unifies `&#34;`/`&quot;` — attribute order is preserved,
-not sorted).
+against that fixture's `expected.html` for **semantic** equality —
+`htmlEquals()` (`packages/oracle/src/normalize-html.ts`) parses both sides
+with `parse5` and compares decoded tag names, attribute names/values, text
+content and comment content, not raw string spelling. A round-1 regex-based
+raw-string normalizer could not tell a real content difference from a
+spelling one (`&gt;` vs `>` never compared equal as strings, so it could not
+confirm whether an unescaped character was a genuine escaping gap or a safe
+alternate spelling); parsing decodes both the same way a browser would, so a
+match there means the same rendered output. Before comparison, a trailing
+Marko resume/hydration marker (`<!--M_$…--><script>…</script>`) is stripped —
+hydration plumbing with no `@markox/html` equivalent, not template content,
+and its id/script body is randomly generated per compile so it could never
+byte-match regardless. Not compared: attribute quote character, entity
+spelling, void self-closing spelling, or inter-tag whitespace (all collapsed
+before parsing). Attribute *order* is compared — a real reordering still
+shows as a mismatch.
 
 Prints a `fixture | marko | mx-html | verdict` table plus a `processed: N
 fixtures (minimum required: 30)` footer. `bun run oracle:marko -- --strict`
@@ -197,6 +208,24 @@ unfinished one. Both commands fail (in either mode) if the fixture glob
 expands to nothing, if any fixture directory is missing `input.mx`,
 `input.json` or `expected.html`, or if fewer than 30 fixtures were actually
 processed — a broken glob must never read as a silent pass (decision 55).
+
+The `bun run` invocation uses `--tsconfig-override=tsconfig.base.json`
+(needed because `packages/oracle` importing `@markox/html` otherwise resolves
+`@markox/parser` through *`mx-html`'s own* tsconfig `paths`, the same Bun
+quirk `AGENTS.md`'s "Standalone MX" section documents for `mx-site`). This
+makes Bun print `Internal error: directory mismatch for directory
+".../tsconfig.base.json", fd 3. You don't need to do anything, but this
+indicates a bug.` on every run, to stderr, after the table — a Bun-internal
+warning triggered by the flag itself, not anything `report-marko.ts` emits.
+It does not affect the exit code; expected and harmless.
+
+Current state: 22/30 fixtures pass outright; the other 8 carry a `meta.json`
+citing either a settled decision (S3 "Output module shape", S11/decision 47
+"lowercase tags resolve to in-scope bindings", or a parser limitation
+recorded in `notes/team-standalone-mx.md`) or a genuinely irreconcilable
+toolchain difference (Marko drops HTML comments; Marko leaves an
+element-less template's sole placeholder completely unescaped, unlike a
+placeholder inside any element, which it escapes correctly).
 
 ### `meta.json`: the Marko column's skip/divergence marker
 
@@ -218,12 +247,18 @@ Marko rendering does not match `@markox/html`'s:
 - `"divergence"` — both sides are rendered and compared as normal; a mismatch
   (including a Marko compile/render error) is expected and reported as
   `skipped (reason)` instead of `mx bug`. Used for a real, understood
-  difference (Marko's escaping strategy, its rejection of `<fragment>` as an
-  explicit multi-root wrapper, its PascalCase-or-`${expr}` rule for dynamic
-  tags, its taglib requirement for unknown custom elements, or an
-  attribute-tag/`<define>`-as-value calling-convention gap this harness has
-  not yet reconciled) — never a way to silence an unexplained failure. A
-  `meta.json` with `marko: "skip"` and no `reason` fails the run.
+  difference: a settled MX decision Marko does not share (S3's attribute-tag
+  calling convention; S11/decision 47's lowercase-binding dispatch, which
+  covers both an imported component and a `<define>`d tag called by name),
+  a documented parser limitation the `<fragment>` wrapper works around
+  (`notes/team-standalone-mx.md`'s defect 3), or a genuine Marko-side
+  behavior with no MX equivalent to reconcile against (dropping HTML
+  comments; `<fragment>` as an explicit multi-root wrapper being unnecessary
+  and rejected outright; requiring a taglib entry for an unknown custom tag;
+  leaving an element-less template's sole placeholder unescaped). Every
+  reason cites the specific decision, doc, or verified Marko behavior it
+  rests on — never a way to silence an unexplained failure. A `meta.json`
+  with `marko: "skip"` and no `reason` fails the run.
 - No `meta.json` — the fixture is expected to match both ways. A mismatch is
   reported as `mx bug` and always fails the run, `--strict` or not.
 
