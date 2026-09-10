@@ -1,0 +1,1 @@
+Needs spread attributes (`...props.extra`), object-literal `class=`/`style=` routing to classList/style, and the `on:`/`prop:`/`attr:`/`bool:` namespaced attributes, none of which the parser lowers yet.

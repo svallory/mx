@@ -7,7 +7,9 @@ export function Counter() {
  const [count, setCount] = createSignal(0);
  return (() => {
  var _el$ = _tmpl$();
- _el$.$$click = () => setCount(count() + 1);
+ _el$.$$click = () => {
+ setCount(count() + 1);
+ };
  _$insert(_el$, count);
  return _el$;
  })();

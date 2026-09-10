@@ -14,6 +14,7 @@ fixtures/
     input.solid.mx      MX source
     twin.tsx             hand-written Solid JSX with equivalent behavior
     README.md             optional, notes about the fixture
+    PENDING               optional, marks the fixture as not-yet-parseable
     __golden__/
       twin.dom.js          normalized twin.tsx output, generate: "dom"
       twin.ssr-hydratable.js  normalized twin.tsx output, generate: "ssr"
@@ -38,6 +39,28 @@ directory with `input.solid.mx` and `twin.tsx`, no code change.
    snapshots under `__golden__/`. Commit them.
 5. A fixture directory must contain both `input.solid.mx` and `twin.tsx`;
    `discoverFixtures` throws if a directory has only one of the two.
+
+## PENDING fixtures
+
+A fixture directory containing a `PENDING` file reports status `pending` for
+every variant and is never compiled. Use it for a fixture whose MX source is
+written and correct but uses constructs the parser cannot lower yet.
+
+Put one line inside naming the missing constructs, so the marker says why it
+exists:
+
+```
+fixtures/todos/PENDING
+  Needs `<if=cond>` / `<else>` control flow and `<for|item, i| of= by=>`
+  list lowering, none of which the parser lowers yet.
+```
+
+`pending` behaves like `skipped`: never a pass, never a failure, always
+listed in the table, and `--strict` fails on it. That is the point — the
+marker keeps an unfinished fixture visible instead of letting it look green,
+and `--strict` in CI makes removing the marker part of finishing the work.
+Delete the file once the parser handles the fixture; the fixture then
+compiles and reports `pass`/`fail`/`divergent` like any other.
 
 ## divergences.md
 
@@ -78,19 +101,22 @@ Defined in `packages/oracle/src/normalize.ts`. What it does, exactly:
 - Does **not** reorder, rename, delete, or otherwise touch anything else —
   a real difference in generated code always shows up as a diff.
 
-## `skipped` is not `pass`
+## `skipped` and `pending` are not `pass`
 
-Until `@mx/parser` exists, every `.solid.mx` compile in this harness throws
-`MxParserUnavailable` and is reported as `skipped`. This is the intended red
-state: the parser task turns these into `pass`/`fail`/`divergent`. Do not
-treat a clean `skipped` run as the oracle passing. `bun run oracle` prints a
-loud `ALL SKIPPED` banner whenever every row is skipped as a reminder.
+A `.solid.mx` compile reports `skipped` when no MX parser is wired in at all
+(the harness throws `MxParserUnavailable`), and `pending` when the fixture
+carries a `PENDING` marker. Neither is a pass. `bun run oracle` prints a loud
+`ALL SKIPPED` banner whenever every row is skipped as a reminder, and
+`--strict` fails the run on either status.
+
+`@mx/parser` is wired in now, so a `skipped` row means the parser genuinely
+failed to load — treat it as a failure, not as "not implemented yet".
 
 ## `bun run oracle` flags
 
-- `--strict` — also fail (non-zero exit) when any row is `skipped`. Use this
-  once `@mx/parser` is wired in, to catch a fixture regressing back to
-  unparseable.
+- `--strict` — also fail (non-zero exit) when any row is `skipped` or
+  `pending`. Use this in CI to catch a fixture regressing back to unparseable
+  and to keep `PENDING` markers from going stale.
 - `--update` — force-rewrite every golden snapshot, not just missing ones.
   See "Golden snapshots" above.
 

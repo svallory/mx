@@ -14,7 +14,12 @@ import {
 } from "./divergences";
 import { normalize } from "./normalize";
 
-export type CompareStatus = "pass" | "fail" | "skipped" | "divergent";
+export type CompareStatus =
+  | "pass"
+  | "fail"
+  | "skipped"
+  | "divergent"
+  | "pending";
 
 export interface CompareResult {
   name: string;
@@ -48,6 +53,21 @@ export function compare(
     : [];
 
   const results: CompareResult[] = [];
+
+  // A fixture carrying a PENDING marker names constructs the parser cannot
+  // handle yet. It is reported, never compiled: pending is never a pass and
+  // never a failure, and --strict fails on it just like skipped.
+  const pendingPath = join(fixtureDir, "PENDING");
+  if (existsSync(pendingPath)) {
+    for (const variant of VARIANTS) {
+      results.push({
+        name,
+        variant: `${variant.generate}${variant.hydratable ? "-hydratable" : ""}`,
+        status: "pending",
+      });
+    }
+    return results;
+  }
 
   for (const variant of VARIANTS) {
     const variantKey = `${variant.generate}${variant.hydratable ? "-hydratable" : ""}`;

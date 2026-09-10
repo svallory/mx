@@ -56,6 +56,9 @@
     "packages/oracle": {
       "name": "@mx/oracle",
       "version": "0.0.0",
+      "dependencies": {
+        "@mx/parser": "workspace:*",
+      },
     },
     "packages/vite-plugin-mx-solid": {
       "name": "@mx/vite-plugin-solid",

@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as mxParser } from "@mx/parser";
 import { compare } from "./compare";
 import { discoverFixtures } from "./fixtures";
 
@@ -19,6 +20,7 @@ for (const fixture of fixtures) {
   const results = compare(join(fixturesRoot, fixture), {
     divergencesPath,
     updateGoldens,
+    mxParser,
   });
   for (const r of results) {
     rows.push({ name: r.name, variant: r.variant, status: r.status });
@@ -56,7 +58,9 @@ if (allSkipped) {
   console.log("ALL SKIPPED: no MX parser wired; this is not a pass.");
 }
 
-const hasSkipped = rows.some((r) => r.status === "skipped");
+const hasSkipped = rows.some(
+  (r) => r.status === "skipped" || r.status === "pending",
+);
 if (strict && hasSkipped) failed = true;
 
 process.exit(failed ? 1 : 0);
