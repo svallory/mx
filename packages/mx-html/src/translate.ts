@@ -1,354 +1,102 @@
 /**
- * `@markox/html` as a Marko translator (ADR 0001).
+ * `@markox/html`'s dialect policy (ADR 0001).
  *
- * `@marko/compiler` owns parsing, validation and the tag registry; this file
- * owns the one thing Marko cannot supply — MX's lowering rules for the string
- * target. The translator exports only `translate` (plus its own `taglibs`), so
- * the compiler injects no runtime: the emitted module's entire runtime surface
- * is the `escape` import.
+ * `@marko/compiler` owns parsing, validation and the tag registry; `core.ts`
+ * owns everything that is a property of the string target itself. This file
+ * owns the one remaining thing: the rules that are specific to MX's `.mx`
+ * dialect, as distinct from stock Marko (which `@markox/translator` lowers
+ * under a different policy over the same core).
  *
- * Two shapes of Marko's AST drive nearly everything here, both measured against
- * 5.42.5 rather than assumed:
+ * What is MX-specific here, and why:
  *
- * - Whitespace is already decision 33. Marko's own `onText` drops a
- *   whitespace-only run containing a newline and collapses a newline-free run
- *   to one space, so `MarkoText.value` arrives normalized and this file does
- *   not re-normalize it.
- * - Statement tags (`import`, `static`, `export`) parse as *tags* whose
- *   attributes are word soup, and their `start`/`end` are undefined. Their
- *   `loc` line/column, however, spans exactly the statement, so the source text
- *   is sliced back out by `loc` and re-parsed.
+ * - **Attribute tags become callable function props** (S3). A component is a
+ *   plain import called as a function returning `string`, so `<@header>`
+ *   arrives as `header: () => string`. Stock Marko instead passes
+ *   *renderables*; the two conventions are incompatible and each is correct
+ *   for its own dialect.
+ * - **Components are explicit imports or `<define>`s** — no `tags/`
+ *   directory discovery. MX's convention, recorded in decision 65 as a
+ *   convention rather than a rule the target imposes.
+ * - **An element is one of a hand-carried set**, so an unknown lowercase tag
+ *   is an error rather than literal markup.
+ * - **Reactive constructs are rejected by name** (decision 54): `.mx` has no
+ *   reactive target at all, so `<let>` here is an error, where stock Marko's
+ *   `<let>` evaluates its initial value.
  */
 
-import { parseBabel } from "@markox/parser";
-// biome-ignore lint/suspicious/noShadowRestrictedNames: the compiler calls the same helper the emitted module imports, so a static value and a runtime one are escaped by one implementation
-import { escape } from "./escape.ts";
+import {
+  blockFunction,
+  type Ctx,
+  type Disposition,
+  emitChildren,
+  emitLiteral,
+  emitProgram as emitProgramCore,
+  expr,
+  fail,
+  hasContent,
+  type Node,
+  type Policy,
+  propKey,
+  push,
+  quote,
+  rejectUnsupportedFields,
+  VOID_TAGS,
+} from "./core.ts";
 
-/**
- * Raised for a construct that parses as Marko but has no string lowering.
- *
- * Plain fields, not TS parameter properties: Node's native strip-only TS mode
- * (used by, among others, Vite's own build process when it loads this module
- * unbundled) rejects parameter properties outright, and this class is public
- * API that a consumer with no build step may import directly.
- */
-export class TranslateError extends Error {
-  readonly line: number;
-  readonly column: number;
-
-  constructor(message: string, line: number, column: number) {
-    super(message);
-    this.name = "TranslateError";
-    this.line = line;
-    this.column = column;
-  }
-}
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type Node = any;
-
-const INDENT = "  ";
-
-/**
- * A well-formed HTML attribute name, as source text for the emitted module.
- *
- * Validates spread keys, which are only known at run time. Anything containing
- * a space, quote, `/` or `>` could end the attribute name and start live markup
- * inside the tag, so it is skipped rather than emitted (decisions 42/44).
- */
-const ATTR_NAME_PATTERN = "/^[A-Za-z_:][-A-Za-z0-9_:.]*$/";
-
-const VOID_TAGS = new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr",
-]);
+export { TranslateError } from "./core.ts";
 
 /**
  * Constructs that parse as Marko but need a reactive runtime, each rejected by
- * name (decision 54, brief's rejection table). A one-shot string render has
- * nowhere to put them, and accepting-then-dropping would read as support.
+ * name (decision 54). A one-shot string render has nowhere to put them, and
+ * accepting-then-dropping would read as support.
+ *
+ * Every entry is an `error`, not an `inert`: unlike stock Marko — where
+ * `<let>` has an initial value a server render evaluates and `<effect>` is
+ * genuinely inert — `.mx` declares no reactive dialect at all, so naming the
+ * construct is more useful to an MX author than silently accepting it.
  */
-const UNSUPPORTED_TAGS: Record<string, string> = {
-  let: "`<let>` is reactive state and requires a runtime; standalone MX renders once to a string",
-  effect:
-    "`<effect>` is a reactive effect and requires a runtime; standalone MX renders once to a string",
-  script:
-    "`<script>` as a Marko tag runs client code and requires a runtime; standalone MX renders once to a string",
-  lifecycle:
-    "`<lifecycle>` is a reactive lifecycle hook and requires a runtime; standalone MX renders once to a string",
-  await:
-    "`<await>` suspends on a promise and requires a runtime; standalone MX renders once to a string",
-  try: "`<try>` is an error boundary and requires a runtime; standalone MX renders once to a string",
-  client:
-    "`<client>` marks client-only output and requires a runtime; standalone MX renders once to a string",
-  server:
-    "`<server>` is a server block and requires a runtime; standalone MX renders once to a string",
-  id: "`<id>` requires a runtime; standalone MX renders once to a string",
-};
-
-interface Ctx {
-  source: string;
-  lines: string[];
-  body: string[];
-  hoisted: string[];
-  inputInterface: string | null;
-  /** `<define>`s bound so far, name -> declared parameter names in order. */
-  defines: Map<string, string[]>;
-  /** Local bindings introduced by the template's `import` statements. */
-  imports: Set<string>;
-  indent: number;
-  generate: (node: Node) => string;
-}
-
-function fail(message: string, node: Node): never {
-  const loc = node?.loc?.start ?? node?.start ?? { line: 0, column: 0 };
-  throw new TranslateError(message, loc.line ?? 0, loc.column ?? 0);
-}
-
-function quote(text: string): string {
-  return JSON.stringify(text);
-}
-
-function push(ctx: Ctx, line: string): void {
-  ctx.body.push(INDENT.repeat(ctx.indent) + line);
-}
-
-/**
- * Appends a run of literal HTML, merging into the preceding `out +=`.
- *
- * An element's tag, attributes and text would otherwise each take a line.
- */
-function emitLiteral(ctx: Ctx, text: string): void {
-  if (text === "") return;
-  const last = ctx.body[ctx.body.length - 1];
-  const prefix = INDENT.repeat(ctx.indent);
-  if (last?.startsWith(`${prefix}out += "`) && last.endsWith('";')) {
-    const existing = JSON.parse(last.slice(prefix.length + 7, -1)) as string;
-    ctx.body[ctx.body.length - 1] =
-      `${prefix}out += ${quote(existing + text)};`;
-    return;
-  }
-  push(ctx, `out += ${quote(text)};`);
-}
-
-function emitExpression(ctx: Ctx, expression: string, escaped: boolean): void {
-  push(ctx, `out += ${escaped ? `escape(${expression})` : `(${expression})`};`);
-}
-
-/** The source text an expression node came from, printed back to code. */
-function expr(ctx: Ctx, node: Node): string {
-  return ctx.generate(node);
-}
-
-/**
- * The statement's own source text.
- *
- * `import`/`static`/`export` arrive as tags whose attributes are word soup and
- * whose `start`/`end` are undefined; only `loc` spans the statement, so the
- * text is recovered by line/column and handed back to a real JS parser.
- */
-function sliceLoc(ctx: Ctx, loc: Node): string {
-  const { start, end } = loc;
-  if (start.line === end.line) {
-    return (ctx.lines[start.line - 1] ?? "").slice(start.column, end.column);
-  }
-  const first = (ctx.lines[start.line - 1] ?? "").slice(start.column);
-  const middle = ctx.lines.slice(start.line, end.line - 1);
-  const last = (ctx.lines[end.line - 1] ?? "").slice(0, end.column);
-  return [first, ...middle, last].join("\n");
-}
-
-/**
- * The local binding names an `import` statement introduces — default,
- * namespace, and every named import, aliased or not.
- *
- * Parsed rather than regex-scraped: a tag name is only a component call when it
- * names one of these bindings, so an incomplete extraction here silently
- * misroutes exactly the tags this rule exists to route (decision 47).
- */
-function importBindings(line: string): string[] {
-  try {
-    const file = parseBabel(line, { sourceType: "module" });
-    const declaration = file.program.body[0] as Node;
-    if (declaration?.type !== "ImportDeclaration") return [];
-    return declaration.specifiers.map((s: Node) => s.local.name);
-  } catch {
-    return [];
-  }
-}
-
-/** True when a child list holds anything that renders. */
-function hasContent(children: Node[]): boolean {
-  return children.some((child: Node) => {
-    if (child.type === "MarkoComment") return false;
-    if (child.type === "MarkoText") return child.value.trim() !== "";
-    return true;
-  });
-}
-
-/**
- * Renders a child list as a self-contained `() => string` function.
- *
- * Used for attribute-tag blocks and component children. The body gets its own
- * `out` local, so a block never appends to the enclosing template's buffer and
- * can be called zero or many times by the component that receives it.
- */
-function blockFunction(ctx: Ctx, children: Node[], params = ""): string {
-  const outer = ctx.body;
-  const outerIndent = ctx.indent;
-  ctx.body = [];
-  ctx.indent = outerIndent + 1;
-  push(ctx, 'let out = "";');
-  emitChildren(ctx, children);
-  push(ctx, "return out;");
-  const lines = ctx.body;
-  ctx.body = outer;
-  ctx.indent = outerIndent;
-  return `(${params}) => {\n${lines.join("\n")}\n${INDENT.repeat(outerIndent)}}`;
-}
-
-/**
- * Rejects the node fields this translator does not read.
- *
- * Marko's parser fills in more than the string target lowers: attribute tags,
- * tag arguments, a tag variable and type arguments are all separated out of
- * the body at parse time, so a path that walks only `body.body` renders none
- * of them and reports nothing. That is the silent-drop failure S8 exists to
- * close — the same class as `by=`, and worse, because whole authored content
- * disappears from a successful compile.
- *
- * One guard rather than a check per emission path: seven scattered copies
- * would drift, and the next field Marko adds would be dropped by whichever
- * copy was forgotten.
- *
- * `allow` names the fields the calling path genuinely lowers — only a
- * component call reads `attributeTags`, and only `<define>`/`<const>` read
- * `var`.
- */
-function rejectUnsupportedFields(
-  ctx: Ctx,
-  node: Node,
-  what: string,
-  allow: { attributeTags?: boolean; var?: boolean; params?: boolean } = {},
-): void {
-  if (!allow.attributeTags && node.attributeTags?.length) {
-    const first = node.attributeTags[0];
-    const tagName = String(first?.name?.value ?? "@…").replace(/^@/, "");
-    fail(
-      `attribute tag \`@${tagName}\` on ${what}; attribute tags are props of components, so they are only valid directly inside a component call`,
-      first ?? node,
-    );
-  }
-  if (node.arguments) {
-    fail(
-      `tag arguments \`(...)\` on ${what} are not supported in a standalone template`,
-      node,
-    );
-  }
-  if (!allow.var && node.var) {
-    fail(
-      `tag variable \`/${expr(ctx, node.var)}\` on ${what} is not supported in a standalone template`,
-      node,
-    );
-  }
-  if (node.typeArguments || node.body?.typeParameters) {
-    fail(
-      `type arguments on ${what} are not supported in a standalone template`,
-      node,
-    );
-  }
-  if (!allow.params && node.body?.params?.length) {
-    fail(
-      `tag params \`|...|\` on ${what} are not supported in a standalone template`,
-      node,
-    );
-  }
-}
-
-function attrByName(node: Node, name: string): Node | undefined {
-  return (node.attributes ?? []).find(
-    (a: Node) => a.type === "MarkoAttribute" && a.name === name,
-  );
-}
-
-/**
- * Emits an element's attribute list into the open tag.
- *
- * Static values are baked into the literal and escaped at compile time, so the
- * emitted double-quoted style is independent of the author's quoting — a
- * single-quoted `title='a" onerror="…'` cannot close the attribute early
- * (decision 42). A spread emits a runtime loop that validates each key.
- */
-function emitAttrs(ctx: Ctx, node: Node): void {
-  for (const attr of node.attributes ?? []) {
-    if (attr.type === "MarkoSpreadAttribute") {
-      const value = expr(ctx, attr.value);
-      push(ctx, `for (const [key, value] of Object.entries(${value})) {`);
-      ctx.indent++;
-      push(
-        ctx,
-        "if (value === false || value === null || value === undefined) continue;",
-      );
-      push(ctx, `if (!${ATTR_NAME_PATTERN}.test(key)) continue;`);
-      push(
-        ctx,
-        'out += value === true ? " " + key : " " + key + "=\\"" + escape(value) + "\\"";',
-      );
-      ctx.indent--;
-      push(ctx, "}");
-      continue;
-    }
-
-    if (attr.arguments) {
-      fail(
-        `attribute method \`${attr.name}(...)\` is an event handler and requires a runtime; standalone MX renders once to a string`,
-        attr,
-      );
-    }
-    if (attr.bound) {
-      fail(
-        "`:=` is a two-way binding and requires a reactive runtime; standalone MX renders once to a string",
-        attr,
-      );
-    }
-    // `class:foo="x"` is a modifier Marko hands over as the base name plus a
-    // modifier. Emitting only the base name renders `class="x"` — not a drop
-    // but a *wrong* attribute, which is worse: the author's intent silently
-    // becomes different markup.
-    if (attr.modifier) {
-      fail(
-        `attribute modifier \`${attr.name}:${attr.modifier}\` is not supported in a standalone template`,
-        attr,
-      );
-    }
-
-    const value = attr.value;
-    // A bare attribute (`download`, `checked`) is HTML's spelling of `true`.
-    if (value?.type === "BooleanLiteral" && value.value === true) {
-      emitLiteral(ctx, ` ${attr.name}`);
-      continue;
-    }
-    if (value?.type === "StringLiteral") {
-      emitLiteral(ctx, ` ${attr.name}="${escape(value.value)}"`);
-      continue;
-    }
-    emitLiteral(ctx, ` ${attr.name}="`);
-    emitExpression(ctx, expr(ctx, value), true);
-    emitLiteral(ctx, '"');
-  }
-}
+const UNSUPPORTED_TAGS: Record<string, Disposition> = Object.fromEntries(
+  (
+    [
+      [
+        "let",
+        "`<let>` is reactive state and requires a runtime; standalone MX renders once to a string",
+      ],
+      [
+        "effect",
+        "`<effect>` is a reactive effect and requires a runtime; standalone MX renders once to a string",
+      ],
+      [
+        "script",
+        "`<script>` as a Marko tag runs client code and requires a runtime; standalone MX renders once to a string",
+      ],
+      [
+        "lifecycle",
+        "`<lifecycle>` is a reactive lifecycle hook and requires a runtime; standalone MX renders once to a string",
+      ],
+      [
+        "await",
+        "`<await>` suspends on a promise and requires a runtime; standalone MX renders once to a string",
+      ],
+      [
+        "try",
+        "`<try>` is an error boundary and requires a runtime; standalone MX renders once to a string",
+      ],
+      [
+        "client",
+        "`<client>` marks client-only output and requires a runtime; standalone MX renders once to a string",
+      ],
+      [
+        "server",
+        "`<server>` is a server block and requires a runtime; standalone MX renders once to a string",
+      ],
+      [
+        "id",
+        "`<id>` requires a runtime; standalone MX renders once to a string",
+      ],
+    ] as const
+  ).map(([name, reason]) => [name, { kind: "error", reason } as Disposition]),
+);
 
 /**
  * Emits a component or `<define>` tag call.
@@ -435,299 +183,6 @@ function emitComponent(ctx: Ctx, node: Node, name: string): void {
     ...[...props].map(([key, value]) => `${propKey(key)}: ${value}`),
   ];
   push(ctx, `out += ${name}({ ${parts.join(", ")} });`);
-}
-
-function propKey(name: string): string {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : quote(name);
-}
-
-/**
- * All five `<for>` forms, each lowered to the plain JS loop that matches it.
- *
- * `by=` and `step=` are rejected by name rather than read and dropped
- * (decision 10 / S8): a one-shot string render has no reconciler to key
- * against, so accepting them would read as support from the outside.
- */
-function emitFor(ctx: Ctx, node: Node): void {
-  if (attrByName(node, "by")) {
-    fail(
-      "by= is not supported in a standalone template: string output has no reconciliation to key; remove by=",
-      node,
-    );
-  }
-  if (attrByName(node, "step")) {
-    fail("`<for step=...>`: step is not supported; use a computed array", node);
-  }
-
-  rejectUnsupportedFields(ctx, node, "`<for>`", { params: true });
-
-  const params: string[] = (node.body?.params ?? []).map((p: Node) =>
-    expr(ctx, p),
-  );
-  // A `<for>` with no params names no loop variable. Defaulting it to `item`
-  // would bind the body to a name the author never wrote — resolving to an
-  // outer-scope `item` if one exists, or failing at render time instead of
-  // compile time. The old emitter rejected this and so does this one.
-  if (params.length === 0) {
-    fail("`<for>` needs tag params: `<for|item| of=…>`", node);
-  }
-  const [first = "item", second] = params;
-  const children = node.body?.body ?? [];
-
-  const of = attrByName(node, "of");
-  if (of) {
-    const list = expr(ctx, of.value);
-    if (second) {
-      push(ctx, `for (const [${second}, ${first}] of ${list}.entries()) {`);
-    } else {
-      push(ctx, `for (const ${first} of ${list}) {`);
-    }
-    ctx.indent++;
-    emitChildren(ctx, children);
-    ctx.indent--;
-    push(ctx, "}");
-    return;
-  }
-
-  const inAttr = attrByName(node, "in");
-  if (inAttr) {
-    const object = expr(ctx, inAttr.value);
-    push(
-      ctx,
-      `for (const [${first}, ${second ?? "value"}] of Object.entries(${object})) {`,
-    );
-    ctx.indent++;
-    emitChildren(ctx, children);
-    ctx.indent--;
-    push(ctx, "}");
-    return;
-  }
-
-  const to = attrByName(node, "to");
-  const until = attrByName(node, "until");
-  if (to || until) {
-    const from = attrByName(node, "from");
-    const start = from ? expr(ctx, from.value) : "0";
-    const bound = expr(ctx, (to ?? until).value);
-    const compare = to ? "<=" : "<";
-    push(
-      ctx,
-      `for (let ${first} = ${start}; ${first} ${compare} ${bound}; ${first}++) {`,
-    );
-    ctx.indent++;
-    emitChildren(ctx, children);
-    ctx.indent--;
-    push(ctx, "}");
-    return;
-  }
-
-  fail("`<for>` requires `of=`, `in=`, or `from=`/`to=`/`until=`", node);
-}
-
-/** `<const/name=expr/>` -> a `const` at render scope. */
-function emitConst(ctx: Ctx, node: Node): void {
-  if (!node.var) {
-    fail(
-      "`<const>` without a variable name (write `<const/name=value/>`)",
-      node,
-    );
-  }
-  rejectUnsupportedFields(ctx, node, "`<const>`", { var: true });
-  const value = attrByName(node, "value") ?? node.attributes?.[0];
-  if (!value?.value) fail("`<const>` without a value", node);
-  push(ctx, `const ${expr(ctx, node.var)} = ${expr(ctx, value.value)};`);
-}
-
-/** `<define/name|params|>...</define>` -> a local `(params) => string`. */
-function emitDefine(ctx: Ctx, node: Node): void {
-  if (!node.var) {
-    fail("`<define>` without a name (write `<define/name>`)", node);
-  }
-  rejectUnsupportedFields(ctx, node, "`<define>`", {
-    var: true,
-    params: true,
-  });
-  const name = expr(ctx, node.var);
-  const paramNames: string[] = (node.body?.params ?? []).map((p: Node) =>
-    expr(ctx, p),
-  );
-  const fn = blockFunction(ctx, node.body?.body ?? [], paramNames.join(", "));
-  ctx.defines.set(name, paramNames);
-  push(ctx, `const ${name} = ${fn};`);
-}
-
-/**
- * `<if>` plus any `<else if>`/`<else>` siblings.
- *
- * Returns the index of the first sibling it did not consume, so the caller
- * resumes after the whole chain rather than re-reading `<else>` as a standalone
- * tag.
- */
-function emitIfChain(ctx: Ctx, children: Node[], index: number): number {
-  const node = children[index];
-  rejectUnsupportedFields(ctx, node, "`<if>`");
-  const cond = attrByName(node, "value") ?? node.attributes?.[0];
-  if (!cond?.value) fail("`<if>` without a condition", node);
-
-  push(ctx, `if (${expr(ctx, cond.value)}) {`);
-  ctx.indent++;
-  emitChildren(ctx, node.body?.body ?? []);
-  ctx.indent--;
-
-  let i = index + 1;
-  while (i < children.length) {
-    const child = children[i];
-    // Whitespace and comments between branches are layout, not content.
-    if (child.type === "MarkoComment") {
-      i++;
-      continue;
-    }
-    if (child.type === "MarkoText" && child.value.trim() === "") {
-      i++;
-      continue;
-    }
-    if (child.type !== "MarkoTag" || child.name?.value !== "else") break;
-
-    rejectUnsupportedFields(ctx, child, "`<else>`");
-    const ifAttr = attrByName(child, "if");
-    if (ifAttr) {
-      push(ctx, `} else if (${expr(ctx, ifAttr.value)}) {`);
-    } else {
-      push(ctx, "} else {");
-    }
-    ctx.indent++;
-    emitChildren(ctx, child.body?.body ?? []);
-    ctx.indent--;
-    i++;
-    if (!ifAttr) break;
-  }
-
-  push(ctx, "}");
-  return i;
-}
-
-/**
- * Statement tags, recovered from source and hoisted to module scope.
- *
- * `import` reaches module scope verbatim; `static` drops its keyword and joins
- * it there, running once per module rather than once per render; `export
- * interface Input` is lifted out so the emitted module can place it above the
- * render function it types.
- */
-function emitStatement(ctx: Ctx, node: Node, name: string): void {
-  const line = sliceLoc(ctx, node.loc).trim();
-
-  if (name === "import") {
-    ctx.hoisted.push(line);
-    for (const binding of importBindings(line)) ctx.imports.add(binding);
-    return;
-  }
-  if (name === "static") {
-    ctx.hoisted.push(line.replace(/^static\s+/, ""));
-    return;
-  }
-  if (/^export\s+interface\s+Input\b/.test(line)) {
-    ctx.inputInterface = line;
-    return;
-  }
-  fail(
-    "a standalone template may only `export interface Input`; the module's default export is its render function",
-    node,
-  );
-}
-
-function emitTag(ctx: Ctx, node: Node): void {
-  // A bare `${expr}` on its own line parses as a tag whose *name* is the
-  // expression, with no attributes and no body — Marko's concise mode has no
-  // other shape for it. Treated as the escaped placeholder the author wrote.
-  if (node.name && node.name.type !== "StringLiteral") {
-    if ((node.attributes ?? []).length === 0 && !node.body?.body?.length) {
-      emitExpression(ctx, expr(ctx, node.name), true);
-      return;
-    }
-    fail("dynamic tag name is not supported in a standalone template", node);
-  }
-
-  const name = String(node.name.value);
-
-  const unsupported = UNSUPPORTED_TAGS[name];
-  if (unsupported) fail(unsupported, node);
-
-  switch (name) {
-    case "import":
-    case "static":
-    case "export":
-      emitStatement(ctx, node, name);
-      return;
-    case "for":
-      emitFor(ctx, node);
-      return;
-    case "const":
-      emitConst(ctx, node);
-      return;
-    case "define":
-      emitDefine(ctx, node);
-      return;
-    case "fragment":
-      rejectUnsupportedFields(ctx, node, "`<fragment>`");
-      if ((node.attributes ?? []).length > 0) {
-        fail(
-          "`<fragment>` takes no attributes: it renders nothing of its own, only its children",
-          node,
-        );
-      }
-      emitChildren(ctx, node.body?.body ?? []);
-      return;
-    case "else":
-      fail("`<else>` without a preceding `<if>`", node);
-      return;
-  }
-
-  if (name.startsWith("@")) {
-    fail(
-      `attribute tag \`<${name}>\` is only valid directly inside a component call`,
-      node,
-    );
-  }
-
-  // A tag matching an in-scope binding is a component call whatever its case
-  // (decision 47); a `<define>` shadows a same-named import.
-  if (ctx.defines.has(name) || ctx.imports.has(name)) {
-    emitComponent(ctx, node, name);
-    return;
-  }
-
-  // No HTML element is ever capitalized, so an unbound PascalCase tag is a
-  // missing or misspelled binding, not an element that happens to be
-  // capitalized. Emitting it literally would be a silent misroute.
-  if (/^[A-Z]/.test(name)) {
-    fail(
-      `\`<${name}>\` has no matching import or \`<define>\` in scope; a capitalized tag is always a component call`,
-      node,
-    );
-  }
-
-  // An unknown lowercase tag that is neither a binding nor a real element is
-  // the silent-failure mode ADR 0001 names: a core tag MX has no lowering for
-  // must be an error, never a literal element. Hyphenated custom elements are
-  // legal HTML and stay.
-  if (!isHtmlElement(name)) {
-    fail(
-      `unknown tag \`<${name}>\`: not an HTML element, and no matching import or \`<define>\` is in scope`,
-      node,
-    );
-  }
-
-  rejectUnsupportedFields(ctx, node, `\`<${name}>\``);
-
-  emitLiteral(ctx, `<${name}`);
-  emitAttrs(ctx, node);
-  emitLiteral(ctx, ">");
-
-  if (VOID_TAGS.has(name)) return;
-
-  emitChildren(ctx, node.body?.body ?? []);
-  emitLiteral(ctx, `</${name}>`);
 }
 
 /**
@@ -866,87 +321,43 @@ const HTML_ELEMENTS = new Set([
   "foreignObject",
 ]);
 
-export function emitChildren(ctx: Ctx, children: Node[]): void {
-  let index = 0;
-  while (index < children.length) {
-    const child = children[index];
-
-    if (child.type === "MarkoTag" && child.name?.value === "if") {
-      index = emitIfChain(ctx, children, index);
-      continue;
-    }
-
-    switch (child.type) {
-      case "MarkoText":
-        // Already decision 33: Marko's own `onText` dropped newline-bearing
-        // whitespace runs and collapsed the rest before we saw them.
-        emitLiteral(ctx, child.value);
-        break;
-      case "MarkoPlaceholder":
-        emitExpression(ctx, expr(ctx, child.value), child.escape);
-        break;
-      case "MarkoTag":
-        emitTag(ctx, child);
-        break;
-      case "MarkoDocumentType":
-        emitLiteral(ctx, `<!${child.value}>`);
-        break;
-      case "MarkoComment":
-        // Marko strips the delimiters, so an HTML comment and a `//` line
-        // comment are indistinguishable by value alone; the source decides.
-        if (sliceLoc(ctx, child.loc).startsWith("<!--")) {
-          emitLiteral(ctx, `<!--${child.value}-->`);
-        }
-        break;
-      case "MarkoScriptlet":
-        fail(
-          "scriptlets (`$ statement`) are not supported in MX (decision 54)",
-          child,
-        );
-        break;
-    }
-    index++;
+/**
+ * `<fragment>` is MX-only syntax: an explicit multi-root wrapper that renders
+ * nothing of its own. Marko has no such tag (a template body may already have
+ * several roots), so it lives in this policy rather than the shared core.
+ */
+function emitSpecial(ctx: Ctx, node: Node, name: string): boolean {
+  if (name !== "fragment") return false;
+  rejectUnsupportedFields(ctx, node, "`<fragment>`");
+  if ((node.attributes ?? []).length > 0) {
+    fail(
+      "`<fragment>` takes no attributes: it renders nothing of its own, only its children",
+      node,
+    );
   }
+  emitChildren(ctx, node.body?.body ?? []);
+  return true;
 }
 
-/**
- * Builds the emitted TypeScript module for one parsed template.
- *
- * The module shape is fixed (S3): the escape import, the author's hoisted
- * module scope, their `Input` interface, and one default-exported render
- * function concatenating into a single local.
- */
+export const policy: Policy = {
+  tags: UNSUPPORTED_TAGS,
+  isElement: isHtmlElement,
+  emitComponent,
+  // A tag matching an in-scope binding is a component call whatever its case
+  // (decision 47); a `<define>` shadows a same-named import.
+  isComponent: (name, ctx) => ctx.defines.has(name) || ctx.imports.has(name),
+  escapeFrom: "@markox/html",
+  emitSpecial,
+  keepComments: true,
+};
+
 export function emitProgram(
   body: Node[],
   source: string,
   generate: (node: Node) => string,
 ): string {
-  const ctx: Ctx = {
-    source,
-    lines: source.split("\n"),
-    body: [],
-    hoisted: [],
-    inputInterface: null,
-    defines: new Map(),
-    imports: new Set(),
-    indent: 1,
-    generate,
-  };
-
-  emitChildren(ctx, body);
-
-  const lines: string[] = ['import { escape } from "@markox/html";'];
-  if (ctx.hoisted.length > 0) lines.push("", ...ctx.hoisted);
-  lines.push(
-    "",
-    ctx.inputInterface ?? "export interface Input {}",
-    "",
-    "export default function (input: Input): string {",
-    `${INDENT}let out = "";`,
-    ...ctx.body,
-    `${INDENT}return out;`,
-    "}",
-    "",
-  );
-  return lines.join("\n");
+  return emitProgramCore(body, source, generate, policy);
 }
+
+// Re-exported so the fixture harness and tests keep their existing imports.
+export { emitChildren, emitLiteral };

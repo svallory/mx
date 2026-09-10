@@ -1,8 +1,8 @@
 import { createRequire } from "node:module";
 import { emitProgram } from "./translate.ts";
 
+export { TranslateError } from "./core.ts";
 export { escape } from "./escape.ts";
-export { TranslateError } from "./translate.ts";
 
 const require = createRequire(import.meta.url);
 
