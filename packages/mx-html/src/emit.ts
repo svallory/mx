@@ -43,8 +43,14 @@ interface EmitContext {
   hoisted: string[];
   /** The author's `export interface Input`, verbatim, or null. */
   inputInterface: string | null;
-  /** Names bound by `<define/name|params|>`, which render as local functions. */
-  defines: Set<string>;
+  /**
+   * `<define/name|params|>`s bound so far, keyed by name, value is the
+   * declared parameter names in order. A tag-call site (`<name .../>`) needs
+   * this order to pass its props positionally, matching the function it
+   * declares; the props-object call `emitComponent` otherwise always makes
+   * is only correct for a real component's `props` parameter.
+   */
+  defines: Map<string, string[]>;
   indent: number;
 }
 
@@ -298,27 +304,37 @@ function requireExpressionAttr(
 }
 
 /**
- * Emits a component call: `out += Name({ props })`.
+ * Emits a component or `<define>` tag call.
  *
+ * A real component receives one props object: `out += Name({ props })`.
  * Attribute tags (`<@header>...</@header>`) become named function props, so
- * the component receives `{ header: () => string }` and decides where to place
- * the block. Remaining children become a `children` prop under the same rule.
+ * the component receives `{ header: () => string }` and decides where to
+ * place the block; remaining children become a `children` prop under the
+ * same rule.
+ *
+ * A `<define>`, though, was lowered by `emitDefine` to a plain positional
+ * function `(a, b) => ...`, not one that destructures a props object — the
+ * function-call form (`card("x", "y")`) already calls it that way. A tag-call
+ * site must therefore pass the same arguments positionally, in the order the
+ * `<define>` declared them, or every named prop after the first binds to
+ * `undefined` (this was the tag-call-form bug: fixed here rather than by
+ * changing `emitDefine`, so the working function-call form is untouched).
  */
 function emitComponent(ctx: EmitContext, el: MxElement): void {
   const name = el.staticName as string;
-  const props: string[] = [];
+  const props = new Map<string, string>();
   const spreads: string[] = [];
 
   for (const attr of el.attrs) {
     switch (attr.kind) {
       case "static":
-        props.push(`${propKey(attr.name)}: ${quote(attrValueText(ctx, attr))}`);
+        props.set(attr.name, quote(attrValueText(ctx, attr)));
         break;
       case "dynamic":
-        props.push(`${propKey(attr.name)}: ${attrValueText(ctx, attr)}`);
+        props.set(attr.name, attrValueText(ctx, attr));
         break;
       case "boolean":
-        props.push(`${propKey(attr.name)}: true`);
+        props.set(attr.name, "true");
         break;
       case "spread":
         spreads.push(text(ctx, attr.value));
@@ -350,14 +366,30 @@ function emitComponent(ctx: EmitContext, el: MxElement): void {
 
   for (const block of named) {
     const blockName = (block.staticName as string).slice(1);
-    props.push(`${propKey(blockName)}: ${blockFunction(ctx, block.children)}`);
+    props.set(blockName, blockFunction(ctx, block.children));
   }
 
   if (hasContent(ctx, rest)) {
-    props.push(`children: ${blockFunction(ctx, rest)}`);
+    props.set("children", blockFunction(ctx, rest));
   }
 
-  const parts = [...spreads.map((s) => `...${s}`), ...props];
+  const defineParams = ctx.defines.get(name);
+  if (defineParams) {
+    if (spreads.length > 0) {
+      fail(
+        `spreading into \`<${name}>\` is not supported: a <define> is called positionally, and a spread's keys are only known at run time`,
+        el.name,
+      );
+    }
+    const args = defineParams.map((param) => props.get(param) ?? "undefined");
+    push(ctx, `out += ${name}(${args.join(", ")});`);
+    return;
+  }
+
+  const parts = [
+    ...spreads.map((s) => `...${s}`),
+    ...[...props].map(([key, value]) => `${propKey(key)}: ${value}`),
+  ];
   push(ctx, `out += ${name}({ ${parts.join(", ")} });`);
 }
 
@@ -486,6 +518,13 @@ function emitFor(ctx: EmitContext, el: MxElement): void {
     );
   }
 
+  if (attrByName(el, "by")) {
+    fail(
+      "by= is not supported in a standalone template: string output has no reconciliation to key; remove by=",
+      el.name,
+    );
+  }
+
   const [first = "item", second] = params;
 
   if (of) {
@@ -582,6 +621,10 @@ function emitDefine(ctx: EmitContext, el: MxElement): void {
   }
   const name = text(ctx, el.tagVar);
   const params = el.params ? text(ctx, el.params) : "";
+  const paramNames = params
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p !== "");
   const outer = ctx.body;
   const outerIndent = ctx.indent;
   ctx.body = [];
@@ -592,7 +635,7 @@ function emitDefine(ctx: EmitContext, el: MxElement): void {
   const lines = ctx.body;
   ctx.body = outer;
   ctx.indent = outerIndent;
-  ctx.defines.add(name);
+  ctx.defines.set(name, paramNames);
   push(
     ctx,
     `const ${name} = (${params}) => {\n${lines.join("\n")}\n${INDENT.repeat(outerIndent)}};`,
@@ -704,8 +747,15 @@ export function emitChildren(ctx: EmitContext, children: MxChild[]): void {
         emitLiteral(ctx, text(ctx, child.range));
         break;
 
-      case "comment":
+      case "comment": {
+        // The recorded range is the comment's full source span, delimiters
+        // included, so an HTML comment (`<!--`) and a line comment (`//`)
+        // are distinguished by their first two characters. Only the HTML
+        // form survives into the output; a line comment is author-only.
+        const raw = text(ctx, child.range);
+        if (raw.startsWith("<!--")) emitLiteral(ctx, raw);
         break;
+      }
     }
     index++;
   }
@@ -758,7 +808,7 @@ export function emitTemplate(template: MxTemplate, source: string): string {
     body: [],
     hoisted: [],
     inputInterface: null,
-    defines: new Set(),
+    defines: new Map(),
     indent: 1,
   };
 
