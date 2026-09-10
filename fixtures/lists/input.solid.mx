@@ -21,6 +21,12 @@ export function Lists() {
       <for|i| from=1 to=count()><span>${i}</span></for>
       <!-- exclusive range with literal bounds, folded at lowering time -->
       <for|i| until=4><b>${i}</b></for>
+      <!-- stepped range: positive step -->
+      <for|i| from=0 to=8 step=2><em>${i}</em></for>
+      <!-- stepped range: negative step counting down -->
+      <for|i| from=10 to=0 step=-2><em>${i}</em></for>
+      <!-- stepped range: until= with step= uses the exclusive bound -->
+      <for|i| from=0 until=10 step=3><em>${i}</em></for>
       <!-- object entries, keyed by the entry key -->
       <for|k, v| in=meta()><p>${k}=${v}</p></for>
     </div>

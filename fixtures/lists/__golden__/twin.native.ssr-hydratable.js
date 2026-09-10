@@ -11,6 +11,9 @@ var _tmpl$ = [
  "<!--/--><!--$-->",
  "<!--/--><!--$-->",
  "<!--/--><!--$-->",
+ "<!--/--><!--$-->",
+ "<!--/--><!--$-->",
+ "<!--/--><!--$-->",
  "<!--/--></div>"
 ];
 var _tmpl$2 = [
@@ -35,6 +38,11 @@ var _tmpl$5 = [
  "</b>"
 ];
 var _tmpl$6 = [
+ "<em",
+ ">",
+ "</em>"
+];
+var _tmpl$7 = [
  "<p",
  "><!--$-->",
  "<!--/-->=<!--$-->",
@@ -52,12 +60,12 @@ export function Lists() {
  },
  keyed: (x) => x.id,
  children: (row, i) => {
- var _v$7, _v$8, _v$9;
- return _v$7 = _$ssrHydrationKey(), _v$8 = _$scope(() => {
+ var _v$10, _v$11, _v$12;
+ return _v$10 = _$ssrHydrationKey(), _v$11 = _$scope(() => {
  return _$escape(i());
- }), _v$9 = () => {
+ }), _v$12 = () => {
  return _$escape(row().label);
- }, _$ssr(_tmpl$2, _v$7, _v$8, _v$9);
+ }, _$ssr(_tmpl$2, _v$10, _v$11, _v$12);
  }
  })), _v$3 = _$escape(_$For({
  get each() {
@@ -65,10 +73,10 @@ export function Lists() {
  },
  keyed: (r) => r.label,
  children: (row, i) => {
- var _v$10, _v$11;
- return _v$10 = _$ssrHydrationKey(), _v$11 = () => {
+ var _v$13, _v$14;
+ return _v$13 = _$ssrHydrationKey(), _v$14 = () => {
  return _$escape(row().label);
- }, _$ssr(_tmpl$3, _v$10, _v$11);
+ }, _$ssr(_tmpl$3, _v$13, _v$14);
  }
  })), _v$4 = _$escape(_$Repeat({
  get count() {
@@ -76,24 +84,45 @@ export function Lists() {
  },
  from: 1,
  children: (i) => {
- var _v$12, _v$13;
- return _v$12 = _$ssrHydrationKey(), _v$13 = _$escape(i), _$ssr(_tmpl$4, _v$12, _v$13);
+ var _v$15, _v$16;
+ return _v$15 = _$ssrHydrationKey(), _v$16 = _$escape(i), _$ssr(_tmpl$4, _v$15, _v$16);
  }
  })), _v$5 = _$escape(_$Repeat({
  count: 4,
  children: (i) => {
- var _v$14, _v$15;
- return _v$14 = _$ssrHydrationKey(), _v$15 = _$escape(i), _$ssr(_tmpl$5, _v$14, _v$15);
+ var _v$17, _v$18;
+ return _v$17 = _$ssrHydrationKey(), _v$18 = _$escape(i), _$ssr(_tmpl$5, _v$17, _v$18);
  }
- })), _v$6 = _$escape(_$For({
+ })), _v$6 = _$escape(_$Repeat({
+ count: 5,
+ children: (mxIndex) => {
+ const i = 0 + mxIndex * 2;
+ var _v$19 = _$ssrHydrationKey(), _v$20 = _$escape(i);
+ return _$ssr(_tmpl$6, _v$19, _v$20);
+ }
+ })), _v$7 = _$escape(_$Repeat({
+ count: 6,
+ children: (mxIndex) => {
+ const i = 10 + mxIndex * -2;
+ var _v$21 = _$ssrHydrationKey(), _v$22 = _$escape(i);
+ return _$ssr(_tmpl$6, _v$21, _v$22);
+ }
+ })), _v$8 = _$escape(_$Repeat({
+ count: 4,
+ children: (mxIndex) => {
+ const i = 0 + mxIndex * 3;
+ var _v$23 = _$ssrHydrationKey(), _v$24 = _$escape(i);
+ return _$ssr(_tmpl$6, _v$23, _v$24);
+ }
+ })), _v$9 = _$escape(_$For({
  get each() {
  return Object.entries(meta());
  },
  keyed: (e) => e[0],
  children: ([k, v]) => {
- var _v$16, _v$17, _v$18;
- return _v$16 = _$ssrHydrationKey(), _v$17 = _$escape(k), _v$18 = _$escape(v), _$ssr(_tmpl$6, _v$16, _v$17, _v$18);
+ var _v$25, _v$26, _v$27;
+ return _v$25 = _$ssrHydrationKey(), _v$26 = _$escape(k), _v$27 = _$escape(v), _$ssr(_tmpl$7, _v$25, _v$26, _v$27);
  }
  }));
- return _$ssr(_tmpl$, _v$, _v$2, _v$3, _v$4, _v$5, _v$6);
+ return _$ssr(_tmpl$, _v$, _v$2, _v$3, _v$4, _v$5, _v$6, _v$7, _v$8, _v$9);
 }

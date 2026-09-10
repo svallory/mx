@@ -32,6 +32,27 @@ export function Lists() {
       </Repeat>
       {/* exclusive range with literal bounds, folded at lowering time */}
       <Repeat count={4}>{(i) => <b>{i}</b>}</Repeat>
+      {/* stepped range: positive step */}
+      <Repeat count={5}>
+        {(mxIndex) => {
+          const i = 0 + mxIndex * 2;
+          return <em>{i}</em>;
+        }}
+      </Repeat>
+      {/* stepped range: negative step counting down */}
+      <Repeat count={6}>
+        {(mxIndex) => {
+          const i = 10 + mxIndex * -2;
+          return <em>{i}</em>;
+        }}
+      </Repeat>
+      {/* stepped range: until= with step= uses the exclusive bound */}
+      <Repeat count={4}>
+        {(mxIndex) => {
+          const i = 0 + mxIndex * 3;
+          return <em>{i}</em>;
+        }}
+      </Repeat>
       {/* object entries, keyed by the entry key */}
       <For each={Object.entries(meta())} keyed={(e) => e[0]}>
         {([k, v]) => (

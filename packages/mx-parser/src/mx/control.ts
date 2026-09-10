@@ -500,10 +500,19 @@ function repeatElement(
   );
 }
 
-/** Numeric value of a node that is literally a number, else null. */
+/**
+ * Numeric value of a node that is literally a number, else null. Includes
+ * `-2`, which Babel parses as `UnaryExpression{operator: "-"}` over a
+ * `NumericLiteral`, not a signed literal of its own — needed so a negative
+ * `step=` still folds.
+ */
 function numericValueOf(node: Node): number | null {
   if (node.type === "NumericLiteral" && typeof node.value === "number") {
     return node.value;
+  }
+  if (node.type === "UnaryExpression" && node.operator === "-") {
+    const inner = numericValueOf(node.argument as Node);
+    return inner === null ? null : -inner;
   }
   return null;
 }
@@ -559,6 +568,201 @@ function countExpression(
   );
 }
 
+/**
+ * The iteration count for a stepped range `<for>`: `Math.floor((to - from) /
+ * step) + 1` (inclusive) or `Math.ceil((until - from) / step)` (exclusive),
+ * wrapped in `Math.max(0, …)` so a range that steps away from its bound (e.g.
+ * `from=0 to=9 step=-1`) never hands `Repeat` a negative count.
+ *
+ * Folded to a literal only when `from`, the bound and `step` are all numeric
+ * literals, matching `countExpression`'s rule for the unstepped case.
+ */
+function steppedCountExpression(
+  ctx: LowerContext,
+  from: Node,
+  bound: Node,
+  step: Node,
+  inclusive: boolean,
+  range: MxRange,
+): Node {
+  const fromValue = numericValueOf(from);
+  const boundValue = numericValueOf(bound);
+  const stepValue = numericValueOf(step);
+  if (fromValue !== null && boundValue !== null && stepValue !== null) {
+    const ratio = (boundValue - fromValue) / stepValue;
+    const folded = inclusive ? Math.floor(ratio) + 1 : Math.ceil(ratio);
+    return numericLiteral(ctx, Math.max(0, folded), range);
+  }
+
+  const difference = at(
+    { type: "BinaryExpression", operator: "-", left: bound, right: from },
+    ctx.source,
+    range,
+  );
+  const ratio = at(
+    { type: "BinaryExpression", operator: "/", left: difference, right: step },
+    ctx.source,
+    range,
+  );
+  const rounded = mathCall(ctx, inclusive ? "floor" : "ceil", [ratio], range);
+  const count = inclusive
+    ? at(
+        {
+          type: "BinaryExpression",
+          operator: "+",
+          left: rounded,
+          right: numericLiteral(ctx, 1, range),
+        },
+        ctx.source,
+        range,
+      )
+    : rounded;
+  return mathCall(ctx, "max", [numericLiteral(ctx, 0, range), count], range);
+}
+
+/** `Math.<name>(...args)`. */
+function mathCall(
+  ctx: LowerContext,
+  name: string,
+  args: Node[],
+  range: MxRange,
+): Node {
+  return at(
+    {
+      type: "CallExpression",
+      callee: at(
+        {
+          type: "MemberExpression",
+          object: at({ type: "Identifier", name: "Math" }, ctx.source, range),
+          property: at({ type: "Identifier", name }, ctx.source, range),
+          computed: false,
+          optional: false,
+        },
+        ctx.source,
+        range,
+      ),
+      arguments: args,
+      optional: false,
+    },
+    ctx.source,
+    range,
+  );
+}
+
+/** Every `Identifier` name referenced anywhere in a subtree, for hygiene checks. */
+function collectIdentifierNames(node: unknown, out: Set<string>): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectIdentifierNames(item, out);
+    return;
+  }
+  if (node === null || typeof node !== "object") return;
+  const record = node as Record<string, unknown>;
+  if (record.type === "Identifier" && typeof record.name === "string") {
+    out.add(record.name);
+  }
+  for (const key of Object.keys(record)) {
+    if (key === "loc" || key === "start" || key === "end") continue;
+    collectIdentifierNames(record[key], out);
+  }
+}
+
+/**
+ * A name for the stepped range's raw counter that cannot clash with any
+ * identifier the author's body already references: `mxIndex`, then
+ * `mxIndex2`, `mxIndex3`, … on collision.
+ */
+function hygienicIndexName(body: Node): string {
+  const used = new Set<string>();
+  collectIdentifierNames(body, used);
+  if (!used.has("mxIndex")) return "mxIndex";
+  let n = 2;
+  while (used.has(`mxIndex${n}`)) n++;
+  return `mxIndex${n}`;
+}
+
+/**
+ * `<Repeat count={…}>{(_k) => { const i = (from) + _k * (step); return body;
+ * }}</Repeat>` — the stepped-range shape from decision 51/the `for-step`
+ * brief. `i` keeps the author's own param name; `_k` is the hygienic raw
+ * counter from `hygienicIndexName`. `from` is always emitted here (unlike the
+ * unstepped `repeatElement`) because the callback body needs it whether or
+ * not the author wrote it.
+ */
+function steppedRepeatElement(
+  ctx: LowerContext,
+  count: Node,
+  from: Node,
+  step: Node,
+  param: Node,
+  body: Node,
+  range: MxRange,
+): Node {
+  const counterName = hygienicIndexName(body);
+  const counterId = at(
+    { type: "Identifier", name: counterName },
+    ctx.source,
+    range,
+  );
+  const stride = at(
+    {
+      type: "BinaryExpression",
+      operator: "*",
+      left: counterId,
+      right: step,
+    },
+    ctx.source,
+    range,
+  );
+  const indexInit = at(
+    { type: "BinaryExpression", operator: "+", left: from, right: stride },
+    ctx.source,
+    range,
+  );
+  const indexDeclarator = at(
+    { type: "VariableDeclarator", id: param, init: indexInit },
+    ctx.source,
+    range,
+  );
+  const indexDecl = at(
+    {
+      type: "VariableDeclaration",
+      kind: "const",
+      declarations: [indexDeclarator],
+    },
+    ctx.source,
+    range,
+  );
+  const returnStmt = at(
+    { type: "ReturnStatement", argument: body },
+    ctx.source,
+    range,
+  );
+  const blockBody = at(
+    { type: "BlockStatement", body: [indexDecl, returnStmt], directives: [] },
+    ctx.source,
+    range,
+  );
+  const arrow = at(
+    {
+      type: "ArrowFunctionExpression",
+      id: null,
+      generator: false,
+      async: false,
+      params: [counterId],
+      body: blockBody,
+    },
+    ctx.source,
+    range,
+  );
+  const callbackChildNode = at(
+    { type: "JSXExpressionContainer", expression: arrow },
+    ctx.source,
+    range,
+  );
+  const attributes: Node[] = [exprAttribute(ctx, "count", count, range)];
+  return jsxElement(ctx, "Repeat", attributes, [callbackChildNode], range);
+}
+
 /** `(x) => x.<field>`, the lowering of `by="field"`. */
 function fieldKeyArrow(ctx: LowerContext, field: string, range: MxRange): Node {
   const param = at({ type: "Identifier", name: "x" }, ctx.source, range);
@@ -602,15 +806,6 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
   if (combos > 1) {
     fail(
       "`<for>` with more than one of `of=`, `in=`, `from=`/`to=`/`until=`",
-      el.name,
-    );
-  }
-
-  // `Repeat`'s index is a plain incrementing number with no stride concept, so
-  // there is nothing to lower `step=` onto; a computed array is the workaround.
-  if (step) {
-    fail(
-      "`<for step=...>`: step is not supported; use a computed array",
       el.name,
     );
   }
@@ -771,6 +966,36 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
       boundAttr.value,
       "for bound expression",
     );
+
+    if (step) {
+      if (step.kind !== "dynamic" && step.kind !== "static") {
+        fail("`<for step=...>` requires an expression value", el.name);
+      }
+      const stepExpr = subParseNode(ctx, step.value, "for `step` expression");
+      const stepValue = numericValueOf(stepExpr);
+      if (stepValue === 0) {
+        fail("`<for step=...>`: step must not be 0", el.name);
+      }
+      const singleParam = params[0] as Node;
+      const count = steppedCountExpression(
+        ctx,
+        fromExpr,
+        boundExpr,
+        stepExpr,
+        to !== undefined,
+        el.range,
+      );
+      return steppedRepeatElement(
+        ctx,
+        count,
+        fromExpr,
+        stepExpr,
+        singleParam,
+        body,
+        el.range,
+      );
+    }
+
     const count = countExpression(
       ctx,
       fromExpr,

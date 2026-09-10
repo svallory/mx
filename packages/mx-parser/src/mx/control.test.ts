@@ -264,6 +264,7 @@ function listAttrs(source: string) {
       el.openingElement.attributes.find((a) => a.name.name === n)?.value
         .expression,
     params: el.children[0]?.expression?.params,
+    callback: el.children[0]?.expression,
     extra: el.extra,
   };
 }
@@ -454,12 +455,93 @@ describe("for: ranges lower to <Repeat>", () => {
     expect(list.attr("count")?.value).toBe(6);
   });
 
-  it("rejects step= with a fix-it to a computed array", () => {
+  it("rejects step=0", () => {
     const err = parseError(
+      `const el = <for|i| from=0 to=9 step=0><li>x</li></for>;`,
+    );
+    expect(err.message).toContain("step must not be 0");
+  });
+
+  it("lowers step= to <Repeat count={...}>{(mxIndex) => { const i = ...; return body; }}</Repeat>", () => {
+    const list = listAttrs(
       `const el = <for|i| from=0 to=9 step=2><li>x</li></for>;`,
     );
-    expect(err.message).toContain("step is not supported");
-    expect(err.message).toContain("computed array");
+    expect(list.name).toBe("Repeat");
+    expect(list.attrNames).toEqual(["count"]);
+    // Math.max(0, Math.floor((9 - 0) / 2) + 1) folds to 5 (0,2,4,6,8).
+    const count = list.attr("count") as { type: string; value: number };
+    expect(count.type).toBe("NumericLiteral");
+    expect(count.value).toBe(5);
+
+    const arrow = list.callback as unknown as {
+      params: { type: string; name: string }[];
+      body: {
+        type: string;
+        body: [
+          {
+            type: string;
+            declarations: [{ id: { type: string; name: string } }];
+          },
+          { type: string },
+        ];
+      };
+    };
+    expect(arrow.params).toHaveLength(1);
+    expect(arrow.params[0]?.name).toBe("mxIndex");
+    expect(arrow.body.type).toBe("BlockStatement");
+    const [decl, ret] = arrow.body.body;
+    expect(decl.type).toBe("VariableDeclaration");
+    expect(decl.declarations[0]?.id.name).toBe("i");
+    expect(ret.type).toBe("ReturnStatement");
+  });
+
+  it("keeps the count as an arithmetic expression when a bound is dynamic", () => {
+    const list = listAttrs(
+      `const el = <for|i| from=0 to=n() step=2><li>x</li></for>;`,
+    );
+    const count = list.attr("count") as { type: string };
+    expect(count.type).toBe("CallExpression"); // Math.max(0, ...)
+  });
+
+  it("uses the exclusive bound (ceil) for until= with step=", () => {
+    const list = listAttrs(
+      `const el = <for|i| from=0 until=10 step=3><li>x</li></for>;`,
+    );
+    // Math.max(0, Math.ceil((10 - 0) / 3)) = 4 (0,3,6,9).
+    expect(list.attr("count")?.value).toBe(4);
+  });
+
+  it("supports a negative step counting down", () => {
+    const list = listAttrs(
+      `const el = <for|i| from=10 to=0 step=-2><li>x</li></for>;`,
+    );
+    // Math.floor((0 - 10) / -2) + 1 = 6 (10,8,6,4,2,0).
+    expect(list.attr("count")?.value).toBe(6);
+  });
+
+  it("folds a negative-yielding range to 0 via Math.max", () => {
+    const list = listAttrs(
+      `const el = <for|i| from=0 to=9 step=-1><li>x</li></for>;`,
+    );
+    expect(list.attr("count")?.value).toBe(0);
+  });
+
+  it("picks a hygienic counter name when the body already uses mxIndex", () => {
+    const list = listAttrs(
+      `const el = <for|i| from=0 to=9 step=2><li>\${mxIndex}</li></for>;`,
+    );
+    const arrow = list.callback as unknown as {
+      params: { name: string }[];
+    };
+    expect(arrow.params[0]?.name).toBe("mxIndex2");
+  });
+
+  it("without step=, output is unchanged: no Repeat callback body block", () => {
+    const list = listAttrs(`const el = <for|i| from=1 to=5><li>x</li></for>;`);
+    const arrow = list.callback as unknown as {
+      body: { type: string };
+    };
+    expect(arrow.body.type).not.toBe("BlockStatement");
   });
 
   it("rejects both to= and until= together instead of silently dropping until=", () => {
