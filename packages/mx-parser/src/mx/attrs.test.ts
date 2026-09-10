@@ -87,11 +87,28 @@ describe("class shorthand", () => {
     );
   });
 
-  it("is a parse error combined with an object-literal class", () => {
-    expectSyntaxError(
-      () => parseMx(`const el = <div.card class={a: on()}>y</div>;`),
-      "combined with `.class` shorthand",
-    );
+  it("merges shorthand with an object class into the array form", () => {
+    // Solid 2's `class` accepts a recursive array, so shorthand plus an
+    // object is a merge rather than the conflict it was against 1.x's
+    // separate `classList` prop.
+    const attrs = attrsOf(`const el = <div.card.big class={a: on()}>y</div>;`);
+    expect(attrs).toHaveLength(1);
+    const attr = attrs[0] as {
+      name: { name: string };
+      value: {
+        expression: {
+          type: string;
+          elements: [{ type: string; value: string }, { type: string }];
+        };
+      };
+    };
+    expect(attr.name.name).toBe("class");
+    expect(attr.value.expression.type).toBe("ArrayExpression");
+    // Shorthand first: later array entries win, so the object must be able to
+    // toggle a class the shorthand set.
+    expect(attr.value.expression.elements[0].type).toBe("StringLiteral");
+    expect(attr.value.expression.elements[0].value).toBe("card big");
+    expect(attr.value.expression.elements[1].type).toBe("ObjectExpression");
   });
 });
 
@@ -116,8 +133,8 @@ describe("id shorthand", () => {
   });
 });
 
-describe("class={} object routes to classList", () => {
-  it("lowers an object-literal class value to classList", () => {
+describe("class={} object stays on class (no classList in Solid 2)", () => {
+  it("keeps an object-literal class value on `class`", () => {
     const attrs = attrsOf(`const el = <div class={a: on(), b: true}>x</div>;`);
     expect(attrs).toHaveLength(1);
     const attr = attrs[0] as {
@@ -127,13 +144,26 @@ describe("class={} object routes to classList", () => {
         expression: { type: string; properties: unknown[] };
       };
     };
-    expect(attr.name.name).toBe("classList");
+    // Solid 2 removed `classList`: one `class` prop takes a string, an object,
+    // or a recursive array of either.
+    expect(attr.name.name).toBe("class");
     expect(attr.value.type).toBe("JSXExpressionContainer");
     expect(attr.value.expression.type).toBe("ObjectExpression");
     expect(attr.value.expression.properties).toHaveLength(2);
   });
 
-  it("keeps class=someObj as class={someObj}, not classList", () => {
+  it("never emits a classList attribute", () => {
+    for (const source of [
+      `const el = <div class={a: on()}>x</div>;`,
+      `const el = <div.card class={a: on()}>x</div>;`,
+      `const el = <div class=someObj>x</div>;`,
+    ]) {
+      const attrs = attrsOf(source) as { name: { name: string } }[];
+      expect(attrs.map((a) => a.name.name)).not.toContain("classList");
+    }
+  });
+
+  it("keeps class=someObj as class={someObj}", () => {
     const attrs = attrsOf(`const el = <div class=someObj>x</div>;`);
     expect(attrs).toHaveLength(1);
     const attr = attrs[0] as {
@@ -168,25 +198,8 @@ describe("style={} object container", () => {
 });
 
 describe("namespaced attributes", () => {
-  for (const ns of ["on", "oncapture", "prop", "attr", "bool", "use"]) {
-    it(`lowers \`${ns}:name=fn\` to a JSXNamespacedName`, () => {
-      const attrs = attrsOf(`const el = <div ${ns}:name=fn>x</div>;`);
-      expect(attrs).toHaveLength(1);
-      const attr = attrs[0] as {
-        name: {
-          type: string;
-          namespace: { name: string };
-          name: { name: string };
-        };
-      };
-      expect(attr.name.type).toBe("JSXNamespacedName");
-      expect(attr.name.namespace.name).toBe(ns);
-      expect(attr.name.name.name).toBe("name");
-    });
-  }
-
-  it("lowers the attr-method form on a namespaced name to a block-body arrow", () => {
-    const attrs = attrsOf(`const el = <div on:scroll(e) { go(e) }>x</div>;`);
+  it("passes `prop:` through as a JSXNamespacedName (the one surviving namespace)", () => {
+    const attrs = attrsOf(`const el = <div prop:value=v>x</div>;`);
     expect(attrs).toHaveLength(1);
     const attr = attrs[0] as {
       name: {
@@ -194,15 +207,59 @@ describe("namespaced attributes", () => {
         namespace: { name: string };
         name: { name: string };
       };
+    };
+    expect(attr.name.type).toBe("JSXNamespacedName");
+    expect(attr.name.namespace.name).toBe("prop");
+    expect(attr.name.name.name).toBe("value");
+  });
+
+  it("passes the `prop:` attr-method form through as a block-body arrow", () => {
+    const attrs = attrsOf(`const el = <div prop:onx(e) { go(e) }>x</div>;`);
+    expect(attrs).toHaveLength(1);
+    const attr = attrs[0] as {
+      name: { type: string; namespace: { name: string } };
       value: {
         expression: { type: string; params: unknown[]; body: { type: string } };
       };
     };
     expect(attr.name.type).toBe("JSXNamespacedName");
-    expect(attr.name.namespace.name).toBe("on");
+    expect(attr.name.namespace.name).toBe("prop");
     expect(attr.value.expression.type).toBe("ArrowFunctionExpression");
-    expect(attr.value.expression.params).toHaveLength(1);
     expect(attr.value.expression.body.type).toBe("BlockStatement");
+  });
+
+  // Solid 2 removed these namespaces outright — they are absent from
+  // `@solidjs/web`'s `jsx.d.ts`, so passing them through would emit props the
+  // compiler ignores. Each parse error names the replacement (decision 10).
+  const removed: [string, string][] = [
+    ["on:scroll=fn", "onX=fn"],
+    ["oncapture:click=fn", "capture: true"],
+    ["attr:title=t", "use the plain attribute"],
+    ["bool:open=o", "use the plain attribute"],
+    ["use:tooltip=opts", "ref=foo(opts)"],
+  ];
+
+  for (const [attr, hint] of removed) {
+    it(`rejects \`${attr}\` with its fix-it hint`, () => {
+      expectSyntaxError(
+        () => parseMx(`const el = <div ${attr}>x</div>;`),
+        hint,
+      );
+    });
+
+    it(`rejects \`${attr}\` naming the removal`, () => {
+      expectSyntaxError(
+        () => parseMx(`const el = <div ${attr}>x</div>;`),
+        "removed in Solid 2",
+      );
+    });
+  }
+
+  it("rejects the removed namespaces in attr-method form too", () => {
+    expectSyntaxError(
+      () => parseMx(`const el = <div on:scroll(e) { go(e) }>x</div>;`),
+      "removed in Solid 2",
+    );
   });
 });
 

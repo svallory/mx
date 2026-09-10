@@ -20,11 +20,29 @@ export interface AttrsContext {
 }
 
 /**
- * Splits `on:scroll` into a `JSXNamespacedName`'s namespace/name parts.
+ * Namespaces Solid 2 removed, with the fix-it each one's replacement needs.
+ *
+ * `prop:` is deliberately absent: it is the one namespace that survives, so
+ * it still passes through as a `JSXNamespacedName`. The rest have no target
+ * in 2.0's JSX types at all — keeping them as pass-through syntax would emit
+ * props the compiler silently ignores, so MX rejects them at parse time with
+ * the replacement spelled out (decision 10).
+ */
+const REMOVED_NAMESPACES: Record<string, string> = {
+  on: "`on:x=fn` was removed in Solid 2; use `onX=fn` for a delegated event, or a `ref` callback calling `addEventListener` for listener options",
+  oncapture:
+    "`oncapture:x=fn` was removed in Solid 2; use a `ref` callback calling `addEventListener(..., { capture: true })`",
+  attr: "`attr:x=v` was removed in Solid 2; use the plain attribute `x=v`",
+  bool: "`bool:x=v` was removed in Solid 2; use the plain attribute `x=v`",
+  use: "`use:foo=opts` was removed in Solid 2; use `ref=foo(opts)` (a directive is now a function returning a ref callback)",
+};
+
+/**
+ * Splits `prop:value` into a `JSXNamespacedName`'s namespace/name parts.
  *
  * Rejects a degenerate split: an empty namespace (`:foo`), an empty local
- * name (`on:`), or a local name that itself contains a colon (`a:b:c`, which
- * would otherwise silently become namespace `a`, local `b:c`).
+ * name (`prop:`), or a local name that itself contains a colon (`a:b:c`,
+ * which would otherwise silently become namespace `a`, local `b:c`).
  */
 function namespacedName(
   ctx: AttrsContext,
@@ -37,6 +55,8 @@ function namespacedName(
   if (namespace === "" || local === "" || local.includes(":")) {
     ctx.fail(`malformed namespaced attribute \`${name}\``, nameRange);
   }
+  const removed = REMOVED_NAMESPACES[namespace];
+  if (removed) ctx.fail(removed, nameRange);
   const namespaceRange: MxRange = {
     start: nameRange.start,
     end: nameRange.start + namespace.length,
@@ -91,15 +111,17 @@ function exprAttr(
 /**
  * `class={a: on(), b: true}` / `class=someObj` / `style={color: c()}`.
  *
- * Detection is syntactic: an `ObjectExpression` value routes `class` to
- * `classList`; any other expression keeps `class`. `style` always gets the
- * double-brace container regardless of expression shape (Solid accepts a
- * plain object style with no rename).
+ * Detection is syntactic. Solid 2 removed `classList`: one `class` prop takes
+ * a string, a `Record<string, boolean>`, or a recursive array of either, so an
+ * `ObjectExpression` value stays on `class` instead of being renamed. `style`
+ * always gets the double-brace container regardless of expression shape
+ * (Solid accepts a plain object style with no rename).
  */
 function lowerClassOrStyle(
   ctx: AttrsContext,
   attr: Extract<MxAttr, { kind: "dynamic" }>,
   hasShorthandClass: boolean,
+  shorthandClassValue: string | null,
 ): Node {
   const expression = ctx.subParse(attr.value, "attribute value");
 
@@ -125,12 +147,6 @@ function lowerClassOrStyle(
 
   // attr.name === "class"
   if (expression.type === "ObjectExpression") {
-    if (hasShorthandClass) {
-      ctx.fail(
-        "`class={...}` object combined with `.class` shorthand",
-        attr.value,
-      );
-    }
     const wrapper = ctx.at(
       { type: "ObjectExpression", properties: [] },
       attr.value,
@@ -138,7 +154,36 @@ function lowerClassOrStyle(
     (wrapper as Node & { properties: unknown }).properties = (
       expression as unknown as { properties: unknown }
     ).properties;
-    return exprAttr(ctx, "classList", attr.nameRange, wrapper, attr.value, {
+
+    // Shorthand plus an object is no longer a conflict: `class` accepts an
+    // array, so `<div.a.b class={c: on()}>` merges into `class={["a b",
+    // {c: on()}]}` — the string entry is always-on, the object toggles.
+    // Order matters (shorthand first) because later array entries win.
+    const value: Node =
+      hasShorthandClass && shorthandClassValue !== null
+        ? ctx.at(
+            {
+              type: "ArrayExpression",
+              elements: [
+                ctx.at(
+                  {
+                    type: "StringLiteral",
+                    value: shorthandClassValue,
+                    extra: {
+                      raw: `"${shorthandClassValue}"`,
+                      rawValue: shorthandClassValue,
+                    },
+                  },
+                  attr.value,
+                ),
+                wrapper,
+              ],
+            },
+            attr.value,
+          )
+        : wrapper;
+
+    return exprAttr(ctx, "class", attr.nameRange, value, attr.value, {
       start: attr.nameRange.start,
       end: attr.value.end,
     });
@@ -178,9 +223,10 @@ export function lowerDynamicAttr(
   ctx: AttrsContext,
   attr: Extract<MxAttr, { kind: "dynamic" }>,
   hasShorthandClass: boolean,
+  shorthandClassValue: string | null = null,
 ): Node {
   if (attr.name === "class" || attr.name === "style") {
-    return lowerClassOrStyle(ctx, attr, hasShorthandClass);
+    return lowerClassOrStyle(ctx, attr, hasShorthandClass, shorthandClassValue);
   }
   if (attr.name === "ref") {
     return lowerRef(ctx, attr);
@@ -233,15 +279,19 @@ function quoteFor(ctx: AttrsContext, value: string, range: MxRange): '"' | "'" {
  * should still be able to override it. With no explicit class to merge, the
  * shorthand's own range is the only position available.
  */
+export function shorthandClassText(ctx: AttrsContext, el: MxElement): string {
+  // Each range covers the leading `.`, e.g. `.card`; strip it for the value.
+  return el.shorthandClasses
+    .map((r) => ctx.source.slice(r.start + 1, r.end))
+    .join(" ");
+}
+
 export function lowerShorthandClass(
   ctx: AttrsContext,
   el: MxElement,
   explicitStaticClass: Extract<MxAttr, { kind: "static" }> | null,
 ): Node {
-  // Each range covers the leading `.`, e.g. `.card`; strip it for the value.
-  const shorthand = el.shorthandClasses
-    .map((r) => ctx.source.slice(r.start + 1, r.end))
-    .join(" ");
+  const shorthand = shorthandClassText(ctx, el);
   const shorthandRange = el.shorthandClasses[0] as MxRange;
 
   let value = shorthand;
