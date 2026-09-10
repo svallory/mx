@@ -50,8 +50,9 @@ All dependencies below are pinned to an exact version (no `^`/`~`) at the root `
 | `marko` | 6.3.51 |
 | `@marko/compiler` | 5.42.5 |
 | `@marko/runtime-tags` | 6.3.51 |
+| `parse5` | 7.3.0 |
 
-`marko`/`@marko/compiler`/`@marko/runtime-tags` are pinned in `packages/oracle/package.json`, not the root — they are only a dev dependency of the `oracle:marko` parity check (decision 51), not of the language itself. `@marko/compiler`'s own version numbering is decoupled from the Marko language version; 5.42.5 is the compiler release that ships Marko 6's translator (`marko/translator`) and is what `marko@6.3.51` itself depends on.
+`marko`/`@marko/compiler`/`@marko/runtime-tags`/`parse5` are pinned in `packages/oracle/package.json`, not the root — they are only a dev dependency of the `oracle:marko` parity check (decision 51), not of the language itself. `@marko/compiler`'s own version numbering is decoupled from the Marko language version; 5.42.5 is the compiler release that ships Marko 6's translator (`marko/translator`) and is what `marko@6.3.51` itself depends on. `parse5` is `oracle:marko`'s HTML parser for semantic (decoded-content) comparison rather than raw-string comparison, pinned to the version already resolved transitively through `@solidjs/babel-plugin`'s own dependency on it.
 
 The last four entries are build-only dependencies of `packages/mx-parser`'s
 vendored `@babel/parser` source (`@babel/parser`'s own runtime deps, which
