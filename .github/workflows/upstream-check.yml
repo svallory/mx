@@ -5,13 +5,40 @@ on:
     # Every Monday at 09:00 UTC.
     - cron: "0 9 * * 1"
   workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "packages/zed-extension/**"
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
+  vendored-files-match:
+    # Regenerates languages/mx/*.scm from the pinned revs (no live upstream
+    # HEAD lookup — just what vendor.sh's normal mode already does) and
+    # diffs against what's committed. Catches a hand-edit of those files,
+    # which UPSTREAM.md says never to do, without depending on network
+    # drift state (that's the separate `check` job below, cron/dispatch only).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/zed-extension
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/vendor.sh
+      - run: |
+          if ! git diff --exit-code -- languages/mx; then
+            echo "languages/mx/*.scm doesn't match what vendor.sh generates from the pinned revs." >&2
+            echo "Never hand-edit those files — edit overlay/mx/*.scm or add a patches/*.patch and rerun vendor.sh." >&2
+            exit 1
+          fi
+
   check:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,11 +49,22 @@ jobs:
       - name: Check for upstream drift
         id: check
         run: |
-          if ./scripts/vendor.sh --check; then
+          set +e
+          ./scripts/vendor.sh --check
+          rc=$?
+          set -e
+          if [[ "$rc" -eq 0 ]]; then
             echo "drift=false" >> "$GITHUB_OUTPUT"
-          else
+          elif [[ "$rc" -eq 1 ]]; then
             echo "drift=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "vendor.sh --check failed (exit $rc) — not a drift result, see logs above." >&2
+            exit 1
           fi
+
+      - name: Update pins to upstream HEAD
+        if: steps.check.outputs.drift == 'true'
+        run: ./scripts/vendor.sh --update-pins
 
       - name: Regenerate vendored queries
         if: steps.check.outputs.drift == 'true'
@@ -40,13 +78,14 @@ jobs:
           title: "chore(zed-extension): upstream drift detected"
           body: |
             `scripts/vendor.sh --check` found the pinned `marko-js/tree-sitter` and/or
-            `marko-js/zed` revs are behind their upstream HEAD. This PR updates
-            `languages/mx/*.scm` from the new pins — review the diff before merging,
-            and bump the `TS_REV`/`ZED_REV` pins (and `extension.toml`'s
-            `[grammars.marko]` rev, if the grammar moved) in
-            `packages/zed-extension/scripts/vendor.sh` to match.
+            `marko-js/zed` revs are behind their upstream HEAD. `scripts/vendor.sh
+            --update-pins` bumped `TS_REV`/`ZED_REV` to current upstream HEAD and
+            `scripts/vendor.sh` regenerated `languages/mx/*.scm` from the new pins —
+            review the diff before merging. If the grammar rev moved, also bump
+            `extension.toml`'s `[grammars.marko]` rev to match `TS_REV` before merging.
 
             See `packages/zed-extension/UPSTREAM.md` "Bump procedure".
           branch: chore/zed-extension-upstream-bump
           add-paths: |
+            packages/zed-extension/scripts/vendor.sh
             packages/zed-extension/languages/mx/*.scm

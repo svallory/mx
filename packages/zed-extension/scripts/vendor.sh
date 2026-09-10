@@ -16,9 +16,17 @@
 # happen here, at build time, instead.
 #
 # Usage:
-#   scripts/vendor.sh            # (re)generate languages/mx/*.scm from the pins below
-#   scripts/vendor.sh --check    # compare pinned shas against upstream HEAD; exit
-#                                 # non-zero on drift; changes nothing on disk
+#   scripts/vendor.sh              # (re)generate languages/mx/*.scm from the pins below
+#   scripts/vendor.sh --check      # compare pinned shas against upstream HEAD; exit
+#                                   #   0 = clean, 1 = drift found, 2 = the check
+#                                   #   itself failed (network, DNS, rate limit);
+#                                   #   changes nothing on disk in any case
+#   scripts/vendor.sh --update-pins  # rewrite this script's own TS_REV/ZED_REV to
+#                                     # current upstream HEAD (used by the weekly CI
+#                                     # job right after --check finds drift, so the
+#                                     # regenerate step that follows actually picks
+#                                     # up the new revs instead of re-fetching the
+#                                     # same stale ones); changes only this file
 #
 # Never hand-edit languages/mx/*.scm — edit overlay/mx/*.scm or add a patch
 # instead, then rerun this script.
@@ -37,10 +45,11 @@ TS_REV="7fb20382b9b0c97c8bdbceee0e0641bea11dd00f"
 ZED_REPO="https://github.com/marko-js/zed.git"
 ZED_REV="dd854edec1fab86d23eb24af9691505dfe3856a6"
 
-CHECK=0
-if [[ "${1:-}" == "--check" ]]; then
-  CHECK=1
-fi
+MODE="generate"
+case "${1:-}" in
+  --check) MODE="check" ;;
+  --update-pins) MODE="update-pins" ;;
+esac
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -60,15 +69,31 @@ clone_at() {
 
 remote_head() {
   # remote_head <repo-url> [branch] -- prints the sha at the tip of <branch>
-  # (default HEAD, i.e. the repo's default branch)
+  # (default HEAD, i.e. the repo's default branch). Exits non-zero (via
+  # set -e, since there's no || true here) on network/DNS/auth failure —
+  # callers must not fold that into "drift", it's a different failure mode.
   local repo="$1" branch="${2:-HEAD}"
   git ls-remote "$repo" "$branch" | cut -f1
 }
 
-if [[ "$CHECK" -eq 1 ]]; then
+if [[ "$MODE" == "check" ]]; then
   echo "Checking upstream drift..."
+
+  # remote_head can fail for reasons unrelated to drift (network, DNS, rate
+  # limit) — that must exit 2, distinct from drift's exit 1, so a caller
+  # (e.g. the weekly workflow) can tell "the check itself is broken" apart
+  # from "the check ran and found drift" instead of treating both as drift.
+  set +e
   TS_HEAD="$(remote_head "$TS_REPO")"
+  TS_RC=$?
   ZED_HEAD="$(remote_head "$ZED_REPO")"
+  ZED_RC=$?
+  set -e
+
+  if [[ "$TS_RC" -ne 0 || "$ZED_RC" -ne 0 || -z "$TS_HEAD" || -z "$ZED_HEAD" ]]; then
+    echo "Failed to resolve upstream HEAD (network/DNS/rate-limit?) — not a drift result." >&2
+    exit 2
+  fi
 
   DRIFT=0
   if [[ "$TS_HEAD" != "$TS_REV" ]]; then
@@ -89,6 +114,26 @@ if [[ "$CHECK" -eq 1 ]]; then
     exit 1
   fi
   echo "No drift."
+  exit 0
+fi
+
+if [[ "$MODE" == "update-pins" ]]; then
+  echo "Resolving upstream HEAD..."
+  TS_HEAD="$(remote_head "$TS_REPO")"
+  ZED_HEAD="$(remote_head "$ZED_REPO")"
+
+  echo "  marko-js/tree-sitter: $TS_REV -> $TS_HEAD"
+  echo "  marko-js/zed: $ZED_REV -> $ZED_HEAD"
+
+  SELF="${BASH_SOURCE[0]}"
+  sed -i.bak \
+    -e "s|^TS_REV=\".*\"|TS_REV=\"$TS_HEAD\"|" \
+    -e "s|^ZED_REV=\".*\"|ZED_REV=\"$ZED_HEAD\"|" \
+    "$SELF"
+  rm -f "$SELF.bak"
+
+  echo "Updated TS_REV/ZED_REV in $(basename "$SELF")."
+  echo "Remember to also update extension.toml's [grammars.marko] rev if the grammar moved, and UPSTREAM.md's pin table."
   exit 0
 fi
 

@@ -60,6 +60,11 @@ for dir in "$FIXTURES_DIR"/*/; do
   fi
 done
 
+if [[ "$TOTAL" -eq 0 ]]; then
+  echo "no fixtures found under $FIXTURES_DIR" >&2
+  exit 1
+fi
+
 echo
 echo "Parsed $TOTAL fixtures: $CLEAN clean, ${#ERROR_LIST[@]} with ERROR/MISSING nodes, ${#CRASH_LIST[@]} failed to invoke."
 
