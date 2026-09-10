@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_ROOT="$(cd "$PKG_DIR/../.." && pwd)"
-FIXTURES_DIR="$REPO_ROOT/packages/mx-html/fixtures-mx"
+FIXTURES_DIR="${FIXTURES_DIR:-"$REPO_ROOT/packages/mx-html/fixtures-mx"}"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -33,7 +33,8 @@ cd "$TMP_DIR"
 
 TOTAL=0
 CLEAN=0
-FAILED_LIST=()
+ERROR_LIST=()
+CRASH_LIST=()
 
 for dir in "$FIXTURES_DIR"/*/; do
   name="$(basename "$dir")"
@@ -41,19 +42,41 @@ for dir in "$FIXTURES_DIR"/*/; do
   [[ -f "$input" ]] || continue
   TOTAL=$((TOTAL + 1))
 
-  OUT="$(bunx --package tree-sitter-cli@0.26.9 tree-sitter parse "$input" 2>&1 || true)"
-  if echo "$OUT" | grep -qE '\(ERROR|MISSING'; then
-    FAILED_LIST+=("$name")
+  set +e
+  OUT="$(bunx --package tree-sitter-cli@0.26.9 tree-sitter parse "$input" 2>&1)"
+  RC=$?
+  set -e
+
+  # tree-sitter parse itself exits non-zero both when the tree contains an
+  # ERROR/MISSING node AND when the invocation fails outright (bad grammar,
+  # bad args, etc). Distinguish the two by inspecting the output: an ERROR
+  # or MISSING node print means it did parse, just not cleanly.
+  if [[ "$RC" -ne 0 ]] && echo "$OUT" | grep -qE '\(ERROR|MISSING'; then
+    ERROR_LIST+=("$name")
+  elif [[ "$RC" -ne 0 ]]; then
+    CRASH_LIST+=("$name")
   else
     CLEAN=$((CLEAN + 1))
   fi
 done
 
 echo
-echo "Parsed $TOTAL fixtures: $CLEAN clean, $((TOTAL - CLEAN)) with ERROR/MISSING nodes."
-if [[ "${#FAILED_LIST[@]}" -gt 0 ]]; then
+echo "Parsed $TOTAL fixtures: $CLEAN clean, ${#ERROR_LIST[@]} with ERROR/MISSING nodes, ${#CRASH_LIST[@]} failed to invoke."
+
+if [[ "${#ERROR_LIST[@]}" -gt 0 ]]; then
   echo "Fixtures with ERROR/MISSING nodes (upstream Marko grammar gaps, not MX bugs):"
-  for f in "${FAILED_LIST[@]}"; do
+  for f in "${ERROR_LIST[@]}"; do
     echo "  - $f"
   done
+fi
+
+if [[ "${#CRASH_LIST[@]}" -gt 0 ]]; then
+  echo "Fixtures where tree-sitter parse itself failed to run (not a grammar gap — a real invocation problem):"
+  for f in "${CRASH_LIST[@]}"; do
+    echo "  - $f"
+  done
+fi
+
+if [[ "${#ERROR_LIST[@]}" -gt 0 || "${#CRASH_LIST[@]}" -gt 0 ]]; then
+  exit 1
 fi
