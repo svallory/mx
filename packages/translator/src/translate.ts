@@ -217,7 +217,14 @@ function emitComponent(ctx: Ctx, node: Node, name: string): void {
         node,
       );
     }
-    const args = defineParams.map((param) => props.get(param) ?? "undefined");
+    // `<Row(input.a)/>` — Marko's tag-argument form, and the ordinary way to
+    // call a `<define>` that declares params. The arguments are positional and
+    // already parsed, so they pass straight through. Falling back to the
+    // named-prop lookup keeps `<Row it=x/>` working for the same define.
+    const args =
+      node.arguments && node.arguments.length > 0
+        ? node.arguments.map((argument: Node) => expr(ctx, argument))
+        : defineParams.map((param) => props.get(param) ?? "undefined");
     push(ctx, `out += ${name}(${args.join(", ")});`);
     return;
   }

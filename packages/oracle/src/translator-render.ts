@@ -26,7 +26,9 @@ export function renderTranslator(
   const names: string[] = [];
   const fns: Array<(props: Record<string, unknown>) => string> = [];
 
-  const importRe = /^import\s+(\w+)\s+from\s+"(\.[^"]+\.marko)"$/gm;
+  // A stock Marko author may or may not end the statement with a semicolon,
+  // and the emitted module reproduces whichever they wrote.
+  const importRe = /^import\s+(\w+)\s+from\s+"(\.[^"]+\.marko)";?$/gm;
   for (const match of code.matchAll(importRe)) {
     const [, name, relative] = match as unknown as [string, string, string];
     const componentPath = join(dir, relative);
