@@ -46,6 +46,12 @@ Parse errors in this area, with their messages:
 | `<@name>` inside `<if>`/`<else>`/`<for>`/`<fragment>` | ``attribute tag `<@name>` inside `<if>` `` (etc.) |
 | an attribute tag other than `<@catch>`/`<@placeholder>` inside `<try>` | ``attribute tag `<@name>` inside `<try>` `` |
 
+A **spread is not a collision**: `<Layout ...props><@id>x</@id></Layout>`
+lowers without complaint. The collision check reads the parent's attributes by
+name, and a spread's keys are not known until runtime, so rejecting on one
+would make a legal pattern unusable. This matches JSX, where
+`<Layout {...props} id="x" />` is legal and the last writer wins.
+
 Marko's repeatable attribute tags (which collect into an array prop) are out
 of scope for v1, which is why the duplicate case is an error rather than a
 merge.
