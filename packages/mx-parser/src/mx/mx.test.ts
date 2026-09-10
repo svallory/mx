@@ -161,8 +161,6 @@ describe("MX element parsing", () => {
 
 describe("unsupported constructs raise a clear error", () => {
   const cases: [string, string, string][] = [
-    ["<if>", `const el = <if=cond()>x</if>;`, "`<if>`"],
-    ["<for>", `const el = <for|a| of=xs()>x</for>;`, "`<for>`"],
     [
       "attribute tag",
       `const el = <L><@header>x</@header></L>;`,

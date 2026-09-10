@@ -9,6 +9,12 @@ import {
   lowerSpreadAttr,
   attrNameNode as sharedAttrNameNode,
 } from "./attrs.ts";
+import {
+  lowerFor,
+  lowerFragment,
+  lowerIfChain,
+  lowerStandaloneIf,
+} from "./control.ts";
 import type {
   MxAttr,
   MxChild,
@@ -42,9 +48,9 @@ export interface LowerContext {
 }
 
 /** Any Babel node; the vendored parser's internal node types are structural. */
-type Node = Record<string, unknown>;
+export type Node = Record<string, unknown>;
 
-function fail(construct: string, range: MxRange): never {
+export function fail(construct: string, range: MxRange): never {
   throw new LowerError({
     construct,
     start: range.start,
@@ -53,7 +59,7 @@ function fail(construct: string, range: MxRange): never {
 }
 
 /** Line/column of an absolute offset, for the sub-parser's start options. */
-function positionOf(source: string, offset: number): [number, number] {
+export function positionOf(source: string, offset: number): [number, number] {
   let line = 1;
   let lineStart = 0;
   for (let i = 0; i < offset; i++) {
@@ -80,7 +86,11 @@ function positionOf(source: string, offset: number): [number, number] {
  * non-SyntaxError — which would mean the range itself was nonsense rather than
  * the code in it — becomes an "unsupported construct" report.
  */
-function subParse(ctx: LowerContext, range: MxRange, what: string): Expression {
+export function subParse(
+  ctx: LowerContext,
+  range: MxRange,
+  what: string,
+): Expression {
   const text = ctx.source.slice(range.start, range.end);
   const [line, column] = positionOf(ctx.source, range.start);
   try {
@@ -106,7 +116,7 @@ function loc(source: string, range: MxRange) {
 }
 
 /** Stamps position fields onto a synthesised node. */
-function at<T extends Node>(node: T, source: string, range: MxRange): T {
+export function at<T extends Node>(node: T, source: string, range: MxRange): T {
   const positioned = node as Node;
   positioned.start = range.start;
   positioned.end = range.end;
@@ -115,7 +125,11 @@ function at<T extends Node>(node: T, source: string, range: MxRange): T {
   return node;
 }
 
-function jsxIdentifier(ctx: LowerContext, name: string, range: MxRange): Node {
+export function jsxIdentifier(
+  ctx: LowerContext,
+  name: string,
+  range: MxRange,
+): Node {
   return at({ type: "JSXIdentifier", name }, ctx.source, range);
 }
 
@@ -353,7 +367,7 @@ function soleRawPlaceholder(
   return found;
 }
 
-function lowerChildren(ctx: LowerContext, children: MxChild[]): Node[] {
+export function lowerChildren(ctx: LowerContext, children: MxChild[]): Node[] {
   const out: Node[] = [];
   // Comments are dropped from the output, so they do not count as content when
   // deciding whether a text run touches a tag boundary: the whitespace around
@@ -369,66 +383,95 @@ function lowerChildren(ctx: LowerContext, children: MxChild[]): Node[] {
     }
   }
 
-  children.forEach((child, index) => {
-    switch (child.kind) {
-      case "text": {
-        const raw = ctx.source.slice(child.range.start, child.range.end);
-        const text = normalizeText(
-          raw,
-          index === firstContent,
-          index === lastContent,
-        );
-        if (text === null) return;
-        out.push(
-          at(
-            {
-              type: "JSXText",
-              value: text,
-              extra: { raw: text, rawValue: text },
-            },
-            ctx.source,
-            child.range,
-          ),
-        );
-        return;
-      }
-
-      case "placeholder": {
-        if (!child.escape) {
-          // The sole-child case (`innerHTML`) is handled in `lowerElement`
-          // before children are lowered; reaching here means `$!{}` was mixed
-          // with other children.
-          fail("raw placeholder must be the only child", child.range);
-        }
-        const expression = subParse(ctx, child.value, "placeholder");
-        out.push(
-          at(
-            { type: "JSXExpressionContainer", expression },
-            ctx.source,
-            child.range,
-          ),
-        );
-        return;
-      }
-
-      case "element":
-        out.push(lowerElement(ctx, child.element));
-        return;
-
-      case "comment":
-        return;
+  let index = 0;
+  while (index < children.length) {
+    const child = children[index] as MxChild;
+    if (child.kind === "element" && child.element.staticName === "if") {
+      const { node, nextIndex } = lowerIfChain(ctx, children, index);
+      out.push(node);
+      index = nextIndex;
+      continue;
     }
-  });
+    if (child.kind === "element" && child.element.staticName === "else") {
+      fail(
+        attrByNameForError(child.element)
+          ? "`<else if>` without a preceding `<if>`"
+          : "`<else>` without a preceding `<if>`",
+        child.element.name,
+      );
+    }
+    lowerChildAt(ctx, children, index, out, firstContent, lastContent);
+    index++;
+  }
   return out;
+}
+
+function attrByNameForError(el: MxElement): boolean {
+  return el.attrs.some((a) => "name" in a && a.name === "if");
+}
+
+function lowerChildAt(
+  ctx: LowerContext,
+  children: MxChild[],
+  index: number,
+  out: Node[],
+  firstContent: number,
+  lastContent: number,
+): void {
+  const child = children[index] as MxChild;
+  switch (child.kind) {
+    case "text": {
+      const raw = ctx.source.slice(child.range.start, child.range.end);
+      const text = normalizeText(
+        raw,
+        index === firstContent,
+        index === lastContent,
+      );
+      if (text === null) return;
+      out.push(
+        at(
+          {
+            type: "JSXText",
+            value: text,
+            extra: { raw: text, rawValue: text },
+          },
+          ctx.source,
+          child.range,
+        ),
+      );
+      return;
+    }
+
+    case "placeholder": {
+      if (!child.escape) {
+        // The sole-child case (`innerHTML`) is handled in `lowerElement`
+        // before children are lowered; reaching here means `$!{}` was mixed
+        // with other children.
+        fail("raw placeholder must be the only child", child.range);
+      }
+      const expression = subParse(ctx, child.value, "placeholder");
+      out.push(
+        at(
+          { type: "JSXExpressionContainer", expression },
+          ctx.source,
+          child.range,
+        ),
+      );
+      return;
+    }
+
+    case "element":
+      out.push(lowerElement(ctx, child.element));
+      return;
+
+    case "comment":
+      return;
+  }
 }
 
 /** Tags whose lowering this task does not cover. */
 const UNSUPPORTED_TAGS: Record<string, string> = {
-  if: "`<if>`",
-  else: "`<else>`",
-  for: "`<for>`",
   try: "`<try>`",
-  fragment: "`<fragment>`",
 };
 
 export function lowerElement(ctx: LowerContext, el: MxElement): Node {
@@ -441,6 +484,16 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
   if (name.startsWith("@")) {
     fail(`attribute tag (\`<${name}>\`)`, el.name);
   }
+
+  if (name === "for") return lowerFor(ctx, el);
+  if (name === "fragment") return lowerFragment(ctx, el);
+  // `lowerChildren` recognises `<if>` among an element's children and consumes
+  // any `<else if>`/`<else>` chain itself; reaching `if` here instead means it
+  // was used as a bare expression with no sibling chain to check, e.g.
+  // `const el = <if=cond>x</if>;`, which still lowers, just without a fallback.
+  if (name === "if") return lowerStandaloneIf(ctx, el);
+  if (name === "else") fail("`<else>` without a preceding `<if>`", el.name);
+
   const unsupported = UNSUPPORTED_TAGS[name];
   if (unsupported) fail(unsupported, el.name);
 
