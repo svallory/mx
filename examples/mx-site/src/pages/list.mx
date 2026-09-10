@@ -20,13 +20,13 @@ export interface Input {
     </ul>
   </else>
 
-  <h2>Identity-keyed loop</h2>
+  <h2>Loop over objects</h2>
   <if=input.tasks.length === 0>
     <p>No tasks yet.</p>
   </if>
   <else>
     <ul>
-      <for|task| of=input.tasks by="id">
+      <for|task| of=input.tasks>
         <li data-id=task.id>${task.label}</li>
       </for>
     </ul>

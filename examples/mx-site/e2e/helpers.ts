@@ -48,6 +48,7 @@ export async function startStaticServer(
       ["run", `--tsconfig-override=${tsconfigOverride}`, "src/build.ts"],
       { cwd: root },
     );
+    build.on("error", reject);
     build.on("exit", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`static build failed with exit code ${code}`));

@@ -24,6 +24,7 @@ const [renderIndex, renderList, renderForm, renderMixins, renderRaw] =
 const routes: Record<string, string> = {
   "index.html": renderIndex({}),
   "list.html": renderList(pageData.list),
+  "list-empty.html": renderList(pageData.listEmpty),
   "form.html": renderForm(pageData.form),
   "mixins.html": renderMixins(pageData.mixins),
   "raw.html": renderRaw(pageData.raw),

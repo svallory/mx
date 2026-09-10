@@ -36,7 +36,9 @@ async function fetchHtml(page: Page, url: string): Promise<string> {
 function describeOrigin(
   label: string,
   getUrl: () => string,
-  route: (name: "index" | "list" | "form" | "mixins" | "raw") => string,
+  route: (
+    name: "index" | "list" | "list-empty" | "form" | "mixins" | "raw",
+  ) => string,
 ) {
   describe(label, () => {
     let page: Page;
@@ -59,13 +61,22 @@ function describeOrigin(
       expect(html).toContain("mx-site");
     });
 
-    it("/list renders index-keyed and identity-keyed loops", async () => {
+    it("/list renders both loops over a non-empty collection", async () => {
       const html = await fetchHtml(page, `${getUrl()}${route("list")}`);
       expect(html).toContain("<li>0: apple</li>");
       expect(html).toContain("<li>1: banana</li>");
       expect(html).toContain("<li>2: cherry</li>");
       expect(html).toContain('<li data-id="t1">Write docs</li>');
       expect(html).toContain('<li data-id="t2">Ship it</li>');
+      expect(html).not.toContain("No fruits yet.");
+      expect(html).not.toContain("No tasks yet.");
+    });
+
+    it("/list-empty takes the <if> empty-state branch, not just <else>", async () => {
+      const html = await fetchHtml(page, `${getUrl()}${route("list-empty")}`);
+      expect(html).toContain("No fruits yet.");
+      expect(html).toContain("No tasks yet.");
+      expect(html).not.toContain("<li>");
     });
 
     it("/form renders static, dynamic, boolean and spread attributes, and escapes user input", async () => {

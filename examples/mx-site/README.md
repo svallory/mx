@@ -10,13 +10,30 @@ the exact same `src/pages/*.mx` templates.
 | route | exercises |
 |---|---|
 | `/` | the shared layout via an attribute-tag named block (`<@header>` pattern), a partial via `import`, `<!doctype html>`, head/meta |
-| `/list` | `<for>` over a collection (index form and identity-keyed `by="id"` form), `<if>`/`<else>` for the empty-state case, `<const>` |
+| `/list` | `<for>` over a collection (index form and a plain-object form), `<if>`/`<else>` for the empty-state case, `<const>` |
 | `/form` | static, dynamic, boolean and spread attributes; escaping of user-supplied `<`, `&`, `"`, `'` |
 | `/mixins` | `<define>` with args called more than once, and a `<define>` taking a block |
 | `/raw` | `$!{}` raw output beside `${}` escaped output on the same data |
 
 Every page is wrapped in `src/pages/layout.mx`, so the layout/partial pattern
 runs on every route, not just `/`.
+
+Every component tag in this app is capitalized (`<Layout>`, `<Callout>`).
+The emitter decides component-vs-HTML-element dispatch by the tag name's
+first character: `A`-`Z` calls it as a component, anything else emits it as a
+literal HTML element — so `<layout ...>` (lowercase) silently renders as an
+unknown custom element instead of calling the imported component, with no
+error. The intended rule, ruled on but not yet implemented, is that a tag
+name matching an in-scope binding (an `import` or a `<define>`) is a
+component call regardless of case; only a name matching neither is an HTML
+element. Until that lands, capitalize every component/define tag you call.
+
+`<for>`'s `by=` attribute (identity/custom keying) is not supported by
+`@markox/html`'s emitter and is silently dropped if written — not just here,
+`/list` does not use it. Keying exists to let a diffing renderer reuse DOM
+nodes across re-renders; standalone MX renders once to a string with no
+reconciliation to key against, so there is nothing for `by=` to do. (A
+parallel change is making this a parse error rather than a silent no-op.)
 
 ## Compiling `.mx` to a runnable module
 
