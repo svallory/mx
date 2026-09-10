@@ -1,0 +1,12 @@
+export interface Input { names: string[] }
+<define/row|name, index|>
+  <li class=("n-" + index)>${name}</li>
+</define>
+<ul>
+  <for|name, i| of=input.names>
+    $!{row(name, i)}
+  </for>
+</ul>
+<ol>
+  $!{row("solo", 0)}
+</ol>
