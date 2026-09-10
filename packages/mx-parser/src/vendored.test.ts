@@ -102,20 +102,21 @@ describe("vendored @babel/parser equivalence", () => {
   }
 });
 
-const distExists = existsSync(distEntry);
+describe("built dist/index.js equivalence", () => {
+  const distExists = existsSync(distEntry);
 
-describe.runIf(distExists)("built dist/index.js equivalence", () => {
-  it("produces an identical AST to node_modules/@babel/parser for every case", async () => {
-    const { parse: parseDist } = await import(distEntry);
+  it.skipIf(!distExists)(
+    distExists
+      ? "produces an identical AST to node_modules/@babel/parser for every case"
+      : "skipped: dist/index.js not found — run `bun run build` in packages/mx-parser first",
+    async () => {
+      const { parse: parseDist } = await import(distEntry);
 
-    for (const { source } of cases) {
-      const distAst = parseDist(source, parserOptions);
-      const npmAst = parseNpm(source, parserOptions);
-      expect(distAst).toEqual(npmAst);
-    }
-  });
-});
-
-describe.skipIf(distExists)("built dist/index.js equivalence", () => {
-  it.skip("skipped: dist/index.js not found — run `bun run build` in packages/mx-parser first", () => {});
+      for (const { source } of cases) {
+        const distAst = parseDist(source, parserOptions);
+        const npmAst = parseNpm(source, parserOptions);
+        expect(distAst).toEqual(npmAst);
+      }
+    },
+  );
 });

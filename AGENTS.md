@@ -12,8 +12,8 @@ Run either via bun directly or through moon:
 bun run typecheck   # or: moon run :typecheck
 bun run test        # or: moon run :test
 bun run lint        # or: moon run :lint
-bun run verify      # or: moon run :verify   -- typecheck, then lint, then test; stops on first failure
-bun run build       # or: moon run mx-parser:build -- builds packages/mx-parser to dist/; not part of verify
+bun run verify      # or: moon run :verify   -- typecheck, then lint, then build, then test; stops on first failure
+bun run build       # or: moon run mx-parser:build -- builds packages/mx-parser to dist/
 ```
 
 moon's root `typecheck`/`test` tasks are thin aggregates (`deps: ["^:typecheck"]` / `["^:test"]`) that fan out to each package's own task; `lint` runs once at the root over the whole tree via biome. `bun run typecheck`/`test` take the other layer — a single shell loop/vitest run at the root — so pick one command style (bun or moon) per invocation rather than mixing them.

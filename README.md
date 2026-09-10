@@ -60,6 +60,6 @@ Runnable via `bun run <name>` or `moon run :<name>`:
 - `typecheck` — `tsc --noEmit` per package
 - `test` — `vitest run`
 - `lint` — `biome check .`
-- `verify` — typecheck, then lint, then test; stops on first failure
-- `build` — builds `packages/mx-parser`'s vendored parser to `dist/index.js`; not part of `verify`
+- `verify` — typecheck, then lint, then build, then test; stops on first failure. Includes `build` so `vendored.test.ts`'s dist-equivalence pass always runs against a fresh `dist/index.js`, not just the pre-build TS source.
+- `build` — builds `packages/mx-parser`'s vendored parser to `dist/index.js`
 - `oracle` — runs only the oracle/golden harness (`packages/oracle`) and prints a fixture/variant/status summary

@@ -10,7 +10,7 @@
     "typecheck": "for d in packages/*/; do (cd \"$d\" && echo \"[typecheck] $d\" && bunx tsc --noEmit) || exit 1; done",
     "test": "vitest run",
     "lint": "biome check .",
-    "verify": "bun run typecheck && bun run lint && bun run test",
+    "verify": "bun run typecheck && bun run lint && bun run build && bun run test",
     "build": "cd packages/mx-parser && bun run build",
     "oracle": "bun run packages/oracle/src/report.ts"
   },
