@@ -1,13 +1,9 @@
+import type { PluginObj, TransformOptions } from "@babel/core";
+import { transformSync } from "@babel/core";
+import generate from "@babel/generator";
+import solidPreset from "babel-preset-solid";
 import { describe, expect, it } from "vitest";
 import { parse } from "../index.ts";
-
-// `@babel/generator` has no pinned `@types/babel__generator` in this repo, so
-// it is brought in untyped rather than adding a new dependency for one test
-// helper; every call site below already casts through `unknown`.
-// biome-ignore lint/suspicious/noExplicitAny: untyped import, see above
-const generate = require("@babel/generator").default as (node: any) => {
-  code: string;
-};
 
 const parseMx = (source: string) => parse(source, "test.solid.mx");
 
@@ -19,6 +15,35 @@ function printFirstExpression(source: string): string {
   };
   const init = stmt.declarations[0].init;
   return generate(init).code;
+}
+
+/**
+ * Compiles a `.solid.mx` source all the way through `babel-preset-solid`, the
+ * same `parserOverride` mechanism `packages/oracle/src/compile.ts` uses. A
+ * lowering bug that produces a structurally-valid-looking but semantically
+ * wrong AST (e.g. a bare `JSXText` where an expression is required) often
+ * only surfaces here — `@babel/generator` prints such nodes without
+ * complaint, but the Solid transform throws or silently miscompiles them.
+ */
+function compilesThroughSolid(source: string): string {
+  const overridePlugin = {
+    name: "mx-control-test-parser-override",
+    parserOverride(code: string) {
+      return parse(code, "test.solid.mx");
+    },
+  } as unknown as PluginObj;
+  const presets: TransformOptions["presets"] = [
+    [solidPreset, { generate: "dom", hydratable: false }],
+  ];
+  const result = transformSync(source, {
+    filename: "test.solid.mx",
+    presets,
+    plugins: [overridePlugin],
+    babelrc: false,
+    configFile: false,
+  });
+  if (!result?.code) throw new Error("Babel produced no output");
+  return result.code;
 }
 
 /** Walks the AST collecting every node of a given type. */
@@ -48,15 +73,19 @@ function parseError(source: string): Error {
 
 describe("if / else if / else", () => {
   it("lowers <if=cond> to <Show when={cond}>", () => {
+    // A lone JSXText child ("A") is not valid in expression position, so a
+    // single-text body wraps in a fragment even though there's only one child.
     const code = printFirstExpression(`const el = <if=cond()>A</if>;`);
-    expect(code).toBe("<Show when={cond()}>A</Show>;".replace(";", ""));
+    expect(code).toBe("<Show when={cond()}><>A</></Show>");
   });
 
   it("lowers if/else to Show with a fallback", () => {
     const code = printFirstExpression(
       `const el = <div><if=cond()>A</if><else>B</else></div>;`,
     );
-    expect(code).toContain("<Show when={cond()} fallback={B}>A</Show>");
+    expect(code).toContain(
+      "<Show when={cond()} fallback={<>B</>}><>A</></Show>",
+    );
   });
 
   it("wraps a multi-child else body in a fragment", () => {
@@ -153,7 +182,50 @@ describe("if / else if / else", () => {
     const code = printFirstExpression(
       `const el = <div><if=cond()>A</if>\n  <else>B</else></div>;`,
     );
-    expect(code).toContain("fallback={B}");
+    expect(code).toContain("fallback={<>B</>}");
+  });
+
+  it("starts the nested Show (single else-if) at the <else if> tag, not the outer <if>", () => {
+    const source = `const el = <div><if=a()>A</if><else if=b()>B</else><else>C</else></div>;`;
+    const file = parseMx(source);
+    const shows = collect(file, "JSXElement") as {
+      openingElement: { name: { name: string } };
+      start: number;
+    }[];
+    const showNodes = shows.filter(
+      (s) => s.openingElement.name.name === "Show",
+    );
+    expect(showNodes).toHaveLength(2);
+    const elseIfTagStart = source.indexOf("<else if=b()>");
+    const starts = showNodes.map((s) => s.start).sort((a, b) => a - b);
+    // The outer Show starts at the <if>; the inner (synthesized) Show starts
+    // at the <else if> tag it was built from, not before it.
+    expect(starts[1]).toBe(elseIfTagStart);
+  });
+
+  describe("round 2: bodies used in expression position (review)", () => {
+    it("compiles if/else with plain-text bodies through babel-preset-solid without throwing", () => {
+      expect(() =>
+        compilesThroughSolid(
+          `const el = <div><if=c()>hi</if><else>bye</else></div>;`,
+        ),
+      ).not.toThrow();
+    });
+
+    it("compiles a for-body if/else with a placeholder else through babel-preset-solid without throwing", () => {
+      expect(() =>
+        compilesThroughSolid(
+          `const el = <for|t| of=ts()><if=t.done>x</if><else>\${t.text}</else></for>;`,
+        ),
+      ).not.toThrow();
+    });
+
+    it("does not turn a for body's plain text into an identifier reference", () => {
+      const code = compilesThroughSolid(`const el = <for|x| of=xs()>hi</for>;`);
+      // Before the fix this compiled silently to `children: x => hi` — `hi`
+      // read as an identifier reference rather than rendered text.
+      expect(code).not.toMatch(/=>\s*hi\b/);
+    });
   });
 });
 
@@ -319,6 +391,47 @@ describe("for", () => {
       `const el = <for|a| of=xs() in=obj()><li>x</li></for>;`,
     );
     expect(err.message).toContain("<for>");
+  });
+
+  describe("round 2: from/to/until (review)", () => {
+    it("rejects both to= and until= together instead of silently dropping until=", () => {
+      const err = parseError(
+        `const el = <for|i| from=0 to=5 until=9><li>x</li></for>;`,
+      );
+      expect(err.message).toContain("to=");
+      expect(err.message).toContain("until=");
+    });
+
+    it("defaults from= to 0 for until= just as it does for to=", () => {
+      const file = parseMx(`const el = <for|i| until=5><li>x</li></for>;`);
+      const els = collect(file, "JSXElement") as {
+        openingElement: {
+          attributes: {
+            name: { name: string };
+            value: {
+              expression: { type: string; arguments?: { value?: number }[] };
+            };
+          }[];
+        };
+      }[];
+      const each = els[0]?.openingElement.attributes.find(
+        (a) => a.name.name === "each",
+      );
+      expect(each?.value.expression.type).toBe("CallExpression");
+      expect(each?.value.expression.arguments?.[0]?.value).toBe(0);
+    });
+
+    it("accepts <for|i| to=5> without from=, defaulting it to 0", () => {
+      expect(() =>
+        parseMx(`const el = <for|i| to=5><li>x</li></for>;`),
+      ).not.toThrow();
+    });
+
+    it("rejects <for> with neither to= nor until=", () => {
+      const err = parseError(`const el = <for|i| from=0><li>x</li></for>;`);
+      expect(err.message).toContain("to=");
+      expect(err.message).toContain("until=");
+    });
   });
 });
 

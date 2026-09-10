@@ -23,14 +23,11 @@ function shorthandValueAttr(el: MxElement): MxAttr | undefined {
   return attrByName(el, "");
 }
 
-/** Wraps multiple root nodes in a JSXFragment; returns the single node bare. */
-function wrapChildren(
+function jsxFragment(
   ctx: LowerContext,
   children: Node[],
   range: MxRange,
 ): Node {
-  const first = children[0];
-  if (children.length === 1 && first) return first;
   return at(
     {
       type: "JSXFragment",
@@ -41,6 +38,41 @@ function wrapChildren(
     ctx.source,
     range,
   );
+}
+
+/**
+ * Turns a lowered child list into a single node valid in *expression*
+ * position — a `Show`/`Match` `fallback={...}`, or the body of the
+ * `|params|` callback arrow, both of which every caller here needs (even the
+ * no-params case pushes this node bare into a `children:` array, where an
+ * expression-safe node is equally valid).
+ *
+ * - A single `JSXElement`/`JSXFragment` is already a valid expression: return
+ *   it bare, e.g. `<Login />`.
+ * - A single `JSXExpressionContainer` (a lone `${...}` or one child element
+ *   that itself lowered to one) is unwrapped to its `.expression`: the
+ *   container syntax only exists inside JSX children, not in expression
+ *   position, so `fallback={{expr}}` (a container inside a container) would
+ *   either throw or, for a lone `JSXText`, silently turn the text into an
+ *   identifier reference.
+ * - Anything else (zero children, a lone `JSXText`, or more than one child)
+ *   wraps in a `JSXFragment`, which is itself a valid expression.
+ */
+function wrapChildren(
+  ctx: LowerContext,
+  children: Node[],
+  range: MxRange,
+): Node {
+  const first = children[0];
+  if (children.length === 1 && first) {
+    if (first.type === "JSXElement" || first.type === "JSXFragment") {
+      return first;
+    }
+    if (first.type === "JSXExpressionContainer") {
+      return first.expression as Node;
+    }
+  }
+  return jsxFragment(ctx, children, range);
 }
 
 function elementChildrenRange(el: MxElement): MxRange {
@@ -319,13 +351,20 @@ export function lowerIfChain(
     );
   } else if (elseIfBranches.length === 1) {
     const branch = elseIfBranches[0] as IfBranch;
+    // The nested Show covers only the `<else if>` onward, not the outer
+    // `<if>` this Show is nested inside — using `fullRange` here would make
+    // the two Shows' ranges overlap.
+    const nestedRange: MxRange = {
+      start: branch.range.start,
+      end: fullRange.end,
+    };
     const nested = showElement(
       ctx,
       branch.when,
       branch.body,
       elseBody,
       branch.params,
-      fullRange,
+      nestedRange,
     );
     node = showElement(
       ctx,
@@ -707,9 +746,11 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
   }
 
   if (from || to || until) {
-    if (!from || !to) {
-      if (!until)
-        fail("`<for from= to=>` requires both `from=` and `to=`", el.name);
+    if (to && until) {
+      fail("`<for>` with both `to=` and `until=`", el.name);
+    }
+    if (!to && !until) {
+      fail("`<for>` requires `to=` or `until=`", el.name);
     }
     const params = tagParams(ctx, el.params);
     const zero = at(
