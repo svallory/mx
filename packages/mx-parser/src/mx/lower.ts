@@ -11,11 +11,16 @@ import {
   shorthandClassText,
 } from "./attrs.ts";
 import {
+  callbackChild,
+  collectAttributeTags,
+  elementChildrenRange,
   lowerFor,
   lowerFragment,
   lowerIfChain,
   lowerStandaloneIf,
   lowerTry,
+  tagParams,
+  wrapChildren,
 } from "./control.ts";
 import type {
   MxAttr,
@@ -555,8 +560,12 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
   }
   const name = el.staticName;
 
+  // An attribute tag reaching `lowerElement` directly has no parent tag to
+  // become a prop of — it is at the top level of an expression, or the sole
+  // body of a control tag that already rejected it. Its parent consumes it in
+  // `collectAttributeTags` before ever calling this.
   if (name.startsWith("@")) {
-    fail(`attribute tag (\`<${name}>\`)`, el.name);
+    fail(`attribute tag \`<${name}>\` outside a tag body`, el.name);
   }
 
   if (name === "for") return lowerFor(ctx, el);
@@ -569,7 +578,6 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
   if (name === "if") return lowerStandaloneIf(ctx, el);
   if (name === "else") fail("`<else>` without a preceding `<if>`", el.name);
 
-  if (el.params) fail("tag params (`|a, b|`)", el.params);
   if (el.tagArgs) fail("tag arguments", el.tagArgs);
   if (el.tagVar) fail("tag variable (`/name`)", el.tagVar);
   if (name.includes(":")) fail(`namespaced tag \`<${name}>\``, el.name);
@@ -650,11 +658,46 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
     );
   }
 
+  // `<@name>` children become props on this element (decision 51), appended
+  // after the parent's own attributes so the emitted prop order is: source
+  // order of the attrs, then source order of the attribute tags. The rest
+  // stay ordinary children.
+  const { tags: attributeTags, rest: ordinaryChildren } = collectAttributeTags(
+    ctx,
+    el,
+  );
+  for (const tag of attributeTags) {
+    // With params the prop is a function of them (`<@fallback|e, reset|>` ->
+    // `fallback={(e, reset) => body}`); without, the body itself.
+    const value = tag.params
+      ? ((
+          callbackChild(ctx, tag.params, tag.body, tag.range) as {
+            expression: Node;
+          }
+        ).expression as Node)
+      : tag.body;
+    attributes.push(
+      at(
+        {
+          type: "JSXAttribute",
+          name: jsxIdentifier(ctx, tag.name, tag.range),
+          value: at(
+            { type: "JSXExpressionContainer", expression: value },
+            ctx.source,
+            tag.range,
+          ),
+        },
+        ctx.source,
+        tag.range,
+      ),
+    );
+  }
+
   // `$!{html}` as the sole child becomes an `innerHTML` attribute instead of a
   // child; mixed with any other child (even whitespace-only text) it is a
   // parse error, raised inside `lowerChildren` when it is not the sole
   // content-bearing child.
-  const rawChild = soleRawPlaceholder(ctx, el.children);
+  const rawChild = soleRawPlaceholder(ctx, ordinaryChildren);
   let children: Node[];
   if (rawChild) {
     const hasExplicitInnerHtml = el.attrs.some(
@@ -685,7 +728,29 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
     );
     children = [];
   } else {
-    children = lowerChildren(ctx, el.children);
+    children = lowerChildren(ctx, ordinaryChildren);
+  }
+
+  // Tag params make the children a function (decision 51): `<Tag|p1, p2|>body
+  // </Tag>` is `<Tag>{(p1, p2) => body}</Tag>`, which is how Solid's own
+  // render-prop components (`For`, `Show`, `Repeat`) are called from MX.
+  //
+  // The rule is deliberately not restricted to components: an HTML element
+  // with params lowers the same way. Solid has no meaning for a function
+  // child on a DOM element, but rejecting it here would be MX inventing a
+  // rule the target does not have — if the Solid compiler objects, that is
+  // the author's error, reported against their own code.
+  if (el.params) {
+    const params = tagParams(ctx, el.params);
+    const bodyRange = elementChildrenRange(el);
+    children = [
+      callbackChild(
+        ctx,
+        params,
+        wrapChildren(ctx, children, bodyRange),
+        bodyRange,
+      ),
+    ];
   }
 
   // The opening element spans `<name ...>`; when the tag self-closes that is

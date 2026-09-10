@@ -58,7 +58,7 @@ function jsxFragment(
  * - Anything else (zero children, a lone `JSXText`, or more than one child)
  *   wraps in a `JSXFragment`, which is itself a valid expression.
  */
-function wrapChildren(
+export function wrapChildren(
   ctx: LowerContext,
   children: Node[],
   range: MxRange,
@@ -75,7 +75,7 @@ function wrapChildren(
   return jsxFragment(ctx, children, range);
 }
 
-function elementChildrenRange(el: MxElement): MxRange {
+export function elementChildrenRange(el: MxElement): MxRange {
   if (el.children.length === 0) return el.range;
   const first = el.children[0] as MxChild;
   const last = el.children[el.children.length - 1] as MxChild;
@@ -108,7 +108,7 @@ function lowerBody(ctx: LowerContext, el: MxElement): Node {
  * Wraps a body in a callback child: `{(param) => body}` for `<Show>`'s
  * narrowing form and `<for>`'s per-item render.
  */
-function callbackChild(
+export function callbackChild(
   ctx: LowerContext,
   params: unknown[],
   body: Node,
@@ -143,7 +143,7 @@ function subParseNode(ctx: LowerContext, range: MxRange, what: string): Node {
  * as the parameter list of a synthesised arrow, one character before the `|`
  * so offsets land on the real source.
  */
-function tagParams(ctx: LowerContext, params: MxRange): unknown[] {
+export function tagParams(ctx: LowerContext, params: MxRange): unknown[] {
   const paramsText = ctx.source.slice(params.start, params.end);
   const [line, column] = positionOf(ctx.source, params.start - 1);
   try {
@@ -289,6 +289,7 @@ function lowerIfHeader(
   if (isElseIf && el.params) {
     fail("tag params (`|a, b|`) on `<else if>`", el.params);
   }
+  rejectAttributeTags(el, isElseIf ? "else if" : "if");
   const when = subParseNode(ctx, condAttr.value, "if condition");
   const params = el.params ? tagParams(ctx, el.params) : null;
   const body = lowerBody(ctx, el);
@@ -353,6 +354,7 @@ export function lowerIfChain(
       elseIfBranches.push(lowerIfHeader(ctx, el, true));
     } else {
       if (el.params) fail("tag params (`|a, b|`) on `<else>`", el.params);
+      rejectAttributeTags(el, "else");
       if (elseBody !== null) fail("duplicate `<else>`", el.name);
       elseBody = lowerBody(ctx, el);
       elseRange = el.range;
@@ -576,6 +578,7 @@ function fieldKeyArrow(ctx: LowerContext, field: string, range: MxRange): Node {
 
 export function lowerFor(ctx: LowerContext, el: MxElement): Node {
   if (!el.params) fail("`<for>` without tag params (`|a, b|`)", el.name);
+  rejectAttributeTags(el, "for");
   const of = attrByName(el, "of");
   const by = attrByName(el, "by");
   const inAttr = attrByName(el, "in");
@@ -779,6 +782,109 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
 }
 
 /**
+ * One `<@name>` attribute tag, lowered to the value its prop will carry.
+ *
+ * `body` is the wrapped child list; `params` is the tag's `|p|` list when it
+ * had one, so the caller can decide between `name={body}` and
+ * `name={(p) => body}`. `lowerTry` needs the two halves apart — `Errored`'s
+ * `fallback` is built by `callbackChild` there — so this returns them rather
+ * than a finished attribute.
+ */
+export interface AttributeTag {
+  /** The name without the `@`, i.e. the prop name. */
+  name: string;
+  body: Node;
+  params: unknown[] | null;
+  range: MxRange;
+}
+
+/**
+ * Splits an element's children into its `<@name>` attribute tags and
+ * everything else.
+ *
+ * The generic rule (decision 51) and `<try>`'s two special tags run through
+ * this one function, so the two cannot drift: `<try>` reads `catch` and
+ * `placeholder` out of the returned map and builds its own boundaries, while
+ * every other tag turns each entry straight into a prop.
+ *
+ * Rejections live here for the same reason — an attribute tag carrying its
+ * own attributes, or written twice on one parent, is reported identically
+ * wherever it appears.
+ */
+export function collectAttributeTags(
+  ctx: LowerContext,
+  el: MxElement,
+): { tags: AttributeTag[]; rest: MxChild[] } {
+  const tags: AttributeTag[] = [];
+  const rest: MxChild[] = [];
+  const seen = new Set<string>();
+
+  for (const child of el.children) {
+    if (child.kind !== "element") {
+      rest.push(child);
+      continue;
+    }
+    const tagName = child.element.staticName;
+    if (tagName === null || !tagName.startsWith("@")) {
+      rest.push(child);
+      continue;
+    }
+
+    const name = tagName.slice(1);
+    // Marko's repeatable attribute tags (which collect into an array prop)
+    // are out of scope for v1; without this the second one would silently
+    // win, which is the worse of the two behaviours.
+    if (seen.has(name)) {
+      fail(
+        `attribute tag \`@${name}\` given twice (repeatable attribute tags are not supported)`,
+        child.element.name,
+      );
+    }
+    seen.add(name);
+
+    // v1 keeps the prop value to exactly one of two shapes — the body, or a
+    // function of the params. Attrs would mean a third (an object merging
+    // them with `children`), which is a design decision this task does not
+    // own, so they are rejected rather than guessed at.
+    if (child.element.attrs.length > 0) {
+      fail(
+        "attribute tags take params or a body, not attributes (v1)",
+        child.element.name,
+      );
+    }
+
+    tags.push({
+      name,
+      body: lowerBody(ctx, child.element),
+      params: child.element.params
+        ? tagParams(ctx, child.element.params)
+        : null,
+      range: child.element.range,
+    });
+  }
+
+  return { tags, rest };
+}
+
+/**
+ * Rejects `<@name>` children on a control tag. `<if>`/`<for>` lower to Solid
+ * shapes whose props MX chooses itself, so an author-named prop has nowhere
+ * to go; `<try>` is the exception and consumes its two by name.
+ */
+export function rejectAttributeTags(el: MxElement, tag: string): void {
+  for (const child of el.children) {
+    if (child.kind !== "element") continue;
+    const name = child.element.staticName;
+    if (name?.startsWith("@")) {
+      fail(
+        `attribute tag \`<${name}>\` inside \`<${tag}>\``,
+        child.element.name,
+      );
+    }
+  }
+}
+
+/**
  * `<try>` -> `<Errored fallback={(e, reset) => ...}><Loading fallback={...}>
  * ...</Loading></Errored>` (spec section 5.3).
  *
@@ -791,38 +897,32 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
 export function lowerTry(ctx: LowerContext, el: MxElement): Node {
   if (el.params) fail("tag params (`|a, b|`) on `<try>`", el.params);
 
-  let catchBody: Node | null = null;
-  let catchParams: unknown[] | null = null;
-  let catchRange: MxRange | null = null;
-  let placeholderBody: Node | null = null;
-  let placeholderRange: MxRange | null = null;
-  const rest: MxChild[] = [];
+  // `<@catch>`/`<@placeholder>` come through the generic attribute-tag
+  // collector (decision 51), so their duplicate and attrs rejections are the
+  // same code every other tag runs; `<try>` only decides where the two
+  // resulting values go. Any *other* attribute tag is rejected below: `try`
+  // lowers to `Errored`/`Loading`, whose remaining props MX owns.
+  const { tags, rest } = collectAttributeTags(ctx, el);
 
-  for (const child of el.children) {
-    if (child.kind !== "element") {
-      rest.push(child);
+  let catchTag: AttributeTag | null = null;
+  let placeholderTag: AttributeTag | null = null;
+  for (const tag of tags) {
+    if (tag.name === "catch") {
+      catchTag = tag;
       continue;
     }
-    const name = child.element.staticName;
-    if (name === "@catch") {
-      if (catchBody !== null) fail("duplicate `<@catch>`", child.element.name);
-      catchParams = child.element.params
-        ? tagParams(ctx, child.element.params)
-        : null;
-      catchBody = lowerBody(ctx, child.element);
-      catchRange = child.element.range;
+    if (tag.name === "placeholder") {
+      placeholderTag = tag;
       continue;
     }
-    if (name === "@placeholder") {
-      if (placeholderBody !== null) {
-        fail("duplicate `<@placeholder>`", child.element.name);
-      }
-      placeholderBody = lowerBody(ctx, child.element);
-      placeholderRange = child.element.range;
-      continue;
-    }
-    rest.push(child);
+    fail(`attribute tag \`<@${tag.name}>\` inside \`<try>\``, tag.range);
   }
+
+  const catchBody = catchTag?.body ?? null;
+  const catchParams = catchTag?.params ?? null;
+  const catchRange = catchTag?.range ?? null;
+  const placeholderBody = placeholderTag?.body ?? null;
+  const placeholderRange = placeholderTag?.range ?? null;
 
   const bodyChildren = lowerChildrenNodes(ctx, rest);
 
@@ -871,6 +971,10 @@ export function lowerTry(ctx: LowerContext, el: MxElement): Node {
 }
 
 export function lowerFragment(ctx: LowerContext, el: MxElement): Node {
+  // A fragment has no element to carry props, so an attribute tag inside one
+  // has no destination.
+  rejectAttributeTags(el, "fragment");
+  if (el.params) fail("tag params (`|a, b|`) on `<fragment>`", el.params);
   const children = lowerChildrenNodes(ctx, el.children);
   return at(
     {

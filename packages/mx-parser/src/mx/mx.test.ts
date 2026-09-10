@@ -162,9 +162,15 @@ describe("MX element parsing", () => {
 describe("unsupported constructs raise a clear error", () => {
   const cases: [string, string, string][] = [
     [
-      "attribute tag",
-      `const el = <L><@header>x</@header></L>;`,
-      "attribute tag",
+      "dynamic tag name",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX syntax, not a JS template literal
+      "const el = <${Which}>x</>;",
+      "dynamic tag name",
+    ],
+    [
+      "attribute tag outside a tag body",
+      `const el = <@header>x</@header>;`,
+      "attribute tag `<@header>` outside a tag body",
     ],
     [
       "raw placeholder mixed with other children",
@@ -266,11 +272,13 @@ describe("error reporting (review #2, #3)", () => {
     // with errorRecovery on, so throwing matches it.
     for (const source of [
       `const a = <button>oops;`,
-      // A standalone attribute tag (`<@header>` outside `<try>`) is still
-      // unsupported, so this keeps exercising the LowerError-to-SyntaxError
-      // conversion path distinct from the htmljs-parser walk-error path the
-      // first case covers. `<try>` no longer serves: it lowers now.
-      `const b = <Layout><@header>x</@header></Layout>;`,
+      // A dynamic tag name (`<${x}>`) is still unsupported, so this keeps
+      // exercising the LowerError-to-SyntaxError conversion path distinct
+      // from the htmljs-parser walk-error path the first case covers. An
+      // attribute tag no longer serves: `<Layout><@header>` lowers now
+      // (decision 51).
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX syntax, not a JS template literal
+      "const b = <${Which}>x</>;",
     ]) {
       let error: unknown;
       try {
