@@ -64,17 +64,17 @@ export function compile(
     plugins.push(overridePlugin);
   }
 
+  // Both `.tsx` and `.solid.mx` sources may use TypeScript syntax (interfaces,
+  // type annotations, generics); the vendored MX parser accepts that syntax
+  // but does not strip it, so the TypeScript preset's erasure pass has to run
+  // on the MX AST too, not just on `.tsx` input.
   const presets: TransformOptions["presets"] = [
+    [typescriptPreset, { isTSX: true, allExtensions: true }],
     [
       solidPreset,
       { generate: variant.generate, hydratable: variant.hydratable },
     ],
   ];
-  // `mxParser` already parsed `.solid.mx` (including its TS type
-  // annotations) into a Babel AST via `parserOverride`, so this preset never
-  // re-parses MX source; it only strips the TS type nodes the same as it
-  // would for a `.tsx` file, which MX source needs too (e.g. typed props).
-  presets.push([typescriptPreset, { isTSX: true, allExtensions: true }]);
 
   const result = transformSync(source, {
     filename,
