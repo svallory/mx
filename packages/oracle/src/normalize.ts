@@ -1,8 +1,10 @@
 /**
  * Normalize generated code for byte-parity comparison. Collapses whitespace
- * runs outside string/template literals to one space, trims line ends, and
- * unifies line endings. Nothing else changes: no reordering, no renaming.
- * See fixtures/README.md for the full contract.
+ * runs outside string/template literals and comments to one space, trims
+ * line ends, and unifies line endings. Nothing else changes: no reordering,
+ * no renaming. Comment spans (// and /* *\/) are skipped whole so a quote
+ * inside a comment never starts string-literal state. See fixtures/README.md
+ * for the full contract.
  */
 export function normalize(code: string): string {
   const unified = code.replace(/\r\n/g, "\n");
@@ -12,6 +14,22 @@ export function normalize(code: string): string {
 
   while (i < n) {
     const ch = unified[i];
+
+    if (ch === "/" && unified[i + 1] === "/") {
+      const start = i;
+      while (i < n && unified[i] !== "\n") i++;
+      out += unified.slice(start, i);
+      continue;
+    }
+
+    if (ch === "/" && unified[i + 1] === "*") {
+      const start = i;
+      i += 2;
+      while (i < n && !(unified[i] === "*" && unified[i + 1] === "/")) i++;
+      i = Math.min(i + 2, n);
+      out += unified.slice(start, i);
+      continue;
+    }
 
     if (ch === '"' || ch === "'") {
       const quote = ch;
