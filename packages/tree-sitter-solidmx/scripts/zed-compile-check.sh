@@ -14,8 +14,17 @@
 # own wasi-sdk clang when available.
 #
 # Usage: scripts/zed-compile-check.sh
+# Env:
+#   ZED_COMPILE_CHECK_FORCE_FALLBACK=1   skip the wasi-sdk clang lookup and
+#     always use `tree-sitter build --wasm` — CI sets this (runners never
+#     have Zed installed, so it would take this path anyway by omission;
+#     forcing it means CI actually exercises the branch instead of only
+#     agreeing with it by never having a choice).
+#   ZED_COMPILE_CHECK_WASM_BUILD_ARGS   extra flags passed through to
+#     `tree-sitter build --wasm`, e.g. "--docker" on a runner with no local
+#     emsdk (CI ships Docker, not a preinstalled emscripten toolchain).
 # Exit 0: compiled clean, grammar.wasm produced and non-empty.
-# Exit 1: compile failed (prints clang's own first error) or wasm missing/empty.
+# Exit 1: compile failed (prints clang's/emcc's own first error) or wasm missing/empty.
 # Exit 2: could not run the check at all (no repo, no clang found anywhere).
 set -euo pipefail
 
@@ -29,7 +38,17 @@ GRAMMAR_NAME="solidmx"
 # on PATH). Falls back to `tree-sitter build --wasm`, which uses emscripten
 # instead — a different toolchain, but the same "committed files only"
 # property this gate needs, since it also compiles from the clean clone.
-ZED_WASI_CLANG="$HOME/Library/Application Support/Zed/extensions/build/wasi-sdk/bin/clang"
+#
+# ZED_COMPILE_CHECK_FORCE_FALLBACK=1 skips the wasi-sdk lookup unconditionally
+# — CI runners never have Zed installed, so this is the path CI always takes;
+# forcing it (rather than relying on the lookup finding nothing) means CI
+# exercises the exact fallback branch every real contributor's machine may
+# also be on, instead of only implicitly agreeing with it by omission.
+if [[ "${ZED_COMPILE_CHECK_FORCE_FALLBACK:-0}" == "1" ]]; then
+  ZED_WASI_CLANG=""
+else
+  ZED_WASI_CLANG="$HOME/Library/Application Support/Zed/extensions/build/wasi-sdk/bin/clang"
+fi
 
 if ! command -v git >/dev/null 2>&1; then
   echo "zed-compile-check.sh: git not found" >&2
@@ -80,8 +99,13 @@ else
     echo "zed-compile-check.sh: no wasi-sdk clang and no bunx to fall back to tree-sitter build" >&2
     exit 2
   fi
+  # ZED_COMPILE_CHECK_WASM_BUILD_ARGS: extra flags for `tree-sitter build`,
+  # e.g. "--docker" on a runner with no local emsdk (CI ships Docker, not a
+  # local emscripten install). Unset/empty locally, where a working emsdk or
+  # a running Docker/Podman daemon may already be on the machine.
   set +e
-  (cd "$CLONE_DIR/$PKG_REL" && bunx --package "tree-sitter-cli@0.24.7" tree-sitter build --wasm -o "$WASM_OUT") \
+  # shellcheck disable=SC2086 # deliberately unquoted: a flag list, not one value
+  (cd "$CLONE_DIR/$PKG_REL" && bunx --package "tree-sitter-cli@0.24.7" tree-sitter build --wasm ${ZED_COMPILE_CHECK_WASM_BUILD_ARGS:-} -o "$WASM_OUT") \
     2> "$TMP_DIR/tsbuild-stderr.log"
   rc=$?
   set -e

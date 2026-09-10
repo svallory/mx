@@ -5,9 +5,10 @@
 //
 //   * `tree_sitter_typescript_scanner.h` is upstream tree-sitter-typescript's
 //     `common/scanner.h`, copied verbatim (byte-identical — see UPSTREAM.md
-//     "Committed copy of scanner.h" for the refresh procedure and pinned
-//     checksum). It provides the tsx tokens — automatic semicolons, template
-//     chars, the ternary `?`, regex patterns and so on.
+//     "Committed copy of scanner.h" for the refresh procedure; drift is
+//     caught by a diff against the pin, not a checksum). It provides the tsx
+//     tokens — automatic semicolons, template chars, the ternary `?`, regex
+//     patterns and so on.
 //
 //   * `scanner_mx.c` is MX's own, holding every MX addition. Keeping it out of
 //     upstream's file means an upstream bump that rewrites `scanner.h` shows up
