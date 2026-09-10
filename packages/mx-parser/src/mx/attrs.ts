@@ -19,7 +19,13 @@ export interface AttrsContext {
   jsxIdentifier(name: string, range: MxRange): Node;
 }
 
-/** Splits `on:scroll` into a `JSXNamespacedName`'s namespace/name parts. */
+/**
+ * Splits `on:scroll` into a `JSXNamespacedName`'s namespace/name parts.
+ *
+ * Rejects a degenerate split: an empty namespace (`:foo`), an empty local
+ * name (`on:`), or a local name that itself contains a colon (`a:b:c`, which
+ * would otherwise silently become namespace `a`, local `b:c`).
+ */
 function namespacedName(
   ctx: AttrsContext,
   name: string,
@@ -28,6 +34,9 @@ function namespacedName(
   const colon = name.indexOf(":");
   const namespace = name.slice(0, colon);
   const local = name.slice(colon + 1);
+  if (namespace === "" || local === "" || local.includes(":")) {
+    ctx.fail(`malformed namespaced attribute \`${name}\``, nameRange);
+  }
   const namespaceRange: MxRange = {
     start: nameRange.start,
     end: nameRange.start + namespace.length,
@@ -47,7 +56,7 @@ function namespacedName(
 }
 
 /** The `JSXIdentifier` or `JSXNamespacedName` for an attribute's name. */
-function attrNameNode(
+export function attrNameNode(
   ctx: AttrsContext,
   name: string,
   nameRange: MxRange,
@@ -196,7 +205,34 @@ export function lowerSpreadAttr(
   );
 }
 
-/** Builds the `class="card big[ x]"` static attribute from shorthand classes, optionally merged with an explicit static `class="x"`. */
+/**
+ * Picks a quote character for a JSX string literal's raw form that does not
+ * appear in `value` (JSX string literals have no backslash-escape syntax, so
+ * the quote character itself must simply be avoided). Fails when the value
+ * contains both quote characters, since there is then no quote that works.
+ */
+function quoteFor(ctx: AttrsContext, value: string, range: MxRange): '"' | "'" {
+  if (!value.includes('"')) return '"';
+  if (!value.includes("'")) return "'";
+  ctx.fail(
+    "merged `class` value contains both `\"` and `'`, which has no representable JSX string literal",
+    range,
+  );
+}
+
+/**
+ * Builds the `class="card big[ x]"` static attribute from shorthand classes,
+ * optionally merged with an explicit static `class="x"`.
+ *
+ * When there is an explicit `class="x"` to merge with, the merged attribute
+ * is emitted at *that* attribute's position (name start through value end)
+ * rather than at the shorthand's position: the shorthand is a tag-name
+ * modifier with no attribute-list position of its own, so anchoring the
+ * merged node there would place it before every attribute that precedes the
+ * explicit `class=`, silently reordering it ahead of e.g. a spread that
+ * should still be able to override it. With no explicit class to merge, the
+ * shorthand's own range is the only position available.
+ */
 export function lowerShorthandClass(
   ctx: AttrsContext,
   el: MxElement,
@@ -206,10 +242,12 @@ export function lowerShorthandClass(
   const shorthand = el.shorthandClasses
     .map((r) => ctx.source.slice(r.start + 1, r.end))
     .join(" ");
+  const shorthandRange = el.shorthandClasses[0] as MxRange;
+
   let value = shorthand;
   let raw = `"${shorthand}"`;
-  const nameRange = el.shorthandClasses[0] as MxRange;
-  let wholeRange: MxRange = nameRange;
+  let nameRange: MxRange = shorthandRange;
+  let wholeRange: MxRange = shorthandRange;
 
   if (explicitStaticClass) {
     const explicitRaw = ctx.source.slice(
@@ -218,8 +256,10 @@ export function lowerShorthandClass(
     );
     const explicitValue = explicitRaw.slice(1, -1);
     value = `${shorthand} ${explicitValue}`;
-    raw = JSON.stringify(value);
+    nameRange = explicitStaticClass.nameRange;
     wholeRange = { start: nameRange.start, end: explicitStaticClass.value.end };
+    const q = quoteFor(ctx, value, wholeRange);
+    raw = `${q}${value}${q}`;
   }
 
   const literal = ctx.at(

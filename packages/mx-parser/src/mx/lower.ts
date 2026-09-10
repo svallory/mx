@@ -7,6 +7,7 @@ import {
   lowerShorthandClass,
   lowerShorthandId,
   lowerSpreadAttr,
+  attrNameNode as sharedAttrNameNode,
 } from "./attrs.ts";
 import type {
   MxAttr,
@@ -164,41 +165,13 @@ function attrsContext(ctx: LowerContext): AttrsContext {
   };
 }
 
-/** `name={...}` on a namespaced attribute name (`on:scroll`, `prop:value`, ...), for the attr-method form. */
-function namespacedAttrName(
-  ctx: LowerContext,
-  name: string,
-  nameRange: MxRange,
-): Node {
-  const colon = name.indexOf(":");
-  const namespace = name.slice(0, colon);
-  const local = name.slice(colon + 1);
-  const namespaceRange: MxRange = {
-    start: nameRange.start,
-    end: nameRange.start + namespace.length,
-  };
-  const localRange: MxRange = {
-    start: nameRange.start + colon + 1,
-    end: nameRange.end,
-  };
-  return at(
-    {
-      type: "JSXNamespacedName",
-      namespace: jsxIdentifier(ctx, namespace, namespaceRange),
-      name: jsxIdentifier(ctx, local, localRange),
-    },
-    ctx.source,
-    nameRange,
-  );
-}
-
+/** `lower.ts`'s attribute-name lowering, shared with `attrs.ts` via `sharedAttrNameNode` so the namespaced-name split and its validation live in one place. */
 function attrNameNode(
   ctx: LowerContext,
   name: string,
   nameRange: MxRange,
 ): Node {
-  if (name.includes(":")) return namespacedAttrName(ctx, name, nameRange);
-  return jsxIdentifier(ctx, name, nameRange);
+  return sharedAttrNameNode(attrsContext(ctx), name, nameRange);
 }
 
 function lowerAttr(
@@ -497,11 +470,17 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
     );
   }
 
+  // The shorthand-merge case (`class`) is emitted at the *explicit* class
+  // attribute's position in the loop below, not hoisted to the front: a
+  // preceding spread must still be able to override the shorthand class (and
+  // a following one still override it back), so the merged attribute has to
+  // land wherever the author wrote `class=`. Only when there is no explicit
+  // class to merge with does the shorthand have no position of its own to
+  // take — it is synthesised from the tag name, not an attribute in the
+  // list — so it is pushed to the front in that case only.
   const attributes: Node[] = [];
-  if (hasShorthandClass) {
-    attributes.push(
-      lowerShorthandClass(attrsContext(ctx), el, explicitStaticClass ?? null),
-    );
+  if (hasShorthandClass && !explicitStaticClass) {
+    attributes.push(lowerShorthandClass(attrsContext(ctx), el, null));
   }
   if (hasShorthandId) {
     attributes.push(
@@ -509,18 +488,8 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
     );
   }
   for (const attr of el.attrs) {
-    // The shorthand-merge cases (`class`, `id`) were already emitted above;
-    // skip the explicit static `class`/`id` attribute that fed the merge so
-    // it is not duplicated.
     if (hasShorthandClass && attr.kind === "static" && attr.name === "class") {
-      continue;
-    }
-    if (
-      hasShorthandId &&
-      attr.kind !== "spread" &&
-      attr.kind !== "bound" &&
-      attr.name === "id"
-    ) {
+      attributes.push(lowerShorthandClass(attrsContext(ctx), el, attr));
       continue;
     }
     attributes.push(lowerAttr(ctx, attr, hasShorthandClass));
@@ -533,6 +502,16 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
   const rawChild = soleRawPlaceholder(ctx, el.children);
   let children: Node[];
   if (rawChild) {
+    const hasExplicitInnerHtml = el.attrs.some(
+      (a) =>
+        a.kind !== "spread" && a.kind !== "bound" && a.name === "innerHTML",
+    );
+    if (hasExplicitInnerHtml) {
+      fail(
+        "`$!{...}` sole child combined with an explicit `innerHTML=` attribute",
+        rawChild.range,
+      );
+    }
     const expression = subParse(ctx, rawChild.value, "raw placeholder");
     attributes.push(
       at(

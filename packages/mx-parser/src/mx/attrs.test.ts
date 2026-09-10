@@ -308,4 +308,90 @@ describe("raw placeholder ($!{}) as innerHTML", () => {
     expect(element.children).toHaveLength(0);
     expect(element.openingElement.attributes[0]?.name.name).toBe("innerHTML");
   });
+
+  it("is a parse error combined with an explicit innerHTML= attribute", () => {
+    expectSyntaxError(
+      () => parseMx(`const el = <div innerHTML=a>$!{b}</div>;`),
+      "combined with an explicit `innerHTML=` attribute",
+    );
+  });
+});
+
+describe("round 3: attribute order and position (PR #6 review)", () => {
+  it("keeps a preceding spread able to override the merged shorthand class", () => {
+    // '<div.card ...props class="x">' must not reorder the merged class ahead
+    // of the spread: the spread should still be able to override it.
+    const attrs = attrsOf(`const el = <div.card ...props class="x">y</div>;`);
+    expect(attrs.map((a) => a.type)).toEqual([
+      "JSXSpreadAttribute",
+      "JSXAttribute",
+    ]);
+    const classAttr = attrs[1] as {
+      name: { name: string };
+      value: { value: string };
+    };
+    expect(classAttr.name.name).toBe("class");
+    expect(classAttr.value.value).toBe("card x");
+  });
+
+  it("keeps the merged shorthand class in place among other attributes", () => {
+    const attrs = attrsOf(
+      `const el = <div.card data-x="1" class="y" data-z="2">w</div>;`,
+    );
+    expect(
+      attrs.map((a) => (a as { name: { name: string } }).name.name),
+    ).toEqual(["data-x", "class", "data-z"]);
+  });
+
+  it("produces disjoint ranges for the merged class and its sibling attributes", () => {
+    const source = `const el = <div.card data-x=1 class="x">y</div>;`;
+    const attrs = attrsOf(source) as { start: number; end: number }[];
+    const [dataX, classAttr] = attrs;
+    expect(dataX).toBeTruthy();
+    expect(classAttr).toBeTruthy();
+    // The merged class attribute must not overlap the data-x attribute that
+    // precedes it in source order.
+    expect((dataX as { end: number }).end).toBeLessThanOrEqual(
+      (classAttr as { start: number }).start,
+    );
+  });
+
+  it("merges a value containing a double quote using single-quote raw form", () => {
+    const attrs = attrsOf(`const el = <div.card class='a"b'>y</div>;`);
+    const attr = attrs[0] as {
+      value: { value: string; extra: { raw: string } };
+    };
+    expect(attr.value.value).toBe('card a"b');
+    expect(attr.value.extra.raw).toBe(`'card a"b'`);
+  });
+
+  it("merges a value containing a single quote using double-quote raw form", () => {
+    const attrs = attrsOf(`const el = <div.card class="a'b">y</div>;`);
+    const attr = attrs[0] as {
+      value: { value: string; extra: { raw: string } };
+    };
+    expect(attr.value.value).toBe("card a'b");
+    expect(attr.value.extra.raw).toBe(`"card a'b"`);
+  });
+
+  it("is a parse error when the merged value contains both quote characters", () => {
+    expectSyntaxError(
+      () => parseMx(`const el = <div.card class='a"b\\'c'>y</div>;`),
+      "both",
+    );
+  });
+
+  it("is a parse error for an empty namespace (`:foo=1`)", () => {
+    expectSyntaxError(
+      () => parseMx(`const el = <div :foo=1>x</div>;`),
+      "malformed namespaced attribute",
+    );
+  });
+
+  it("is a parse error for a doubly-namespaced name (`a:b:c=1`)", () => {
+    expectSyntaxError(
+      () => parseMx(`const el = <div a:b:c=1>x</div>;`),
+      "malformed namespaced attribute",
+    );
+  });
 });
