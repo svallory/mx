@@ -14,12 +14,11 @@ export function Attrs(props: { extra?: Record<string, unknown> }) {
       class={active: active()}
       style={color: color()}
       ref=el
-      on:scroll(e) { setActive(true); setColor("blue") }
+      onScroll(_e) { setActive(true); setColor("blue") }
       prop:value=color()
-      attr:title=color()
-      bool:open=active()
     >
-      static
+      <span>static</span>
+      <p.badge.big class={on: active()}>shorthand plus object</p>
     </div>
   );
 }
