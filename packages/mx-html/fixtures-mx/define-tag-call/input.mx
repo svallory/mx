@@ -1,0 +1,7 @@
+<define/card|title, body|>
+  <div.card>
+    <h2>${title}</h2>
+    <p>${body}</p>
+  </div>
+</define>
+<card title="Hello" body="World"/>

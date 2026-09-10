@@ -193,3 +193,22 @@ describe("emitTemplate", () => {
     expect(typeof emitTemplate).toBe("function");
   });
 });
+
+describe("by= is rejected", () => {
+  // A one-shot string render has no reconciler to key against, so accepting
+  // `by=` and silently discarding it (as the emitter used to) reads as
+  // support from the outside when there is none — decision 10.
+  it("rejects a for-of loop with by=", () => {
+    const source = '<for|it, i| of=input.items by="id">${it}</for>\n';
+    expect(() => compile(source, "by.mx")).toThrow(
+      /by= is not supported in a standalone template/,
+    );
+  });
+
+  it("rejects by= regardless of its value", () => {
+    const source = "<for|it, i| of=input.items by=totalGarbage>${it}</for>\n";
+    expect(() => compile(source, "by2.mx")).toThrow(
+      /by= is not supported in a standalone template/,
+    );
+  });
+});
