@@ -13,7 +13,7 @@ MX: Marko's syntax with pluggable host-language expressions. SolidMX (codename "
 | `packages/mx-tsc` | `@mx/tsc` | `tsc` wrapper (`runTsc`) so CI type-checks `.solid.mx` |
 | `packages/mx-vscode` | `@mx/vscode` | TextMate grammar + `typescriptServerPlugins` manifest |
 | `packages/eslint-plugin-mx` | `@mx/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
-| `packages/vite-plugin-mx-solid` | `@mx/vite-plugin-solid` | Optional Vite config convenience wrapper |
+| `packages/mx-vite-plugin` | `@mx/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
 
 **Naming TODO**: the `@mx/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
 
@@ -41,6 +41,9 @@ All dependencies below are pinned to an exact version (no `^`/`~`) at the root `
 | `@babel/helper-validator-identifier` | 7.28.5 |
 | `@types/charcodes` | 0.2.2 |
 | `@types/babel__helper-validator-identifier` | 7.15.2 |
+| `@types/babel__generator` | 7.27.0 |
+| `vite` | 8.2.2 |
+| `playwright` | 1.63.0 |
 
 The last four entries are build-only dependencies of `packages/mx-parser`'s
 vendored `@babel/parser` source (`@babel/parser`'s own runtime deps, which
@@ -57,9 +60,22 @@ Note: Babel 8 (8.0.x) and TypeScript 7 (7.0.x) were released but are new majors;
 
 Runnable via `bun run <name>` or `moon run :<name>`:
 
-- `typecheck` — `tsc --noEmit` per package
+- `typecheck` — `tsc --noEmit` per package and per example
 - `test` — `vitest run`
 - `lint` — `biome check .`
 - `verify` — typecheck, then lint, then build, then test; stops on first failure. Includes `build` so `vendored.test.ts`'s dist-equivalence pass always runs against a fresh `dist/index.js`, not just the pre-build TS source.
 - `build` — builds `packages/mx-parser`'s vendored parser to `dist/index.js`
 - `oracle` — runs only the oracle/golden harness (`packages/oracle`) and prints a fixture/variant/status summary
+
+## Try it
+
+A runnable Solid 2 app whose components are written in MX:
+
+```
+cd examples/counter-app && bun run dev
+```
+
+`bun run build` builds it, and `bun run e2e` drives the dev server and the
+production build through a headless Chromium (needs `bunx playwright install
+chromium` once). The e2e suite is not part of the root `bun run test` — it
+needs a browser — so it stays behind the example's own script.

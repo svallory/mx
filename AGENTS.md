@@ -69,3 +69,70 @@ Current state: `counter`, `todos`, and `attrs` all pass both variants. So `bun r
 Golden snapshots (`fixtures/<name>/__golden__/twin.<variant>.js`) pin `twin.tsx`'s own compiled output, independent of MX, to catch a `babel-preset-solid`/`solid-js` pin bump changing generated code. Regenerate them deliberately with `bun run oracle -- --update` and call it out in the PR — never let a pin bump change them as a silent side effect.
 
 `packages/mx-parser/src/mx/perf.test.ts`'s 500ms wall-clock budget only fails the test when `MX_PERF_STRICT` is set; otherwise it just `console.warn`s past the budget, since a plain `bun run verify` under machine contention (several agents/verifiers at once) can blow well past 500ms with no actual parser regression.
+
+## Vite plugin
+
+`packages/mx-vite-plugin` (`@mx/vite-plugin`) is the primary integration
+(spec section 7.1): an `enforce: "pre"` Vite transform that prints
+`.solid.mx` to JSX source text with `print()` ahead of
+`@solidjs/vite-plugin`. Both plugins are `enforce: "pre"`, so their relative
+order is their order in the `plugins` array — `mx()` must come first.
+
+`resolveId` rewrites the resolved path to `<path>.solid.mx.tsx` and `load`
+reads the real file from disk. That suffix is not cosmetic; three separate
+stages dispatch on the file extension and `.solid.mx` satisfies none of them:
+
+1. Vite routes a module into the JS pipeline only when the extension matches
+   `JS_TYPES_RE` (`/\.(?:j|t)sx?$|\.mjs$/`). With no `resolveId` hook the
+   import is never resolved and `transform` never runs at all.
+2. Rolldown picks its parser dialect from the extension, so printed JSX is
+   parsed as plain JS ("Unexpected JSX expression"). Returning
+   `moduleType: "tsx"` fixes the parse but then hands the module to
+   rolldown's own JSX transform, which resolves `react/jsx-runtime`.
+3. `@solidjs/vite-plugin` only compiles ids passing its `filter`, default
+   `src/**/*.{jsx,tsx,tsrx,ts,js,mjs,cjs}`. That test runs *before* its
+   `options.extensions` list is consulted, so registering `.solid.mx` there
+   cannot bring the file back in.
+
+The `.tsx`-suffixed id satisfies all three at once, which is why the
+example's `vite.config.ts` is just `plugins: [mx(), solid()]` with no Solid
+configuration. Diagnostics and source maps keep the original `.solid.mx`
+filename: `transform` prints against the stripped path, and parse errors are
+re-raised with a Vite-shaped `loc` (`{ file, line, column }`) so the overlay
+points at the MX line.
+
+`@mx/parser`'s `main` is `dist/index.js`, not `src/index.ts`. Vite's config
+loader externalizes bare imports, so a consumer that pulls the parser's TS
+source makes Node load the vendored Babel tree, whose `const enum`s the
+strip-only TypeScript loader rejects. `types` still points at
+`src/public.d.ts`, so typechecking never needs a build; `bun run verify`
+builds before it tests.
+
+## Examples
+
+`examples/counter-app` is a Solid 2 app whose components are `.solid.mx`.
+Root `package.json` `workspaces` includes `examples/*`, so `@mx/vite-plugin`
+and `@mx/parser` resolve as workspace deps, and root `typecheck` covers
+`examples/*/` as well as `packages/*/`.
+
+```
+cd examples/counter-app
+bun run dev        # dev server
+bun run build      # production build
+bun run e2e        # headless Chromium against dev server + built output
+```
+
+`bun run e2e` needs `bunx playwright install chromium` once. It is wired to
+the example's own vitest config (`e2e/vitest.config.ts`) and is deliberately
+outside the root `bun run test`, whose `projects` glob is `packages/*`.
+
+Pin policy for examples: an example pins its own Solid 2 RC versions exactly
+in its own `package.json` (`solid-js`, `@solidjs/web`, `@solidjs/vite-plugin`),
+independent of the root pins, which still track Solid 1 for the oracle's
+`babel-preset-solid` comparison. Root and example pins are expected to
+disagree; do not "fix" one to match the other.
+
+Type-checking `.solid.mx` imports from `.tsx` relies on the ambient
+`src/mx.d.ts` declaration in the example. It types every MX export as a Solid
+component; real per-export types arrive with `@mx/typescript-plugin`'s
+virtual-`.tsx` projection (spec section 7.2).
