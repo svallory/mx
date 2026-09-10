@@ -401,6 +401,30 @@ describe("whitespace follows Marko, not JSX (review #5)", () => {
       ).toEqual(["JSXElement", "JSXElement"]);
     });
 
+    it("keeps the spaces around an inline element in indented markup", () => {
+      // Only edges that abut a line break are trimmed. The spaces around
+      // `<b>` are mid-line, so they survive; the run's outer edges go to the
+      // boundary trim. Trimming both ends of every line deleted them and
+      // rendered `Hello<b>x</b>world.`
+      expect(
+        childKinds(`const m = <p>\n  Hello <b>x</b> world.\n</p>;`),
+      ).toEqual(["text:Hello ", "JSXElement", "text: world."]);
+    });
+
+    it("keeps a single mid-line space around an inline element", () => {
+      expect(childKinds(`const n = <p>\n  a <b>x</b> c\n</p>;`)).toEqual([
+        "text:a ",
+        "JSXElement",
+        "text: c",
+      ]);
+    });
+
+    it("still drops indentation on a word with no inline sibling spacing", () => {
+      expect(
+        childKinds(`const o = <div>\n  static\n  <span>s</span></div>;`),
+      ).toEqual(["text:static", "JSXElement"]);
+    });
+
     it("keeps interior spaces in a single-line run between placeholders", () => {
       // `${i}: ${text}` renders ": ", not ":". Line trimming applies only
       // where a trim point abuts a line break, and a single-line run has

@@ -143,10 +143,15 @@ export function jsxIdentifier(
  * contains a newline:
  *
  * 1. Split the run into lines.
- * 2. Trim each line.
+ * 2. Trim each edge that abuts a line break — `trimEnd` every line but the
+ *    last, `trimStart` every line but the first. The run's own outer edges are
+ *    left alone here; they abut a tag or placeholder, not a newline, and step
+ *    6 decides them.
  * 3. Drop the lines that are then empty.
  * 4. Join what remains with a single space.
  * 5. Collapse any internal whitespace run to one space.
+ * 6. Trim the outer edges that meet the parent's first or last child
+ *    (`atStart`/`atEnd`).
  *
  * A run with **no** newline skips steps 1 to 4 and only collapses (step 5).
  * Trimming applies where a trim point abuts a line break; a single-line run
@@ -157,10 +162,12 @@ export function jsxIdentifier(
  * two of them wrong:
  *
  * - Indentation never survives. `"\n  static\n  "` before a sibling tag is
- *   `"static"` with no trailing space: the whitespace around `static` is on
- *   lines that trim to empty, so it is dropped wherever it sits — leading,
- *   trailing, or between words. The old rule collapsed it to one space and
- *   left a stray space before the sibling element.
+ *   `"static"` with no trailing space: the indentation sits on lines that trim
+ *   to empty, and the outer edges go to the boundary trim. The old rule
+ *   collapsed it to one space and left a stray space before the sibling.
+ * - Spaces around an inline element do survive. `"\n  a <b>x</b> c\n"` keeps
+ *   `"a "` and `" c"`: those spaces are mid-line, not at a line break, and
+ *   the run's outer edges are the only ones the boundary trim touches.
  * - Multi-line prose still reads as prose. `"a\n  b"` is `"a b"`, because the
  *   two non-empty lines are joined with one space; the newline is a line
  *   separator, not something to delete outright.
@@ -196,20 +203,36 @@ export function normalizeText(
   // break. A run with no newline in it has no line structure to exploit, and
   // trimming its ends would discard spaces the author deliberately typed
   // between content — `${i}: ${text}` renders `": "`, not `":"`.
+  //
+  // Within a multi-line run the same principle decides *which* edge of each
+  // line to trim: every line break is a trim point, but the run's own two
+  // outer edges are not — they abut a sibling tag or placeholder, so the
+  // space there is the author's, not indentation. Hence trimEnd on every line
+  // but the last and trimStart on every line but the first, rather than
+  // trimming both ends of all of them. Trimming both would delete the spaces
+  // around an inline element: `"\n  Hello <b>x</b> world.\n"` must keep
+  // `"Hello "` and `" world."`, not collapse to `"Hello"`/`"world."`.
+  //
+  // The outer edges are then handled by the atStart/atEnd boundary trim
+  // below, which is the rule that actually knows about tag boundaries.
   const joined = raw.includes("\n")
     ? raw
         .split("\n")
-        .map((line) => line.trim())
+        .map((line, index, lines) => {
+          const trimmedStart = index === 0 ? line : line.trimStart();
+          return index === lines.length - 1
+            ? trimmedStart
+            : trimmedStart.trimEnd();
+        })
         .filter((line) => line !== "")
         .join(" ")
     : raw;
 
   let text = joined.replace(/\s+/g, " ");
 
-  // A run whose first line was blank started with a newline, so the author
-  // wrote a line break before the content rather than a space; the same holds
-  // at the end. Those edges are already gone from `joined`, so only a run
-  // that began or ended mid-line can still carry a space to trim here.
+  // The run's outer edges: a leading/trailing space survives the line pass
+  // above (it is not a line break), so this is where a run that touches the
+  // parent's first or last child loses it.
   if (atStart) text = text.replace(/^ /, "");
   if (atEnd) text = text.replace(/ $/, "");
   if (text === "") return null;
@@ -241,6 +264,7 @@ function lowerAttr(
   attr: MxAttr,
   hasShorthandClass: boolean,
   shorthandClassValue: string | null,
+  staticClassValue: string | null,
 ): Node {
   switch (attr.kind) {
     case "static": {
@@ -274,6 +298,7 @@ function lowerAttr(
         attr,
         hasShorthandClass,
         shorthandClassValue,
+        staticClassValue,
       );
 
     case "boolean": {
@@ -594,10 +619,25 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
       lowerShorthandId(attrsContext(ctx), el.shorthandIds[0] as MxRange),
     );
   }
+
+  // With a dynamic object `class={...}` present, that attribute's lowering
+  // builds the whole `class` value — shorthand and any static `class="x"`
+  // fold into its array's string entry. Both other producers must therefore
+  // stay quiet, or the element carries `class` twice and the last one wins,
+  // silently dropping the other half.
+  const staticClassText = explicitStaticClass
+    ? ctx.source
+        .slice(explicitStaticClass.value.start, explicitStaticClass.value.end)
+        .slice(1, -1)
+    : null;
+
   for (const attr of el.attrs) {
-    if (hasShorthandClass && attr.kind === "static" && attr.name === "class") {
-      attributes.push(lowerShorthandClass(attrsContext(ctx), el, attr));
-      continue;
+    if (attr.kind === "static" && attr.name === "class") {
+      if (explicitObjectClass) continue;
+      if (hasShorthandClass) {
+        attributes.push(lowerShorthandClass(attrsContext(ctx), el, attr));
+        continue;
+      }
     }
     attributes.push(
       lowerAttr(
@@ -605,6 +645,7 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
         attr,
         hasShorthandClass,
         hasShorthandClass ? shorthandClassText(attrsContext(ctx), el) : null,
+        staticClassText,
       ),
     );
   }
