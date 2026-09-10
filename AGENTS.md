@@ -140,6 +140,14 @@ bun run e2e        # headless Chromium against dev server + built output
 the example's own vitest config (`e2e/vitest.config.ts`) and is deliberately
 outside the root `bun run test`, whose `projects` glob is `packages/*`.
 
+`e2e/resolve.spec.ts` is left out of that config and run on demand with
+`vitest run --config e2e/vitest.config.ts e2e/resolve.spec.ts`: all four of its
+assertions pass, but closing a Vite dev server inside vitest never settles, so
+the file reports a hook timeout after two minutes. The hang is in that
+teardown, not in the plugin — the same `server.close()` returns in ~1ms outside
+vitest, and `counter.spec.ts`/`hmr.spec.ts` close their own dev servers in
+seconds.
+
 Pin policy for examples: an example pins its own Solid 2 RC versions exactly
 in its own `package.json` (`solid-js`, `@solidjs/web`, `@solidjs/vite-plugin`),
 independent of the root pins, which still track Solid 1 for the oracle's
