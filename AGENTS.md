@@ -45,6 +45,11 @@ MX parsing is opt-in through the `mx` parser option, which `parse` sets. Without
 
 Consumers typecheck against `src/public.d.ts`, not `src/index.ts`: the vendored tree needs tsconfig relaxations that must not leak into packages that merely call `parse`.
 
+Two syntax decisions are settled and encoded in the lowering table:
+
+- **Whitespace follows Marko, not JSX.** A whitespace-only text run containing a newline is dropped entirely, so indented markup renders nothing between children; a whitespace-only run without a newline collapses to one space. `${" "}` is the escape hatch. Comments are dropped from the output and do not count as content when trimming.
+- **Void elements need no slash.** `<input value=x>` parses. The set (`area base br col embed hr img input link meta param source track wbr`) is declared to htmljs-parser as `TagType.void`; a void tag written with a closing tag is a parse error.
+
 ## Design docs
 
 Design docs, specs, and research notes live outside this repo, at the project space root under `notes/` (not inside this worktree).
