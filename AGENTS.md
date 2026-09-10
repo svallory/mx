@@ -32,3 +32,11 @@ Conventional commits: `type(scope): summary`.
 ## Design docs
 
 Design docs, specs, and research notes live outside this repo, at the project space root under `notes/` (not inside this worktree).
+
+## Oracle harness
+
+`packages/oracle` (`@mx/oracle`) compares compiled `dom-expressions` output between `fixtures/<name>/input.solid.mx` and its hand-written `fixtures/<name>/twin.tsx` twin, for both Solid generate variants. `bun run oracle` runs it standalone and prints a fixture/variant/status table; see `fixtures/README.md` for the fixture and `divergences.md` contract.
+
+A `skipped` status is not a pass: until `@mx/parser` exists, `.solid.mx` compiles throw `MxParserUnavailable` and every fixture reports `skipped`. Only `pass`, `fail`, or `divergent` mean the parser actually ran.
+
+Golden snapshots (`fixtures/<name>/__golden__/twin.<variant>.js`) pin `twin.tsx`'s own compiled output, independent of MX, to catch a `babel-preset-solid`/`solid-js` pin bump changing generated code. Regenerate them deliberately (delete the stale file, rerun `bun run oracle`) and call it out in the PR — never let a pin bump change them as a silent side effect.

@@ -34,6 +34,9 @@ All dependencies below are pinned to an exact version (no `^`/`~`) at the root `
 | `typescript` | 5.9.3 |
 | `vitest` | 3.2.7 |
 | `@biomejs/biome` | 2.5.12 |
+| `@babel/preset-typescript` | 7.29.7 |
+| `@types/node` | 26.5.1 |
+| `@types/babel__core` | 7.20.5 |
 
 Note: Babel 8 (8.0.x) and TypeScript 7 (7.0.x) were released but are new majors; the spec's parser fork targets Babel 7's `parserOverride`/JSX-plugin shape and TS's current plugin API, so this scaffold pins the latest stable Babel 7 / TypeScript 5 line instead.
 
@@ -45,3 +48,4 @@ Runnable via `bun run <name>` or `moon run :<name>`:
 - `test` — `vitest run`
 - `lint` — `biome check .`
 - `verify` — typecheck, then lint, then test; stops on first failure
+- `oracle` — runs only the oracle/golden harness (`packages/oracle`) and prints a fixture/variant/status summary

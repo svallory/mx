@@ -10,7 +10,8 @@
     "typecheck": "for d in packages/*/; do (cd \"$d\" && echo \"[typecheck] $d\" && bunx tsc --noEmit) || exit 1; done",
     "test": "vitest run",
     "lint": "biome check .",
-    "verify": "bun run typecheck && bun run lint && bun run test"
+    "verify": "bun run typecheck && bun run lint && bun run test",
+    "oracle": "bun run packages/oracle/src/report.ts"
   },
   "devDependencies": {
     "@babel/parser": "7.29.8",
@@ -18,11 +19,14 @@
     "@babel/generator": "7.29.8",
     "@babel/traverse": "7.29.8",
     "@babel/types": "7.29.8",
+    "@babel/preset-typescript": "7.29.7",
     "htmljs-parser": "5.15.0",
     "babel-preset-solid": "1.9.15",
     "solid-js": "1.9.15",
     "typescript": "5.9.3",
     "vitest": "3.2.7",
-    "@biomejs/biome": "2.5.12"
+    "@biomejs/biome": "2.5.12",
+    "@types/node": "26.5.1",
+    "@types/babel__core": "7.20.5"
   }
 }
