@@ -271,3 +271,27 @@ Type-checking `.solid.mx` imports from `.tsx` relies on the ambient
 `src/mx.d.ts` declaration in the example. It types every MX export as a Solid
 component; real per-export types arrive with `@markox/typescript-plugin`'s
 virtual-`.tsx` projection (spec section 7.2).
+
+`examples/mx-site` is a plain-string example: a Hono-on-Bun server and a
+static build both rendering `.mx` templates via `@markox/html`'s `compile()`,
+no Solid, no client runtime. `compile()` returns a TS module whose imports are
+still `./x.mx` (not runnable as-is), so the example's `src/compile-pages.ts`
+compiles every page and rewrites those imports to the generated `./x.mx.ts`
+sibling under `.gen/` before either the dev server or the static build
+imports them.
+
+`packages/mx-html/tsconfig.json` maps `@markox/parser` to
+`../mx-parser/src/public.d.ts` in its `paths`, for typechecking against the
+parser's public types without requiring `dist/` to be built first. Bun's
+`bun run` also honours `tsconfig.json` `paths` at runtime, and does so per
+imported file's own directory, not just the entry point's — so a plain `bun
+run` of any script that imports `@markox/html` (which imports
+`@markox/parser`) fails with `Export named 'X' not found in module
+".../public.d.ts"`, because Bun resolves the bare `@markox/parser` specifier
+against `packages/mx-html/tsconfig.json`'s `paths` regardless of where the
+importing file lives. Work around it with `bun run
+--tsconfig-override=<path to a tsconfig with no such paths>`; `examples/mx-site`'s
+`dev` and `build` scripts do this against the root `tsconfig.base.json`. This
+is a property of `mx-html`'s tsconfig, not a bug in `@markox/html` itself or
+in Bun's resolver generally — vitest is unaffected because it does not resolve
+bare specifiers through `tsconfig.json` `paths` the same way.
