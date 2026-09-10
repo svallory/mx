@@ -1,0 +1,14 @@
+{
+  "checks": [
+    {
+      "command": "./node_modules/.bin/biome check .",
+      "extensions": [".ts", ".tsx", ".json"],
+      "timeout": 30
+    },
+    {
+      "command": "sh -c 'for d in packages/*/; do ./node_modules/.bin/tsc --noEmit -p \"$d\" || exit 1; done'",
+      "extensions": [".ts", ".tsx"],
+      "timeout": 60
+    }
+  ]
+}
