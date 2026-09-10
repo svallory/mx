@@ -14,6 +14,7 @@ MX: Marko's syntax with pluggable host-language expressions. SolidMX (codename "
 | `packages/eslint-plugin-mx` | `@markox/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
 | `packages/mx-vite-plugin` | `@markox/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
 | `packages/mx-html` | `@markox/html` | Standalone string-emitting target: whole-file `.mx` templates compile to a pure `(input) => string` function, no runtime beyond an `escape` helper |
+| `packages/translator` | `@markox/translator` | The same string target for **stock `.marko`** files, as a `config.translator` for `@marko/compiler`: a working expressions-only mode for Marko, no fork |
 
 **Naming TODO**: the `@markox/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
 
