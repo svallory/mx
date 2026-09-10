@@ -37,10 +37,14 @@ let nextBitMask = 1;
 function bit(
   _target: ClassAccessorDecoratorTarget<State, boolean>,
   context: ClassAccessorDecoratorContext<State, boolean>,
-): ClassAccessorDecoratorTarget<State, boolean> {
+): ClassAccessorDecoratorResult<State, boolean> {
   const mask = nextBitMask;
   nextBitMask <<= 1;
   return {
+    init(this: State, v: boolean) {
+      if (v) this.flags |= mask;
+      return v;
+    },
     get(this: State) {
       return (this.flags & mask) > 0;
     },
@@ -50,7 +54,6 @@ function bit(
     },
   };
 }
-bit.storage = function storage() {};
 
 export default class State {
   flags: number = 0;
