@@ -1,0 +1,4 @@
+{
+  "marko": "divergence",
+  "reason": "MX calls an imported component through its lowercase binding name (see AGENTS.md: binding-based component dispatch, and decisions 6/7/27/36 on the standalone MX squad work); Marko requires PascalCase or the <${expr}/> dynamic-tag form for a lowercase-bound custom tag."
+}

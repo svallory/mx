@@ -252,6 +252,18 @@ Golden snapshots (`fixtures/<name>/__golden__/twin.<backend>.<variant>.js`) pin 
 
 `packages/mx-parser/src/mx/perf.test.ts`'s 500ms wall-clock budget only fails the test when `MX_PERF_STRICT` is set; otherwise it just `console.warn`s past the budget, since a plain `bun run verify` under machine contention (several agents/verifiers at once) can blow well past 500ms with no actual parser regression.
 
+### `oracle:marko`: Marko parity for standalone `.mx` templates
+
+Decision 51: the parity target for Marko-syntax constructs is Marko itself, not Solid — the standalone `fixtures-mx` set (`packages/mx-html/fixtures-mx/<name>/{input.mx,input.json,expected.html}`, 30 fixtures) is rendered both through the real Marko 6 toolchain (`@marko/compiler` 5.42.5 + `marko/translator`, exactly matching `marko@6.3.51`'s own dependency) and through `@markox/html`'s `compile()`, and the two HTML outputs are compared against `expected.html`. `bun run oracle:marko` runs it (`packages/oracle/src/report-marko.ts`); `-- --strict` is accepted for CLI symmetry with `oracle -- --strict` but does not fail on a recorded, reasoned skip/divergence (`meta.json` in a fixture directory — see `fixtures/README.md`'s "oracle:marko" section for the full contract) — that classification is the settled state, not unfinished work like `oracle`'s own `pending`/`skipped`. Both modes fail if the fixture glob is empty, a fixture is missing one of its three files, or fewer than 30 fixtures were processed (decision 55: a gate must assert it did work, not only that nothing failed).
+
+This is a separate script, not part of `bun run verify` or `moon run :verify` — the Marko toolchain is a real install/memory cost and this task's own load rule is one heavy process at a time. Run it in CI as its own job if `.github/workflows/` grows a verify workflow; none exists yet in this repo, so there is nothing to wire it into today.
+
+Two Marko-toolchain facts worth knowing before touching `packages/oracle/src/marko-compile.ts`:
+
+- `compileFile`'s `translator` option must be resolved and passed as the imported module object (`import * as translator from "marko/translator"`), not the string `"marko/translator"` — passing the string fails to resolve relative to the compiler's own internal base path rather than the caller's `node_modules`.
+- `optimize: true` is required to get a plain server-HTML render: without it, `@marko/compiler` emits Marko's resume/hydration markers (an HTML comment plus an inline `<script>`) even under `output: "html"`. It is not a complete fix — `<input>` and dynamic spread attributes still emit a resume marker regardless of `optimize`, an open item recorded via `meta.json` on the `attributes` and `spread-keys` fixtures.
+- Marko has no notion of a `.mx` file: every source file involved (a fixture's `input.mx` plus any sibling `.mx` it imports) is copied to a scratch directory as `.marko` and then compiled to a sibling `.mjs`, with each file's own `import ... from "./x.mx"` rewritten to `"./x.mjs"` — a component import must point at an already-compiled module, since Marko's own loader cannot compile a `.marko` file reached through a plain `import`.
+
 ## Vite plugin
 
 `packages/mx-vite-plugin` (`@markox/vite-plugin`) is the primary integration

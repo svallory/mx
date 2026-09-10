@@ -1,0 +1,4 @@
+{
+  "marko": "divergence",
+  "reason": "<fragment> as an explicit multi-root wrapper is MX-only syntax; Marko rejects it as an unresolvable custom tag (same as define-block)."
+}

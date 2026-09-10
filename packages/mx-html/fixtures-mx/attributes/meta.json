@@ -1,0 +1,4 @@
+{
+  "marko": "divergence",
+  "reason": "Marko emits a resume/hydration marker (HTML comment plus an inline script) after this fixture's <input> even under output html with optimize enabled; form-control elements appear to opt Marko into runtime reactivity tracking regardless. Filed as an open item; the harness does not yet suppress it (same open item as spread-keys)."
+}

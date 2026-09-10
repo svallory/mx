@@ -1,0 +1,4 @@
+{
+  "marko": "divergence",
+  "reason": "MX passes an unrecognized custom tag through as a literal HTML element (see AGENTS.md: binding-based component dispatch, the unknown-element fixture's own rationale); Marko requires every custom tag to resolve to a taglib entry and errors on one that does not."
+}

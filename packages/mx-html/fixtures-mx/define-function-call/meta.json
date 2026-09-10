@@ -1,0 +1,4 @@
+{
+  "marko": "divergence",
+  "reason": "MX calls a <define>d tag as a plain function value from expression position; Marko's own tag-variable calling convention differs. Filed as an open item rather than a settled divergence."
+}

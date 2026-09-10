@@ -1,0 +1,4 @@
+{
+  "marko": "divergence",
+  "reason": "Marko strips HTML comments from output; @markox/html passes them through verbatim."
+}

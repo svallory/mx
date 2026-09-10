@@ -1,0 +1,4 @@
+{
+  "marko": "divergence",
+  "reason": "Same escaping-strategy difference as escaping: Marko leaves < and > unescaped in interpolated text."
+}

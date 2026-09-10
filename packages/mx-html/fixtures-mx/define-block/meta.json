@@ -1,0 +1,4 @@
+{
+  "marko": "divergence",
+  "reason": "<fragment> as an explicit multi-root wrapper is MX-only syntax; Marko templates and tag bodies natively support multiple root nodes and reject an explicit <fragment> tag as an unresolvable custom tag."
+}

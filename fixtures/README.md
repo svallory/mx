@@ -172,3 +172,60 @@ failed to load — treat it as a failure, not as "not implemented yet".
   See "Golden snapshots" above.
 
 Flags pass through `bun run`, e.g. `bun run oracle -- --strict --update`.
+
+## `oracle:marko`: Marko parity for the standalone `fixtures-mx` set
+
+Decision 51: the parity target for Marko syntax is Marko itself, not Solid.
+`bun run oracle:marko` (`packages/oracle/src/report-marko.ts`) renders every
+fixture under `packages/mx-html/fixtures-mx/<name>/` two ways — through the
+real Marko 6 toolchain (`@marko/compiler` + `marko/translator`, `.mx` files
+copied to `.marko` with imports rewritten, since Marko has no `.mx`
+extension) and through `@markox/html`'s own `compile()` — and compares both
+against that fixture's `expected.html`, after `normalizeHtml()`
+(`packages/oracle/src/normalize-html.ts`; collapses inter-tag whitespace,
+unifies void-element self-closing spelling, requotes attribute values to
+double quotes, and unifies `&#34;`/`&quot;` — attribute order is preserved,
+not sorted).
+
+Prints a `fixture | marko | mx-html | verdict` table plus a `processed: N
+fixtures (minimum required: 30)` footer. `bun run oracle:marko -- --strict`
+accepts the same `--strict` flag as `oracle` for CLI symmetry, but the two do
+not mean the same thing: `oracle --strict` fails on any `skipped`/`pending`
+row, while `oracle:marko --strict` does **not** fail on a recorded, reasoned
+skip or divergence — that classification *is* the settled state here, not an
+unfinished one. Both commands fail (in either mode) if the fixture glob
+expands to nothing, if any fixture directory is missing `input.mx`,
+`input.json` or `expected.html`, or if fewer than 30 fixtures were actually
+processed — a broken glob must never read as a silent pass (decision 55).
+
+### `meta.json`: the Marko column's skip/divergence marker
+
+An optional `meta.json` in a fixture directory classifies why that fixture's
+Marko rendering does not match `@markox/html`'s:
+
+```json
+{ "marko": "skip", "reason": "why this fixture is never compiled by Marko" }
+```
+```json
+{ "marko": "divergence", "reason": "why the mismatch is expected and accepted" }
+```
+
+- `"skip"` — the fixture is never rendered through Marko at all; the table
+  shows `skipped (reason)` for both columns. Use this only when compiling
+  through Marko cannot be made to work at all (not yet used by any fixture
+  here — every fixture compiles, even the ones that then mismatch or error at
+  render time).
+- `"divergence"` — both sides are rendered and compared as normal; a mismatch
+  (including a Marko compile/render error) is expected and reported as
+  `skipped (reason)` instead of `mx bug`. Used for a real, understood
+  difference (Marko's escaping strategy, its rejection of `<fragment>` as an
+  explicit multi-root wrapper, its PascalCase-or-`${expr}` rule for dynamic
+  tags, its taglib requirement for unknown custom elements, or an
+  attribute-tag/`<define>`-as-value calling-convention gap this harness has
+  not yet reconciled) — never a way to silence an unexplained failure. A
+  `meta.json` with `marko: "skip"` and no `reason` fails the run.
+- No `meta.json` — the fixture is expected to match both ways. A mismatch is
+  reported as `mx bug` and always fails the run, `--strict` or not.
+
+`report-marko.ts`'s own top-of-file comment is the authoritative contract;
+this section is a summary.

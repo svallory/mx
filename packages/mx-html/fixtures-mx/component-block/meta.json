@@ -1,0 +1,4 @@
+{
+  "marko": "divergence",
+  "reason": "MX attribute-tag props (<@name>) are exposed to the callee as plain callable props (input.header()); this fixture's Marko translation exposes them as Marko's own attribute-tag mechanism, whose calling convention differs (not a plain function prop) and needs further reconciliation. Filed as an open item rather than a settled divergence."
+}
