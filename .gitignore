@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.moon/cache/
+*.log
+
+# editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store

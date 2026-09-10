@@ -1,0 +1,50 @@
+# https://moonrepo.dev/docs/config/project
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "typescript"
+
+tasks:
+  install:
+    command: "bun"
+    args: ["install"]
+    inputs:
+      - "package.json"
+      - "bun.lock"
+    outputs:
+      - "node_modules/**/*"
+
+  typecheck:
+    command: "bun"
+    args: ["run", "typecheck"]
+    inputs:
+      - "packages/*/src/**/*"
+      - "packages/*/tsconfig.json"
+      - "tsconfig.base.json"
+    deps:
+      - "install"
+
+  test:
+    command: "bun"
+    args: ["run", "test"]
+    inputs:
+      - "packages/*/src/**/*"
+      - "vitest.config.ts"
+    deps:
+      - "install"
+
+  lint:
+    command: "bun"
+    args: ["run", "lint"]
+    inputs:
+      - "packages/*/src/**/*"
+      - "biome.json"
+    deps:
+      - "install"
+
+  verify:
+    command: "echo"
+    args: "verify passed"
+    deps:
+      - "typecheck"
+      - "lint"
+      - "test"
