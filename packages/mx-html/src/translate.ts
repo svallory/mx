@@ -24,15 +24,23 @@ import { parseBabel } from "@markox/parser";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the compiler calls the same helper the emitted module imports, so a static value and a runtime one are escaped by one implementation
 import { escape } from "./escape.ts";
 
-/** Raised for a construct that parses as Marko but has no string lowering. */
+/**
+ * Raised for a construct that parses as Marko but has no string lowering.
+ *
+ * Plain fields, not TS parameter properties: Node's native strip-only TS mode
+ * (used by, among others, Vite's own build process when it loads this module
+ * unbundled) rejects parameter properties outright, and this class is public
+ * API that a consumer with no build step may import directly.
+ */
 export class TranslateError extends Error {
-  constructor(
-    message: string,
-    readonly line: number,
-    readonly column: number,
-  ) {
+  readonly line: number;
+  readonly column: number;
+
+  constructor(message: string, line: number, column: number) {
     super(message);
     this.name = "TranslateError";
+    this.line = line;
+    this.column = column;
   }
 }
 

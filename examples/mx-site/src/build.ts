@@ -1,25 +1,11 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { compilePages, loadPage } from "./compile-pages.ts";
 import { pageData } from "./data.ts";
-import type {
-  FormInput,
-  IndexInput,
-  ListInput,
-  MixinsInput,
-  RawInput,
-} from "./page-types.ts";
-
-compilePages();
-
-const [renderIndex, renderList, renderForm, renderMixins, renderRaw] =
-  await Promise.all([
-    loadPage<IndexInput>("index"),
-    loadPage<ListInput>("list"),
-    loadPage<FormInput>("form"),
-    loadPage<MixinsInput>("mixins"),
-    loadPage<RawInput>("raw"),
-  ]);
+import renderForm from "./pages/form.mx";
+import renderIndex from "./pages/index.mx";
+import renderList from "./pages/list.mx";
+import renderMixins from "./pages/mixins.mx";
+import renderRaw from "./pages/raw.mx";
 
 const routes: Record<string, string> = {
   "index.html": renderIndex({}),
