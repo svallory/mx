@@ -15,10 +15,22 @@ import { compile } from "./index.ts";
  * Bun.plugin(mxPlugin)`, which registers the same plugin object again;
  * `Bun.plugin` is idempotent for an already-registered plugin object).
  */
+/**
+ * Matches `.mx` but not `.solid.mx`: plain `.mx$` also matches `.solid.mx`
+ * (it's a string suffix), and a SolidMX file has no business going through
+ * the string-HTML translator — the same class of bug just fixed in
+ * `@markox/vite-plugin`'s own extension routing. A negative lookbehind
+ * excludes it directly in the filter, since Bun's `onLoad` requires an
+ * object return (returning `undefined` from the callback to "decline" a
+ * path throws `onLoad() expects an object returned`, so falling through
+ * has to happen at the filter, not inside the callback).
+ */
+const MX_FILTER = /(?<!\.solid)\.mx$/;
+
 const mxPlugin: BunPlugin = {
   name: "mx-html",
   setup(build) {
-    build.onLoad({ filter: /\.mx$/ }, ({ path }) => {
+    build.onLoad({ filter: MX_FILTER }, ({ path }) => {
       const source = readFileSync(path, "utf8");
       const { code } = compile(source, path);
       return { contents: code, loader: "ts" };
