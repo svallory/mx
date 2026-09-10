@@ -1,0 +1,13 @@
+export interface Input { name: string }
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>mx-vite</title>
+  </head>
+  <body>
+    <h1>Hello, ${input.name}</h1>
+    <p><a href="/about.html">About</a></p>
+  </body>
+</html>

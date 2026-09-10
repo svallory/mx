@@ -1,0 +1,14 @@
+export interface Input { }
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>About — mx-vite</title>
+  </head>
+  <body>
+    <h1>About</h1>
+    <p>Two <code>.mx</code> pages, compiled by <code>@markox/vite-plugin</code> and rendered to static HTML.</p>
+    <p><a href="/">Home</a></p>
+  </body>
+</html>

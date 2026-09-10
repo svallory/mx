@@ -2,6 +2,41 @@ import { existsSync, readFileSync } from "node:fs";
 import { print } from "@markox/parser";
 import type { Plugin } from "vite";
 
+/**
+ * Lazily imported, and only inside `transform`'s `.mx` branch: `@markox/html`
+ * pulls in `@marko/compiler`, a large dependency whose transitive code uses
+ * TypeScript parameter-property syntax. A static top-level import here would
+ * load that dependency the moment `vite.config.ts` imports this plugin —
+ * including for a `.solid.mx`-only project like `examples/counter-app` that
+ * never touches plain `.mx` at all — and break config loading, since Vite's
+ * own config loader reads `vite.config.ts` through Node's native strip-only
+ * TS mode, which rejects that syntax outright.
+ *
+ * A dynamic `import()`, not `require()`: `require()` on a bare specifier
+ * whose `main` is TS source (`@markox/html`'s `src/index.ts`) goes through
+ * Node's native module loader with no transform step at all under Vitest's
+ * Node-native `require`, hitting the same strip-only-mode error one line of
+ * source further in. Dynamic `import()` is handled by Vite's/Vitest's own
+ * transform pipeline instead, which strips TypeScript fully rather than in
+ * the narrow subset Node's native loader accepts.
+ *
+ * `@markox/html` has no compiled entry (its `main` is `src/index.ts`), so
+ * resolving its types at all — even through this dynamic `import()`, cast
+ * away below — needs `allowImportingTsExtensions` wherever `tsc` walks that
+ * far. Every consumer of this plugin (each example) needs the same flag in
+ * its own tsconfig for that reason, not because it imports `.ts` paths
+ * itself.
+ */
+async function compileHtml(
+  source: string,
+  filename: string,
+): Promise<{ code: string }> {
+  const { compile } = (await import("@markox/html")) as {
+    compile: (source: string, filename: string) => { code: string };
+  };
+  return compile(source, filename);
+}
+
 export interface MxPluginOptions {
   /**
    * File extensions handled by the plugin. Defaults to `.solid.mx`; `.mx`
@@ -10,12 +45,22 @@ export interface MxPluginOptions {
   extensions?: string[];
 }
 
-const DEFAULT_EXTENSIONS = [".solid.mx"];
+const DEFAULT_EXTENSIONS = [".solid.mx", ".mx"];
 
 /**
- * Appended to the resolved path so the rest of the pipeline sees a `.tsx`
+ * Appended to the resolved path so the rest of the pipeline sees a JS-family
  * module. See the note on `resolveId` below for why this is necessary.
+ *
+ * `.solid.mx` prints to JSX text (`print()`), so it needs `.tsx`; plain `.mx`
+ * compiles to a string-returning function with no JSX (`compile()`), so `.ts`
+ * is enough and keeps rolldown/esbuild from running a JSX transform over code
+ * that has none.
  */
+function suffixFor(ext: string): string {
+  return ext === ".mx" ? ".ts" : ".tsx";
+}
+
+/** `suffixFor(".solid.mx")`, kept as a named export for existing callers/tests. */
 export const MX_SUFFIX = ".tsx";
 
 /** A parse error as the vendored Babel parser raises it. */
@@ -68,36 +113,52 @@ export function codeFrame(
 }
 
 /**
- * Prints `.solid.mx` to JSX source text ahead of `@solidjs/vite-plugin`.
+ * Compiles `.solid.mx` and `.mx` ahead of the rest of the pipeline.
  *
- * Ordering: this plugin is `enforce: "pre"`, matching `@solidjs/vite-plugin`'s
- * own hard-coded `enforce: "pre"`, so relative order between the two is the
- * order they appear in the user's `plugins` array — put `mx()` first. Solid
- * then sees ordinary JSX text and runs whichever compiler it is configured
- * for; both the native (default) and Babel backends consume source text, so
- * neither needs special-casing here.
+ * `.solid.mx` prints to JSX source text (`print()`, from `@markox/parser`)
+ * ahead of `@solidjs/vite-plugin`. Ordering: this plugin is `enforce: "pre"`,
+ * matching `@solidjs/vite-plugin`'s own hard-coded `enforce: "pre"`, so
+ * relative order between the two is the order they appear in the user's
+ * `plugins` array — put `mx()` first. Solid then sees ordinary JSX text and
+ * runs whichever compiler it is configured for; both the native (default)
+ * and Babel backends consume source text, so neither needs special-casing
+ * here.
  *
- * Why `resolveId` rewrites the id to `<path>.solid.mx.tsx` rather than just
+ * `.mx` (not `.solid.mx`) compiles to a plain `(input) => string` module via
+ * `compile()` from `@markox/html` — the same whole-file translator
+ * `examples/mx-site` and `@markox/html/bun` use, so a `.mx` template behaves
+ * identically whether it is loaded by Vite or by Bun. `compile()`'s returned
+ * map is presently an identity placeholder (see its own doc comment — the
+ * translator builds text directly, not from a printed AST), so this plugin
+ * has no real source map to hand Vite yet for that extension; `transform`
+ * returns `map: null` for it rather than a placeholder Vite would treat as
+ * real.
+ *
+ * Why `resolveId` rewrites the id to `<path><ext>.tsx`/`.ts` rather than just
  * returning the resolved path — three separate parts of the pipeline dispatch
- * on the file extension, and `.solid.mx` satisfies none of them:
+ * on the file extension, and neither `.solid.mx` nor `.mx` satisfies any of
+ * them:
  *
  * 1. Vite routes a module into the JS pipeline only when its extension matches
  *    `JS_TYPES_RE` (`/\.(?:j|t)sx?$|\.mjs$/`). Without a `resolveId` hook the
  *    import is never resolved at all and `transform` never runs.
- * 2. Rolldown picks its parser dialect from the extension, so the printed JSX
- *    is parsed as plain JS ("Unexpected JSX expression"). Returning
+ * 2. Rolldown picks its parser dialect from the extension, so printed JSX text
+ *    parsed as `.mx` would fail ("Unexpected JSX expression"). Returning
  *    `moduleType: "tsx"` from `transform` fixes the parse but then hands the
  *    module to rolldown's own JSX transform, which resolves
- *    `react/jsx-runtime`.
+ *    `react/jsx-runtime` — irrelevant for `.mx`'s plain compiled function, and
+ *    exactly why it gets `.ts` instead.
  * 3. `@solidjs/vite-plugin` only compiles ids passing its `filter`, whose
  *    default is `src/**\/*.{jsx,tsx,tsrx,ts,js,mjs,cjs}`; that test runs
  *    before its `options.extensions` list is consulted, so registering the
- *    extension there cannot bring `.solid.mx` back in.
+ *    extension there cannot bring `.solid.mx` back in. `.mx` never reaches
+ *    Solid's plugin at all — its compiled output has no JSX for Solid to see.
  *
- * A `.tsx`-suffixed id satisfies all three at once with no configuration on
- * the user's side, which is why the example's `vite.config.ts` is just
+ * A suffixed id satisfies all three at once with no configuration on the
+ * user's side, which is why the example's `vite.config.ts` is just
  * `plugins: [mx(), solid()]`. `load` reads the real file from disk (strip the
- * suffix) and `transform` prints it; diagnostics keep the original filename.
+ * suffix) and `transform` prints or compiles it; diagnostics keep the
+ * original filename.
  *
  * The path itself comes from Vite's own resolver (`this.resolve`), never from
  * arithmetic here. Doing the path math locally got every non-trivial form
@@ -107,12 +168,13 @@ export function codeFrame(
  */
 export default function mx(options: MxPluginOptions = {}): Plugin {
   const extensions = options.extensions ?? DEFAULT_EXTENSIONS;
-  const isMxFile = (file: string) =>
-    extensions.some((ext) => file.endsWith(ext));
-  const isMxModule = (file: string) =>
-    extensions.some((ext) => file.endsWith(ext + MX_SUFFIX));
-  /** `/a/App.solid.mx.tsx` -> `/a/App.solid.mx` */
-  const sourcePath = (file: string) => file.slice(0, -MX_SUFFIX.length);
+  const matchExt = (file: string): string | undefined =>
+    extensions.find((ext) => file.endsWith(ext));
+  const isMxModule = (file: string): string | undefined =>
+    extensions.find((ext) => file.endsWith(ext + suffixFor(ext)));
+  /** `/a/App.solid.mx.tsx` -> `/a/App.solid.mx`; `/a/x.mx.ts` -> `/a/x.mx` */
+  const sourcePath = (file: string, ext: string) =>
+    file.slice(0, -suffixFor(ext).length);
 
   return {
     name: "mx",
@@ -122,39 +184,42 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
       const [path, suffix] = splitId(id);
 
       // `?raw`, `?url`, `?worker`: the caller wants the file itself, not the
-      // module MX would print. Decline so Vite serves the real `.solid.mx` —
+      // module MX would print. Decline so Vite serves the real MX file —
       // rewriting here would point its raw handler at a path that does not
       // exist on disk.
       if (SPECIAL_QUERY_RE.test(id)) return null;
 
       // Already rewritten (a re-resolve of our own id): keep it as is.
-      if (isMxModule(path)) return id;
-      if (!isMxFile(path)) return null;
+      if (isMxModule(path) !== undefined) return id;
+      const ext = matchExt(path);
+      if (ext === undefined) return null;
 
       // Delegate to Vite: this handles relative ids against the real importer
-      // directory, root-relative (`/src/x.solid.mx`) and `/@fs/` forms,
+      // directory, root-relative (`/src/x.mx`) and `/@fs/` forms,
       // `resolve.alias`, and bare specifiers into workspace packages.
       // `skipSelf` stops this hook from recursing into itself.
       const resolved = await this.resolve(id, importer, { skipSelf: true });
       if (!resolved) return null;
 
       const [resolvedPath, resolvedSuffix] = splitId(resolved.id);
-      if (!isMxFile(resolvedPath)) return null;
+      const resolvedExt = matchExt(resolvedPath);
+      if (resolvedExt === undefined) return null;
 
       // Carry the query across the rewrite. Vite appends its own (`?t=` on an
       // HMR re-fetch, `?import`), and dropping it would turn a cache-busted
       // request into a stale one.
-      return resolvedPath + MX_SUFFIX + (resolvedSuffix || suffix);
+      return resolvedPath + suffixFor(resolvedExt) + (resolvedSuffix || suffix);
     },
 
     load(id: string) {
       const [path] = splitId(id);
-      if (!isMxModule(path)) return null;
+      const ext = isMxModule(path);
+      if (ext === undefined) return null;
 
       // A real `Foo.solid.mx.tsx` on disk is a different module and must not
-      // be shadowed: only claim the id when the un-suffixed `.solid.mx` file
-      // is the one that actually exists.
-      const source = sourcePath(path);
+      // be shadowed: only claim the id when the un-suffixed MX file is the
+      // one that actually exists.
+      const source = sourcePath(path, ext);
       if (!existsSync(source)) return null;
 
       return readFileSync(source, "utf8");
@@ -164,39 +229,49 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
      * Bridges the on-disk file back to the suffixed module.
      *
      * Vite keys its module graph by the resolved id, which for MX is
-     * `<path>.solid.mx.tsx` — a path that does not exist on disk. An edit to
-     * the real `<path>.solid.mx` therefore matches no module, so without this
-     * hook Vite finds nothing to invalidate and sends no update at all.
+     * `<path><ext><suffix>` — a path that does not exist on disk. An edit to
+     * the real MX file therefore matches no module, so without this hook Vite
+     * finds nothing to invalidate and sends no update at all.
      */
     handleHotUpdate(ctx) {
       const [file] = splitId(ctx.file);
-      if (!isMxFile(file)) return;
+      const ext = matchExt(file);
+      if (ext === undefined) return;
 
       const graph = ctx.server.moduleGraph;
-      const mod = graph.getModuleById(file + MX_SUFFIX);
+      const mod = graph.getModuleById(file + suffixFor(ext));
       if (!mod) return;
 
       graph.invalidateModule(mod);
       return [...ctx.modules, mod];
     },
 
-    transform(code: string, id: string) {
+    async transform(code: string, id: string) {
       const [path] = splitId(id);
-      if (!isMxModule(path)) return null;
+      const ext = isMxModule(path);
+      if (ext === undefined) return null;
 
-      // Print against the real `.solid.mx` path so the source map and any
+      // Print/compile against the real MX path so the source map and any
       // error position name the file the user actually wrote.
-      const source = sourcePath(path);
+      const source = sourcePath(path, ext);
 
       try {
+        if (ext === ".mx") {
+          // `compile()`'s map is presently an identity placeholder (no AST
+          // is printed on this path), so there is nothing real to hand Vite
+          // — returning it would claim a mapping that does not exist.
+          const { code: compiled } = await compileHtml(code, source);
+          return { code: compiled, map: null };
+        }
+
         const { code: printed, map } = print(code, source);
         return { code: printed, map };
       } catch (err) {
         if (!isSyntaxError(err) || !err.loc) throw err;
 
         // Re-raise with the shape Vite's overlay reads, so the reported
-        // position is the `.solid.mx` line rather than a position inside the
-        // JSX text the user never wrote.
+        // position is the MX source line rather than a position inside text
+        // the user never wrote.
         const wrapped = err as MxSyntaxError & {
           id?: string;
           frame?: string;

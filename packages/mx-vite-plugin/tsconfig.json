@@ -4,6 +4,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "types": ["node"],
+    "allowImportingTsExtensions": true,
     "paths": {
       "@markox/parser": ["../mx-parser/src/public.d.ts"]
     }

@@ -107,7 +107,7 @@ function transformOf(plugin: Hooks) {
     this: unknown,
     code: string,
     id: string,
-  ) => TransformResult | null;
+  ) => Promise<TransformResult | null>;
 }
 
 /** Writes `source` to a real temp file, since `load` reads from disk. */
@@ -277,11 +277,11 @@ describe("mx()", () => {
   });
 
   describe("transform", () => {
-    it("prints a .solid.mx module to JSX text plus a map", () => {
+    it("prints a .solid.mx module to JSX text plus a map", async () => {
       const path = writeMx("Counter.solid.mx", COUNTER);
       const transform = transformOf(mx());
 
-      const result = transform.call({}, COUNTER, path + MX_SUFFIX);
+      const result = await transform.call({}, COUNTER, path + MX_SUFFIX);
 
       expect(result).not.toBeNull();
       expect(result?.code).toContain("<button");
@@ -292,21 +292,21 @@ describe("mx()", () => {
       expect(result?.map).toMatchObject({ version: 3 });
     });
 
-    it("names the .solid.mx file, not the .tsx id, in the source map", () => {
+    it("names the .solid.mx file, not the .tsx id, in the source map", async () => {
       const path = writeMx("Counter.solid.mx", COUNTER);
       const transform = transformOf(mx());
 
-      const result = transform.call({}, COUNTER, path + MX_SUFFIX);
+      const result = await transform.call({}, COUNTER, path + MX_SUFFIX);
       const map = result?.map as { sources: string[] };
 
       expect(map.sources).toContain(path);
     });
 
-    it("strips a query string before matching the id", () => {
+    it("strips a query string before matching the id", async () => {
       const path = writeMx("Counter.solid.mx", COUNTER);
       const transform = transformOf(mx());
 
-      const result = transform.call(
+      const result = await transform.call(
         {},
         COUNTER,
         `${path}${MX_SUFFIX}?t=1712345`,
@@ -316,22 +316,22 @@ describe("mx()", () => {
       expect(result?.code).toContain("<button");
     });
 
-    it("returns null for ids it does not handle", () => {
+    it("returns null for ids it does not handle", async () => {
       const transform = transformOf(mx());
       const code = "export const a = 1;";
 
-      expect(transform.call({}, code, "/src/main.tsx")).toBeNull();
-      expect(transform.call({}, code, "/src/main.ts")).toBeNull();
-      expect(transform.call({}, "body {}", "/src/app.css")).toBeNull();
+      expect(await transform.call({}, code, "/src/main.tsx")).toBeNull();
+      expect(await transform.call({}, code, "/src/main.ts")).toBeNull();
+      expect(await transform.call({}, "body {}", "/src/app.css")).toBeNull();
     });
 
-    it("throws a Vite-shaped error with loc, a frame, and no (l:c) suffix", () => {
+    it("throws a Vite-shaped error with loc, a frame, and no (l:c) suffix", async () => {
       const path = writeMx("Broken.solid.mx", BROKEN);
       const transform = transformOf(mx());
 
       let caught: unknown;
       try {
-        transform.call({}, BROKEN, path + MX_SUFFIX);
+        await transform.call({}, BROKEN, path + MX_SUFFIX);
       } catch (err) {
         caught = err;
       }
@@ -354,6 +354,47 @@ describe("mx()", () => {
 
       expect(error.frame).toContain("<div><span>oops</div>");
       expect(error.frame).toContain("^");
+    });
+  });
+
+  describe("plain .mx (not .solid.mx)", () => {
+    const GREETING = `export interface Input { name: string }
+<h1>Hello, \${input.name}</h1>
+`;
+
+    it("resolves a plain .mx id to a .ts-suffixed module, not .tsx", async () => {
+      const context = makeContext();
+      const resolveId = resolveIdOf(mx());
+
+      const resolved = await resolveId.call(
+        context,
+        "./greeting.mx",
+        "/root/src/index.tsx",
+      );
+
+      expect(resolved).toBe("/root/src/greeting.mx.ts");
+    });
+
+    it("compiles a .mx module to a string-returning function, unaffected by .solid.mx handling", async () => {
+      const path = writeMx("greeting.mx", GREETING);
+      const transform = transformOf(mx());
+
+      const result = await transform.call({}, GREETING, `${path}.ts`);
+
+      expect(result).not.toBeNull();
+      expect(result?.code).toContain("export default function");
+      expect(result?.code).toContain("escape(input.name)");
+      // No real map yet for this path (see the plugin's own doc comment).
+      expect(result?.map).toBeNull();
+    });
+
+    it("still handles .solid.mx exactly as before when both extensions are enabled", async () => {
+      const path = writeMx("Counter.solid.mx", COUNTER);
+      const transform = transformOf(mx());
+
+      const result = await transform.call({}, COUNTER, path + MX_SUFFIX);
+
+      expect(result?.code).toContain("<button");
     });
   });
 });

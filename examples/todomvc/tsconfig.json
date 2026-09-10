@@ -5,6 +5,7 @@
     "jsx": "preserve",
     "jsxImportSource": "@solidjs/web",
     "types": ["node", "vite/client"],
+    "allowImportingTsExtensions": true,
     "paths": {
       "@markox/vite-plugin": ["../../packages/mx-vite-plugin/src/index.ts"]
     }

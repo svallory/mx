@@ -1,0 +1,22 @@
+{
+  "name": "@markox/example-mx-vite",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && bun run dist-ssr/build.js",
+    "typecheck": "tsc --noEmit",
+    "e2e": "vitest run --config e2e/vitest.config.ts"
+  },
+  "dependencies": {
+    "@markox/html": "workspace:*"
+  },
+  "devDependencies": {
+    "@markox/vite-plugin": "workspace:*",
+    "@types/node": "26.5.1",
+    "playwright": "1.63.0",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "vitest": "3.2.7"
+  }
+}
