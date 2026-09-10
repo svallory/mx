@@ -96,3 +96,7 @@ cd examples/todomvc && bun run dev
 production build through a headless Chromium (needs `bunx playwright install
 chromium` once). The e2e suite is not part of the root `bun run test` — it
 needs a browser — so it stays behind the example's own script.
+
+`examples/mx-site` is a different kind of example: a Hono-on-Bun server
+rendering `.mx` templates to HTML strings with `@markox/html`, no client
+runtime, no Solid. See `examples/mx-site/README.md`.

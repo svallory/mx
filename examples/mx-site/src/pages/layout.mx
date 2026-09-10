@@ -1,0 +1,32 @@
+export interface Input {
+  title: string;
+  active: string;
+  children: () => string;
+}
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${input.title} — mx-site</title>
+  </head>
+  <body>
+    <header.site-header>
+      <h1>mx-site</h1>
+      <nav>
+        <a href="/" class=(input.active === "home" ? "active" : "")>Home</a>
+        <a href="/list" class=(input.active === "list" ? "active" : "")>List</a>
+        <a href="/form" class=(input.active === "form" ? "active" : "")>Form</a>
+        <a href="/mixins" class=(input.active === "mixins" ? "active" : "")>Mixins</a>
+        <a href="/raw" class=(input.active === "raw" ? "active" : "")>Raw</a>
+      </nav>
+    </header>
+    <main>
+      $!{input.children()}
+    </main>
+    <footer.site-footer>
+      <p>Rendered by @markox/html — no client runtime.</p>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+import Layout from "./layout.mx"
+import Callout from "./partials/callout.mx"
+
+export interface Input { }
+
+<Layout title="Home" active="home">
+  <Callout text="This whole site is a real server rendering .mx templates to a string — no client runtime." />
+  <section.intro>
+    <h2>Standalone MX demo</h2>
+    <p>Use the nav above to see attribute-tag named blocks, a partial via <code>import</code>, doctype/head/meta (this page), loops and empty-state handling, attribute escaping, mixins, and raw vs escaped output.</p>
+  </section>
+</Layout>

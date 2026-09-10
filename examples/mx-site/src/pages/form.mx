@@ -1,0 +1,22 @@
+import Layout from "./layout.mx"
+
+export interface Input {
+  username: string;
+  bio: string;
+  extraAttrs: Record<string, unknown>;
+}
+
+<Layout title="Form" active="form">
+  <h2>Attributes</h2>
+  <form action="/submit" method="post">
+    <label for="username">Username</label>
+    <input id="username" type="text" name="username" value=input.username required>
+    <input type="checkbox" name="subscribe" checked>
+    <input type="text" name="extra" ...input.extraAttrs>
+    <button type="submit" disabled>Save</button>
+  </form>
+
+  <h2>Escaping user-supplied values</h2>
+  <p.bio>${input.bio}</p>
+  <p>Attribute form: <span title=input.bio>hover for title</span></p>
+</Layout>

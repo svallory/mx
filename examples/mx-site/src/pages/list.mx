@@ -1,0 +1,34 @@
+import Layout from "./layout.mx"
+
+export interface Input {
+  fruits: string[];
+  tasks: { id: string; label: string }[];
+}
+
+<const/count=input.fruits.length/>
+
+<Layout title="List" active="list">
+  <h2>Index-keyed loop (${count} items)</h2>
+  <if=count === 0>
+    <p>No fruits yet.</p>
+  </if>
+  <else>
+    <ul>
+      <for|fruit, i| of=input.fruits>
+        <li>${i}: ${fruit}</li>
+      </for>
+    </ul>
+  </else>
+
+  <h2>Identity-keyed loop</h2>
+  <if=input.tasks.length === 0>
+    <p>No tasks yet.</p>
+  </if>
+  <else>
+    <ul>
+      <for|task| of=input.tasks by="id">
+        <li data-id=task.id>${task.label}</li>
+      </for>
+    </ul>
+  </else>
+</Layout>

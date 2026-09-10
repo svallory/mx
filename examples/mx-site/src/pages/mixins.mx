@@ -1,0 +1,29 @@
+import Layout from "./layout.mx"
+
+export interface Input {
+  badges: string[];
+}
+
+<define/badge|label|>
+  <span.badge>${label}</span>
+</define>
+
+<define/panel|title, body|>
+  <section.panel>
+    <h3>${title}</h3>
+    $!{body()}
+  </section>
+</define>
+
+<Layout title="Mixins" active="mixins">
+  <h2>Define called more than once</h2>
+  <p>
+    <for|label, i| of=input.badges>
+      $!{badge(label)}
+    </for>
+  </p>
+
+  <h2>Define taking a block</h2>
+  $!{panel("First panel", () => "<p>Plain body content.</p>")}
+  $!{panel("Second panel", () => badge("nested"))}
+</Layout>

@@ -46,6 +46,21 @@
         "vitest": "3.2.7",
       },
     },
+    "examples/mx-site": {
+      "name": "@markox/example-mx-site",
+      "version": "0.0.0",
+      "dependencies": {
+        "@markox/html": "workspace:*",
+        "hono": "4.6.20",
+      },
+      "devDependencies": {
+        "@markox/parser": "workspace:*",
+        "@types/node": "26.5.1",
+        "playwright": "1.63.0",
+        "typescript": "5.9.3",
+        "vitest": "3.2.7",
+      },
+    },
     "examples/todomvc": {
       "name": "@markox/example-todomvc",
       "version": "0.0.0",
@@ -261,6 +276,8 @@
 
     "@markox/example-counter-app": ["@markox/example-counter-app@workspace:examples/counter-app"],
 
+    "@markox/example-mx-site": ["@markox/example-mx-site@workspace:examples/mx-site"],
+
     "@markox/example-todomvc": ["@markox/example-todomvc@workspace:examples/todomvc"],
 
     "@markox/html": ["@markox/html@workspace:packages/mx-html"],
@@ -468,6 +485,8 @@
     "fsevents": ["fsevents@2.3.3", "", { "os": "darwin" }, "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw=="],
 
     "gensync": ["gensync@1.0.0-beta.2", "", {}, "sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg=="],
+
+    "hono": ["hono@4.6.20", "", {}, "sha512-5qfNQeaIptMaJKyoJ6N/q4gIq0DBp2FCRaLNuUI3LlJKL4S37DY/rLL1uAxA4wrPB39tJ3s+f7kgI79O4ScSug=="],
 
     "html-entities": ["html-entities@2.3.3", "", {}, "sha512-DV5Ln36z34NNTDgnz0EWGBLZENelNAtkiFA4kyNOG2tDI6Mz1uSWiq1wAKdyjnJwyDiDO7Fa2SO1CTxPXL8VxA=="],
 

@@ -1,0 +1,23 @@
+{
+  "name": "@markox/example-mx-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --tsconfig-override=../../tsconfig.base.json src/server.ts",
+    "build": "bun run --tsconfig-override=../../tsconfig.base.json src/build.ts",
+    "e2e": "vitest run --config e2e/vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@markox/html": "workspace:*",
+    "hono": "4.6.20"
+  },
+  "devDependencies": {
+    "@markox/parser": "workspace:*",
+    "@types/node": "26.5.1",
+    "playwright": "1.63.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

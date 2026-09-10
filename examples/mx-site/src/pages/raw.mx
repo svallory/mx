@@ -1,0 +1,17 @@
+import Layout from "./layout.mx"
+
+export interface Input {
+  markup: string;
+}
+
+<Layout title="Raw" active="raw">
+  <h2>Escaped vs raw output of the same data</h2>
+  <div.escaped>
+    <h3>Escaped output</h3>
+    <p>${input.markup}</p>
+  </div>
+  <div.raw>
+    <h3>Raw output</h3>
+    <p>$!{input.markup}</p>
+  </div>
+</Layout>
