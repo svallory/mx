@@ -23,16 +23,19 @@ TAG="${1:-v7.29.8}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
 BABEL_DIR="$PACKAGE_DIR/src/babel"
-STRING_PARSER_SRC="packages/babel-helper-string-parser/src/index.ts"
+STRING_PARSER_DIR="packages/babel-helper-string-parser/src"
+STRING_PARSER_SRC="$STRING_PARSER_DIR/index.ts"
 STRING_PARSER_DEST="$BABEL_DIR/util/string-parser.ts"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-echo "Fetching babel/babel @ $TAG (packages/babel-parser/src)..."
+echo "Fetching babel/babel @ $TAG (packages/babel-parser/src, $STRING_PARSER_DIR)..."
 git clone --filter=blob:none --sparse --depth 1 --branch "$TAG" \
   https://github.com/babel/babel.git "$TMP_DIR" --quiet
-(cd "$TMP_DIR" && git sparse-checkout set packages/babel-parser/src "$STRING_PARSER_SRC")
+# sparse-checkout set (cone mode) takes directories, not file paths — passing
+# a file path here fails with "is not a directory" and aborts under set -e.
+(cd "$TMP_DIR" && git sparse-checkout set packages/babel-parser/src "$STRING_PARSER_DIR")
 
 COMMIT="$(cd "$TMP_DIR" && git rev-parse HEAD)"
 echo "Resolved $TAG -> $COMMIT"
