@@ -95,11 +95,24 @@ describe("bindings may not shadow the input parameter", () => {
   it.each([
     ["let", "<let/input=1/>"],
     ["const", "<const/input=1/>"],
-    ["for", "<for|input| of=[1,2]><p>y</p></for>"],
   ])("rejects <%s> binding `input`", (_name, body) => {
     expect(() => compile(src(body), file)).toThrow(
       /collides with the template input parameter/,
     );
+  });
+
+  // A tag param is a *nested* scope — a `for (const … of …)` head, an arrow's
+  // parameter list — so an ordinary JS shadow is correct there and the
+  // template's own input stays reachable outside the loop. Marko draws the
+  // same line: it renders `<for|input|>` and rejects `<let/input>`. Rejecting
+  // the param form would be an implementation limit stated as a rule, which
+  // decision 65 forbids.
+  it.each([
+    ["for", "<for|input| of=input.items><p>${input}</p></for>"],
+    ["for with index", "<for|input, i| of=input.items><p>${input}</p></for>"],
+    ["define", '<define/Row|input|><li>${input}</li></define>\n<Row("a")/>'],
+  ])("shadows `input` in a %s tag param, as Marko does", (_name, body) => {
+    expect(() => compile(src(body), file)).not.toThrow();
   });
 
   it("leaves any other binding name alone", () => {

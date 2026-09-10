@@ -79,16 +79,24 @@ describe("<for> rejections", () => {
 });
 
 describe("every <for> form lowers", () => {
+  // Each form is pinned by the loop *kind* it produces, not by the spelling of
+  // its bounds: a `<for>`'s own expressions are bound to a temporary before
+  // the loop opens, so a tag param may shadow a name the iterable itself uses
+  // (`<for|input| of=input.items>`) without landing in the temporal dead zone.
   it.each([
-    ["of", "<for|item| of=input.items><li>x</li></for>", "of input.items"],
+    [
+      "of",
+      "<for|item| of=input.items><li>x</li></for>",
+      "for (const item of $for",
+    ],
     [
       "of with index",
       "<for|item, i| of=input.items><li>x</li></for>",
       ".entries()",
     ],
     ["in", "<for|k, v| in=input.obj><li>x</li></for>", "Object.entries"],
-    ["from/to", "<for|n| from=1 to=3><li>x</li></for>", "n <= 3"],
-    ["from/until", "<for|n| from=0 until=2><li>x</li></for>", "n < 2"],
+    ["from/to", "<for|n| from=1 to=3><li>x</li></for>", "n <= $for"],
+    ["from/until", "<for|n| from=0 until=2><li>x</li></for>", "n < $for"],
   ])("%s", (_name, body, expected) => {
     expect(compile(src(body), "for.mx").code).toContain(expected);
   });

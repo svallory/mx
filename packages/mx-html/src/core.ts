@@ -155,10 +155,15 @@ export interface Policy {
    */
   orderAttrs?(tagName: string, attrs: Node[]): Node[];
   /**
-   * Inspects a binding a construct is about to introduce at render scope —
-   * a `<for>` or `<define>` tag param, a `<let>`/`<const>` variable. A dialect
-   * uses this to reject a name that would collide with something the emitted
-   * module already binds.
+   * Inspects a variable a construct is about to declare at *render* scope —
+   * a `<let>` or `<const>` name. A dialect uses this to reject a name that
+   * would collide with something the emitted module already binds.
+   *
+   * Deliberately not called for tag params (`<for|x|>`, `<define/R|x|>`):
+   * those introduce a nested scope — a `for (const x of …)` head, an arrow
+   * function's parameter list — where an ordinary JS shadow is correct and
+   * harmless. Marko draws the same line, accepting `<for|input|>` while
+   * rejecting `<let/input>` as a duplicate declaration.
    */
   checkBinding?(target: Node, what: string): void;
   /**
@@ -545,10 +550,6 @@ export function emitFor(ctx: Ctx, node: Node): void {
 
   rejectUnsupportedFields(ctx, node, "`<for>`", { params: true });
 
-  for (const param of node.body?.params ?? []) {
-    ctx.policy.checkBinding?.(param, "`<for>`");
-  }
-
   const params: string[] = (node.body?.params ?? []).map((p: Node) =>
     expr(ctx, p),
   );
@@ -562,9 +563,26 @@ export function emitFor(ctx: Ctx, node: Node): void {
   const [first = "item", second] = params;
   const children = node.body?.body ?? [];
 
+  /**
+   * Binds a loop's own expressions to temporaries *before* the loop opens.
+   *
+   * A tag param may legitimately shadow an outer name — `<for|input| of=
+   * input.items>` is valid Marko and renders there — but the loop variable is
+   * in scope throughout its own head, so emitting `for (const input of
+   * input.items)` puts `input.items` in the temporal dead zone and throws
+   * "Cannot access 'input' before initialization" at render time. Evaluating
+   * the iterable first is what makes an ordinary JS shadow behave the way the
+   * author (and Marko) expect.
+   */
+  const bind = (source: string): string => {
+    const temp = `$for${ctx.body.length}`;
+    push(ctx, `const ${temp} = ${source};`);
+    return temp;
+  };
+
   const of = attrByName(node, "of");
   if (of) {
-    const list = expr(ctx, of.value);
+    const list = bind(expr(ctx, of.value));
     if (second) {
       push(
         ctx,
@@ -582,7 +600,7 @@ export function emitFor(ctx: Ctx, node: Node): void {
 
   const inAttr = attrByName(node, "in");
   if (inAttr) {
-    const object = expr(ctx, inAttr.value);
+    const object = bind(expr(ctx, inAttr.value));
     push(
       ctx,
       `for (const [${first}, ${second ?? "value"}] of Object.entries(${object})) {`,
@@ -598,8 +616,8 @@ export function emitFor(ctx: Ctx, node: Node): void {
   const until = attrByName(node, "until");
   if (to || until) {
     const from = attrByName(node, "from");
-    const start = from ? expr(ctx, from.value) : "0";
-    const bound = expr(ctx, (to ?? until).value);
+    const start = bind(from ? expr(ctx, from.value) : "0");
+    const bound = bind(expr(ctx, (to ?? until).value));
     const compare = to ? "<=" : "<";
     push(
       ctx,
@@ -642,10 +660,6 @@ export function emitDefine(ctx: Ctx, node: Node): void {
     var: true,
     params: true,
   });
-  for (const param of node.body?.params ?? []) {
-    ctx.policy.checkBinding?.(param, "`<define>`");
-  }
-
   const name = expr(ctx, node.var);
   const paramNames: string[] = (node.body?.params ?? []).map((p: Node) =>
     expr(ctx, p),

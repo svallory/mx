@@ -449,13 +449,25 @@ configuration), and `<script>` is the one inert tag taking a body (raw text).
 
 Some constructs need no row at all, because Marko's own parser rejects them
 before a translator runs — do not add code for these, and do not read their
-absence as tolerance: `key=` on an element, `class:foo`/`style:foo` modifiers
-(*"`class:active` is not a valid attribute, did you mean
-`class={ active: condition }`?"* — so the translator matches Marko by
-rejecting them, repeating that fix-it), and `$!{…}` in an attribute value.
-A binding named `input` (`<let/input=…>`, `<for|input|>`) is rejected too: it
-would shadow the emitted `function (input: Input)` parameter, and Marko
-refuses it as a duplicate declaration.
+absence as tolerance: `key=` on an element, and `$!{…}` in an attribute value.
+
+`class:foo`/`style:foo` are a separate category: **not Marko syntax**, rather
+than something this target cannot express. Marko has no such modifier and says
+so (*"`class:active` is not a valid attribute, did you mean
+`class={ active: condition }`?"*), so the translator errors with Marko's own
+fix-it. There is no behaviour to reproduce and no fixture to write, since no
+`.marko` file using them compiles at all.
+
+A **render-scope** binding named `input` (`<let/input=…>`, `<const/input=…>`)
+is rejected: it would shadow the emitted `function (input: Input)` parameter
+and make the template's own input unreachable, and Marko refuses it as a
+duplicate declaration. A **tag param** (`<for|input|>`, `<define/R|input|>`) is
+*accepted*, because it opens a nested scope where an ordinary JS shadow is
+correct — Marko renders those. Rejecting them would be an implementation limit
+stated as a rule, which decision 65 forbids. Note the codegen consequence: a
+`<for>`'s iterable is bound to a temporary before the loop opens, or a param
+shadowing the name used in the iterable (`<for|input| of=input.items>`) hits
+the temporal dead zone and throws at render time.
 
 Two behaviours worth knowing before editing the policy, both verified rather
 than assumed:
@@ -474,8 +486,8 @@ than assumed:
 
 `bun run oracle:marko` prints **two** tables: the existing `.mx` set
 (`packages/mx-html/fixtures-mx`, 30 fixtures, 12 recorded divergences) and
-the stock set (`packages/translator/fixtures-marko`, 29 fixtures, minimum 29,
-currently 29 pass / 0 skipped / 0 bug). Fixture `expected.html` files are
+the stock set (`packages/translator/fixtures-marko`, 30 fixtures, minimum 30,
+currently 30 pass / 0 skipped / 0 bug). Fixture `expected.html` files are
 generated from real Marko, never hand-written.
 
 `<html-comment>` lowers placeholders as Marko does, through an emitted
