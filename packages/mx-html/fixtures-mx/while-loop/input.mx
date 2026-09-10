@@ -1,0 +1,6 @@
+export interface Input { count: number }
+<ul>
+  <for|i| from=0 until=input.count>
+    <li>row ${i}</li>
+  </for>
+</ul>

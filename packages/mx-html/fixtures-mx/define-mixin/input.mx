@@ -1,0 +1,10 @@
+<define/card|title, body|>
+  <div.card>
+    <h2>${title}</h2>
+    <p>${body}</p>
+  </div>
+</define>
+<fragment>
+  $!{card("First", "one")}
+  $!{card("Second", "two")}
+</fragment>

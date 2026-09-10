@@ -1,0 +1,11 @@
+<define/box|body|>
+  <div.box>
+    $!{body()}
+  </div>
+</define>
+<define/label>
+  <strong>inside</strong>
+</define>
+<fragment>
+  $!{box(label)}
+</fragment>

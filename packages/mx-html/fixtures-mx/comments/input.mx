@@ -1,0 +1,4 @@
+<p>before</p>
+<!-- html comment -->
+// line comment
+<p>after</p>
