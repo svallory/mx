@@ -70,7 +70,13 @@ reactive runtime — `<let>`, `<effect>`, `<await>`, and two-way binding are
 not supported here (they exist only in the Solid target). Everything else in
 Pug and JSX has an MX spelling; that note's "Caveats" section lists the
 implementation gaps found while proving that — comments are always dropped
-(both `<!-- -->` and `//`), calling a `<define>` as a tag breaks for more
-than one parameter or a block parameter, and a placeholder cannot be the
-first content in a template. None of those are fixed as of this package's
-current state; they are tracked as findings, not silently worked around.
+(both `<!-- -->` and `//`), calling a `<define>` as a tag is broken for
+**any** parameter count of one or more (not just multi-parameter — a single
+plain-value parameter also breaks, and a single block parameter throws),
+a bare escaped placeholder as the first content in a template is misparsed
+as a dynamic tag name and throws, a bare raw placeholder in that same
+position silently miscompiles instead of throwing, and `by=` on `<for>`
+is silently accepted and ignored rather than rejected (it is meant to be a
+parse error — no fixture exercises it as of this package's current state).
+None of those are fixed here; they are tracked as findings, not silently
+worked around.
