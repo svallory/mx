@@ -100,6 +100,36 @@ gate that would have caught this before a real dev install did. Run via
 (`scripts/test.sh`). Confirmed failing against the pre-fix commit and passing
 after — see `scratch/reports/zed-solidmx.md`.
 
+## A second, related defect found while adding `--check` coverage for it
+
+Verifying the header-copy fix's `--check` mode surfaced a second, independent
+and pre-existing bug: **`apply_patches` silently no-op'd on every run.**
+`fetch_upstream` stripped `vendor/tree-sitter-typescript/.git` before
+`apply_patches` ran; `git -C <dir> apply` with no real repo at `<dir>`
+resolves `-C` **upward** to whatever repo actually encloses it (this
+package's own monorepo), the patch's paths (`common/define-grammar.js`)
+don't exist there, and `git apply` reports "Skipped patch" while exiting 0.
+`vendor/tree-sitter-typescript/common/define-grammar.js` was therefore always
+the unpatched upstream file — no `mx_element`, no `defineGrammar(dialect,
+name)` — even though every prior `./scripts/vendor.sh` run printed "patches
+applied" and exited 0.
+
+This did **not** corrupt the committed `src/parser.c`/`grammar.json` — those
+were generated correctly at some point before this ordering bug's effect
+took hold, and `tree-sitter generate` after the fix reproduces them
+byte-identically (confirmed). It would have corrupted the **next** bump: a
+future `./scripts/vendor.sh` re-vendor, followed by `bun run generate`, would
+have silently regenerated an unpatched (plain tsx, no MX) grammar, and
+nothing before this would have caught it — `tree-sitter test`'s corpus
+compiles from committed `src/`, not from a fresh `vendor.sh` run.
+
+Fixed by reordering: `fetch_upstream` now leaves `.git` in place;
+`apply_patches` applies the patch, verifies success, *then* strips `.git`.
+`apply_patches` also now refuses to run at all against a directory with no
+`.git` (`exit 1`, not a silent no-op) as a second line of defense.
+`--verbose` on the `git apply` call makes success/no-op visibly different in
+every future run's output ("Applied patch ... cleanly" vs. "Skipped patch").
+
 ## Local modifications
 
 All of them live in `patches/*.patch`, produced with `git format-patch` and

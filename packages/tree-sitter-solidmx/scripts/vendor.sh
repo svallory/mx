@@ -38,6 +38,10 @@ fi
 
 # Fetch upstream at the pin into $1. Uses a blobless clone: the full history of
 # this repo is large and only one tree is needed.
+#
+# Leaves $dest/.git in place — apply_patches needs a real repo there for
+# `git -C $dest apply` to resolve against (see apply_patches' own comment for
+# why this matters). The caller strips .git afterward.
 fetch_upstream() {
   local dest="$1"
   rm -rf "$dest"
@@ -52,11 +56,20 @@ fetch_upstream() {
     echo "vendor.sh: checked out $got, expected pin $PIN_SHA ($PIN_TAG)" >&2
     exit 1
   fi
-  # Drop upstream's own git metadata; the vendored tree is content, not a repo.
-  rm -rf "$dest/.git"
 }
 
 apply_patches() {
+  # `git -C "$dest" apply` requires $dest to be inside a real git worktree —
+  # without one, git silently resolves -C upward to whatever repo happens to
+  # enclose $dest (this package's own monorepo), the patch's paths don't
+  # exist there, and `git apply` reports "Skipped patch" and exits 0. Caught
+  # only because scripts/vendor.sh --check (added alongside this comment)
+  # diffed a "regenerated" vendor/ against itself and found it unpatched —
+  # every prior run of this function silently no-op'd, and nothing before
+  # this ever re-ran it against a $dest with .git already stripped to notice.
+  # fetch_upstream therefore leaves $dest/.git in place; THIS function is
+  # what must strip it, immediately after applying, before it's used as a
+  # source anywhere else — that ordering is the actual fix.
   local dest="$1"
   shopt -s nullglob
   local patches=("$PATCH_DIR"/*.patch)
@@ -68,14 +81,23 @@ apply_patches() {
     exit 1
   fi
 
+  if [[ ! -d "$dest/.git" ]]; then
+    echo "vendor.sh: apply_patches called on $dest with no .git — patches would silently no-op" >&2
+    exit 1
+  fi
+
   local p
   for p in "${patches[@]}"; do
-    if ! git -C "$dest" apply --whitespace=nowarn "$p"; then
+    if ! git -C "$dest" apply --whitespace=nowarn --verbose "$p"; then
       echo "vendor.sh: failed to apply $(basename "$p")" >&2
       echo "  Upstream likely drifted. See UPSTREAM.md 'Bump procedure'." >&2
       exit 1
     fi
   done
+
+  # Drop upstream's own git metadata now that the patch is safely applied —
+  # the vendored tree is content, not a repo.
+  rm -rf "$dest/.git"
 }
 
 if [[ "$CHECK_MODE" -eq 1 ]]; then
