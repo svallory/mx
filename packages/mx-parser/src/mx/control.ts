@@ -687,6 +687,21 @@ function hygienicIndexName(body: Node): string {
  * counter from `hygienicIndexName`. `from` is always emitted here (unlike the
  * unstepped `repeatElement`) because the callback body needs it whether or
  * not the author wrote it.
+ *
+ * **`from=`/`step=` are evaluated once per row, not once for the whole
+ * range.** The `from`/`step` nodes passed in here are the *same* AST nodes
+ * `steppedCountExpression` already embedded once in the `count` prop
+ * expression, and they are embedded again in every row's callback body
+ * (`indexInit` below) — `Repeat` invokes that callback once per row, so for
+ * an N-row range `from`/`step` each evaluate N+1 times at runtime, not once.
+ * A signal read or a literal is idempotent, so this is invisible for the
+ * common case, but an impure `from=`/`step=` expression (a counter, a
+ * logged call, anything with a side effect) silently runs N+1 times instead
+ * of once — `<for|i| from=nextId() to=10 step=1>` calls `nextId()` eleven
+ * times, not one. Authors must keep `from=`/`step=`/the bound pure (a
+ * signal, a literal, or a memo), the same rule that already applies to any
+ * JSX attribute value under Solid's own re-read-on-every-access model — see
+ * `packages/mx-parser/README.md`'s `<for>` rows.
  */
 function steppedRepeatElement(
   ctx: LowerContext,

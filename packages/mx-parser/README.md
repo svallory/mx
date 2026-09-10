@@ -56,6 +56,38 @@ Marko's repeatable attribute tags (which collect into an array prop) are out
 of scope for v1, which is why the duplicate case is an error rather than a
 merge.
 
+## `<for>`
+
+| Written | Lowers to |
+|---|---|
+| `<for\|item, i\| of=xs()>` | `<For each={xs()} keyed={false}>{(item, i) => body}</For>` |
+| `<for\|item, i\| of=xs() by="id">` | `<For each={xs()} keyed={x => x.id}>{(item, i) => body}</For>` |
+| `<for\|k, v\| in=obj()>` | `<For each={Object.entries(obj())} keyed={e => e[0]}>{([k, v]) => body}</For>` |
+| `<for\|i\| from=a to=b>` | `<Repeat count={(b) - (a) + 1} from={a}>{(i) => body}</Repeat>` (`from` omitted when the author didn't write it) |
+| `<for\|i\| from=a until=b>` | `<Repeat count={(b) - (a)} from={a}>{(i) => body}</Repeat>` |
+| `<for\|i\| from=a to=b step=s>` | `<Repeat count={Math.max(0, Math.floor(((b)-(a))/(s))+1)}>{(mxIndex) => { const i = (a) + mxIndex * (s); return body; }}</Repeat>` |
+| `<for\|i\| from=a until=b step=s>` | same, with `Math.ceil(((b)-(a))/(s))` (exclusive bound) |
+| `<for\|i\| ... step=0>` | parse error: `step must not be 0` |
+
+**`from=`/`to=`/`until=`/`step=` are read once per row when `step=` is
+present, not once for the whole range.** Without `step=`, `Repeat`'s own
+`from`/`count` props are each read once (as any JSX attribute is). With
+`step=`, the emitted callback recomputes `i = from + mxIndex * step` on
+*every row* — `Repeat` calls that callback once per row — so an N-row range
+evaluates `from`/`step` N+1 times at runtime (once in `count`, once per row).
+A signal read or a literal is unaffected by this, but an impure expression
+(a call with a side effect, a mutating counter) silently runs N+1 times
+instead of once. Keep `from=`/`to=`/`until=`/`step=` pure — a signal, a
+literal, or a memo — the same requirement any JSX attribute value already
+has under Solid's re-read-on-every-access model. See
+`packages/mx-parser/src/mx/control.ts`'s `steppedRepeatElement` for the
+lowering itself.
+
+The stepped callback's raw counter is a hygienic synthetic name, `mxIndex`
+by default, bumped to `mxIndex2`/`mxIndex3`/… only if the author's own body
+already references `mxIndex` — the author's own `|i|` param name is always
+what the body sees as the loop variable, never the synthetic counter.
+
 ## Build
 
 ```

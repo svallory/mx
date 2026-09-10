@@ -519,6 +519,14 @@ describe("for: ranges lower to <Repeat>", () => {
     expect(list.attr("count")?.value).toBe(6);
   });
 
+  it("uses the exclusive bound (ceil) for until= with a negative step=", () => {
+    const list = listAttrs(
+      `const el = <for|i| from=10 until=0 step=-2><li>x</li></for>;`,
+    );
+    // Math.max(0, Math.ceil((0 - 10) / -2)) = 5 (10,8,6,4,2).
+    expect(list.attr("count")?.value).toBe(5);
+  });
+
   it("folds a negative-yielding range to 0 via Math.max", () => {
     const list = listAttrs(
       `const el = <for|i| from=0 to=9 step=-1><li>x</li></for>;`,
