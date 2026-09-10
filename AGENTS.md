@@ -60,6 +60,67 @@ Two syntax decisions are settled and encoded in the lowering table:
 - **Shorthand `class` merges with a string or an object; anything else is a parse error.** Shorthand plus a *string* `class="x"` merges to `class="card x"` (shorthand first). Shorthand plus an **object literal** merges to Solid 2's array form, `class={["card", {...}]}`, the string entry always-on and the object toggling; a static `class="x"` present as well folds into that string entry (`class={["card x", {...}]}`) rather than being emitted as a second `class` attribute. Shorthand plus any *other* dynamic `class=` expression (an identifier, a call, a ternary) is a parse error. `#id` shorthand combined with an explicit `id=` is a parse error. `style=` only accepts an object-literal value (`style={color: c()}` → `style={{color: c()}}`); any other `style=` expression is a parse error for v1.
 - **Tag params (`|a, b|`) come before `=value`.** `<if|u|=user()>`, not `<if=user()|u|>` — the latter parses but folds `|u|` into the condition expression and reports no params, matching `<for|item, i| of=...>`'s own order. `notes/solidmx-spec.md` §5.1 writes `<if=user()|u|>` as loose prose; the real grammar is params-first.
 
+## Standalone MX (`.mx`) and `@markox/html`
+
+MX has **two lowering targets in one parser package**, selected by a parse
+option:
+
+- `parse(source, filename)` — the default, `mxMode: "expression"`. A
+  `.solid.mx` file: a TypeScript module in which `<` in expression position
+  opens an MX element, lowered to Solid 2 JSX. Unchanged by template mode.
+- `parse(source, filename, { mxMode: "template" })` — a whole-file `.mx`
+  template, lowered to a string-returning TS module by `@markox/html`.
+
+The two share the tokenizer but **not** the entry point.
+`src/mx/walk.ts` (`walkMxRegion`) stops at the first element's close and hands
+the tokenizer back to Babel; `src/mx/template.ts` (`walkMxTemplate`) owns the
+whole file and never stops early. Keeping them separate is what makes template
+mode additive — nothing in it runs for a `.solid.mx` parse, so the oracle
+cannot move.
+
+In template mode `parse` returns a `File` whose `program.body` is **empty** and
+whose `extra.mxTemplate` holds the parsed template. A standalone template is
+markup plus a few statement tags, not a TypeScript program, so there is no
+honest Babel-node representation of it.
+
+Two htmljs-parser facts that are easy to get wrong (both verified against
+5.15.0, both cost real debugging time):
+
+- **In concise mode `onOpenTagStart` never fires.** A line like
+  `import Button from "./b.mx"` or `div.card` opens with the tag *name*, so
+  `onOpenTagName` is the first event for the tag. A handler that assumes
+  `onOpenTagStart` ran and bails on a null `pending` silently drops every
+  concise-mode tag — including every statement tag.
+- **`import` / `static` / `export` parse as *tags*, not statements.**
+  htmljs-parser has no JS grammar, so `import Button from "./b.mx"` is a tag
+  named `import` whose attributes are the remaining words. The tag's range is
+  the statement's source span, so the text is sliced back out and re-parsed.
+  They are declared `TagType.void` so the parser does not hunt for a close tag.
+
+Also: `<!doctype html>` is silently dropped by htmljs-parser (no event fires).
+
+`packages/mx-html` (`@markox/html`) holds the string target:
+
+- `escape(value)` — the *entire* runtime. Escapes `& < > " '`; `null` and
+  `undefined` render as `""`, not their names.
+- `compile(source, filename)` -> `{ code, map }`. The map is currently an
+  identity placeholder: the emitter builds text directly rather than printing an
+  AST, so there are no node positions to derive mappings from yet.
+
+Emitted module shape: the `escape` import, the author's hoisted `import`s and
+`static` blocks, their `export interface Input` verbatim, and
+`export default function (input: Input): string` building one local by `out +=`
+concatenation (**not** an array join — the goldens diff this code).
+
+Whitespace is `normalizeText()` from `src/mx/lower.ts`, exported from the
+parser and reused by both targets. Do not write a second implementation; that
+is the whole point of exporting it.
+
+Goldens live at `packages/mx-html/fixtures-mx/<name>/` with `input.mx`,
+`input.json` and `expected.html`, and are asserted on **rendered HTML**, not on
+emitted code, so the emitter stays free to improve. `biome.json` ignores
+`**/fixtures-mx`.
+
 ## Design docs
 
 Design docs, specs, and research notes live outside this repo, at the project space root under `notes/` (not inside this worktree).
