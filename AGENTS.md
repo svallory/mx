@@ -34,6 +34,17 @@ All dependencies in the root `package.json` are pinned to an exact version (no `
 
 Conventional commits: `type(scope): summary`.
 
+## MX parser
+
+`packages/mx-parser` vendors `@babel/parser` 7.29.8 and forks one method of its JSX plugin so `<` in expression position is parsed as MX. Entry points:
+
+- `parse(source, filename, options?)` — parses `.solid.mx`, returns a Babel `File` of standard node types only (MX facts go in `node.extra.mx`).
+- `parseBabel` / `parseBabelExpression` — the untouched vendored `@babel/parser` surface, for plain `.ts`/`.tsx`.
+
+MX parsing is opt-in through the `mx` parser option, which `parse` sets. Without it the vendored parser is byte-equivalent to npm `@babel/parser` — `src/vendored.test.ts` pins that, so keep those tests on `parseBabel` rather than `parse`. `packages/mx-parser/UPSTREAM.md` "Local modifications" records exactly what the fork changed.
+
+Consumers typecheck against `src/public.d.ts`, not `src/index.ts`: the vendored tree needs tsconfig relaxations that must not leak into packages that merely call `parse`.
+
 ## Design docs
 
 Design docs, specs, and research notes live outside this repo, at the project space root under `notes/` (not inside this worktree).
@@ -42,6 +53,8 @@ Design docs, specs, and research notes live outside this repo, at the project sp
 
 `packages/oracle` (`@mx/oracle`) compares compiled `dom-expressions` output between `fixtures/<name>/input.solid.mx` and its hand-written `fixtures/<name>/twin.tsx` twin, for both Solid generate variants. `bun run oracle` runs it standalone and prints a fixture/variant/status table; see `fixtures/README.md` for the fixture and `divergences.md` contract.
 
-A `skipped` status is not a pass: until `@mx/parser` exists, `.solid.mx` compiles throw `MxParserUnavailable` and every fixture reports `skipped`. Only `pass`, `fail`, or `divergent` mean the parser actually ran. `bun run oracle` prints an `ALL SKIPPED` banner when every row is skipped; pass `--strict` to also fail the run in that case (use once the parser is wired in).
+`@mx/parser` is wired into the harness (`packages/oracle` depends on it and `report.ts` passes its `parse` as `mxParser`), so fixtures compile for real. Statuses: `pass`, `fail` and `divergent` mean the parser ran; `skipped` means no parser was available (now a real failure, not "not implemented"); `pending` means the fixture carries a `PENDING` marker naming constructs the parser cannot lower yet. Neither `skipped` nor `pending` is a pass, and `--strict` fails the run on either — see `fixtures/README.md` for the `PENDING` contract.
+
+Current state: `counter` passes both variants; `todos` and `attrs` are `pending` (control flow, spread, and namespaced attributes are not lowered yet). So `bun run oracle` exits 0 and `bun run oracle -- --strict` exits 1 on exactly those two fixtures.
 
 Golden snapshots (`fixtures/<name>/__golden__/twin.<variant>.js`) pin `twin.tsx`'s own compiled output, independent of MX, to catch a `babel-preset-solid`/`solid-js` pin bump changing generated code. Regenerate them deliberately with `bun run oracle -- --update` and call it out in the PR — never let a pin bump change them as a silent side effect.
