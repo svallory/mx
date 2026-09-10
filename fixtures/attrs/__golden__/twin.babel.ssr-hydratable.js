@@ -1,9 +1,8 @@
 import { ssrElement as _$ssrElement } from "@solidjs/web";
 import { mergeProps as _$mergeProps } from "@solidjs/web";
-import { ssrClassName as _$ssrClassName } from "@solidjs/web";
 import { ssr as _$ssr } from "@solidjs/web";
-var _tmpl$ = "<span>static</span>",
- _tmpl$2 = ["<p class=\"", "\">shorthand plus object</p>"];
+import { ssrClassName as _$ssrClassName } from "@solidjs/web";
+var _tmpl$ = ["<p class=\"", "\">shorthand plus object</p>"];
 import { createSignal } from "solid-js";
 export function Attrs(props) {
  var _v$;
@@ -27,7 +26,7 @@ export function Attrs(props) {
  color: color()
  };
  }
- }), () => [_$ssr(_tmpl$), (_v$ = () => _$ssrClassName(["badge big", {
+ }), () => ["static", (_v$ = () => _$ssrClassName(["badge big", {
  on: active()
- }]), _$ssr(_tmpl$2, _v$))], true);
+ }]), _$ssr(_tmpl$, _v$))], true);
 }

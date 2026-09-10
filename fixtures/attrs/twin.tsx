@@ -20,11 +20,11 @@ export function Attrs(props: { extra?: Record<string, unknown> }) {
       }}
       prop:value={color()}
     >
-      {/* Text and sibling element share a line, matching the MX source, so no
-          whitespace-collapsing question arises in this fixture — `attrs`
-          tests attributes, and `fixtures/README.md` covers the whitespace
-          contract. */}
-      <span>static</span>
+      {/* The MX source writes `static` on its own indented line before this
+          element. Under the line-based whitespace rule (decision 33) the
+          indentation is dropped, not collapsed to a space, so the twin says
+          `static` with nothing after it. */}
+      static
       <p class={["badge big", { on: active() }]}>shorthand plus object</p>
     </div>
   );

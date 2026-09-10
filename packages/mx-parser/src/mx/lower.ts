@@ -136,19 +136,46 @@ export function jsxIdentifier(
 }
 
 /**
- * Marko whitespace rules for MX text, which are not JSX's.
+ * Marko's line-based whitespace rule for MX text, which is not JSX's
+ * (decision 33).
  *
- * - A whitespace-only run containing a newline is dropped entirely. This is the
- *   rule that makes indented markup behave: `<p>\n  ${a}\n  ${b}\n</p>` has no
- *   text between the two expression containers, so nothing renders between
- *   them. JSX would keep a space here.
- * - A whitespace-only run with no newline collapses to a single space, so
- *   `${a} ${b}` on one line keeps the space the author typed.
- * - In a run with actual content, internal whitespace collapses to one space,
- *   and leading/trailing whitespace is trimmed where the run meets a tag
- *   boundary.
+ * The rule is defined on *lines*, not on whitespace runs. For a run that
+ * contains a newline:
  *
- * Authors who need a space the newline rule would drop write `${" "}`.
+ * 1. Split the run into lines.
+ * 2. Trim each line.
+ * 3. Drop the lines that are then empty.
+ * 4. Join what remains with a single space.
+ * 5. Collapse any internal whitespace run to one space.
+ *
+ * A run with **no** newline skips steps 1 to 4 and only collapses (step 5).
+ * Trimming applies where a trim point abuts a line break; a single-line run
+ * has none, and trimming its ends would delete spaces the author typed on
+ * purpose — `${i}: ${text}` must keep the space in `": "`.
+ *
+ * Consequences worth stating, because the run-based rule this replaced got
+ * two of them wrong:
+ *
+ * - Indentation never survives. `"\n  static\n  "` before a sibling tag is
+ *   `"static"` with no trailing space: the whitespace around `static` is on
+ *   lines that trim to empty, so it is dropped wherever it sits — leading,
+ *   trailing, or between words. The old rule collapsed it to one space and
+ *   left a stray space before the sibling element.
+ * - Multi-line prose still reads as prose. `"a\n  b"` is `"a b"`, because the
+ *   two non-empty lines are joined with one space; the newline is a line
+ *   separator, not something to delete outright.
+ * - A whitespace-only run containing a newline is dropped (every line trims
+ *   to empty), so `<p>\n  ${a}\n  ${b}\n</p>` renders nothing between the two
+ *   expression containers.
+ * - A whitespace-only run with no newline is a single line of whitespace,
+ *   which step 2 would trim away; it collapses to one space instead, so
+ *   `${a} ${b}` on one line keeps the space the author typed. That space is
+ *   still dropped at a tag boundary.
+ *
+ * Boundary trimming against sibling tags applies as before: a run that meets
+ * the parent's first or last child loses its leading/trailing space.
+ *
+ * Authors who need a space the line rule would drop write `${" "}`.
  *
  * Returns null when nothing survives.
  */
@@ -157,13 +184,32 @@ export function normalizeText(
   atStart: boolean,
   atEnd: boolean,
 ): string | null {
+  // A whitespace-only run has no lines that survive trimming, so it is
+  // handled first: with a newline it is layout indentation and disappears,
+  // without one it is a deliberate single space between siblings.
   if (raw.trim() === "") {
-    // Whitespace-only run: a newline means layout indentation, not content.
     if (raw.includes("\n")) return null;
     return atStart || atEnd ? null : " ";
   }
 
-  let text = raw.replace(/\s+/g, " ");
+  // Line trimming only applies where a trim point actually abuts a line
+  // break. A run with no newline in it has no line structure to exploit, and
+  // trimming its ends would discard spaces the author deliberately typed
+  // between content — `${i}: ${text}` renders `": "`, not `":"`.
+  const joined = raw.includes("\n")
+    ? raw
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "")
+        .join(" ")
+    : raw;
+
+  let text = joined.replace(/\s+/g, " ");
+
+  // A run whose first line was blank started with a newline, so the author
+  // wrote a line break before the content rather than a space; the same holds
+  // at the end. Those edges are already gone from `joined`, so only a run
+  // that began or ended mid-line can still carry a space to trim here.
   if (atStart) text = text.replace(/^ /, "");
   if (atEnd) text = text.replace(/ $/, "");
   if (text === "") return null;

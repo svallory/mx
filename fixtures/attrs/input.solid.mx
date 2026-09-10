@@ -17,7 +17,7 @@ export function Attrs(props: { extra?: Record<string, unknown> }) {
       onScroll(_e) { setActive(true); setColor("blue") }
       prop:value=color()
     >
-      <span>static</span>
+      static
       <p.badge.big class={on: active()}>shorthand plus object</p>
     </div>
   );

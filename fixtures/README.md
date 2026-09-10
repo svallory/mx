@@ -132,13 +132,25 @@ Defined in `packages/oracle/src/normalize.ts`. What it does, exactly:
 
 ## Whitespace in a twin
 
-MX follows Marko's whitespace rules, not JSX's: a whitespace-only text run
-containing a newline is **dropped**. A twin written the way a JSX author
-would naturally indent it therefore renders a space the MX source does not,
-and the fixture fails on one character. Write `text<p>…` on one line in the
-twin wherever the MX source has the text and the tag separated only by
-indentation (`fixtures/attrs/twin.tsx` carries this case). `${" "}` is MX's
-escape hatch when a space is actually wanted.
+MX follows Marko's whitespace rule, not JSX's, and the rule is **line-based**
+(decision 33): split a text run into lines, trim each line, drop the lines
+that are then empty, join what remains with a single space, then collapse
+internal whitespace runs to one space. Boundary trimming against sibling tags
+applies on top of that.
+
+What this means when writing a twin:
+
+| MX source | Renders | Note |
+|---|---|---|
+| `\n  static\n  ` before `<span>` | `static` | Indentation is dropped, **not** collapsed to a space — no trailing space before the sibling |
+| `a\n  b` | `a b` | Two non-empty lines join with one space, so prose across a line break still reads as prose |
+| `\n  ` between two elements | nothing | Every line trims to empty, so the whole run disappears |
+| `a b` / `<span>a</span> <span>b</span>` | one space | A whitespace run with no newline is a deliberate space |
+
+So a twin can be indented the way a JSX author would naturally write it: MX
+and JSX agree except that MX drops indentation JSX would keep.
+`fixtures/attrs` exercises the first row. `${" "}` is MX's escape hatch when a
+space is wanted where the rule would drop one.
 
 ## `skipped` and `pending` are not `pass`
 

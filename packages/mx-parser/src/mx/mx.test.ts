@@ -367,6 +367,67 @@ describe("whitespace follows Marko, not JSX (review #5)", () => {
       ["text:hello"],
     );
   });
+
+  describe("line-based rule (decision 33)", () => {
+    // Lines are trimmed, empties dropped, the rest joined with one space.
+    it("joins multi-line prose with a single space", () => {
+      expect(childKinds(`const e = <p>a\n  b</p>;`)).toEqual(["text:a b"]);
+    });
+
+    it("joins three lines, collapsing each line's own indentation", () => {
+      expect(childKinds(`const f = <p>\n  a\n  b\n  c\n</p>;`)).toEqual([
+        "text:a b c",
+      ]);
+    });
+
+    it("leaves no trailing space on an indented word before a sibling element", () => {
+      // The run is "\n  static\n  ": the whitespace sits on lines that trim to
+      // empty, so it is dropped rather than collapsed to a space. The
+      // run-based rule this replaced left "static " here.
+      expect(
+        childKinds(`const g = <div>\n  static\n  <span>s</span></div>;`),
+      ).toEqual(["text:static", "JSXElement"]);
+    });
+
+    it("leaves no leading space on a word after a sibling element", () => {
+      expect(
+        childKinds(`const h = <div><span>s</span>\n  static\n</div>;`),
+      ).toEqual(["JSXElement", "text:static"]);
+    });
+
+    it("still drops a whitespace-only run containing a newline", () => {
+      expect(
+        childKinds(`const i = <div><span>a</span>\n  <span>b</span></div>;`),
+      ).toEqual(["JSXElement", "JSXElement"]);
+    });
+
+    it("keeps interior spaces in a single-line run between placeholders", () => {
+      // `${i}: ${text}` renders ": ", not ":". Line trimming applies only
+      // where a trim point abuts a line break, and a single-line run has
+      // none, so its typed spaces survive. `fixtures/todos` and
+      // `fixtures/lists` both depend on this.
+      expect(childKinds(`const l = <li>\${i}: \${t()}</li>;`)).toEqual([
+        "JSXExpressionContainer",
+        "text:: ",
+        "JSXExpressionContainer",
+      ]);
+    });
+
+    it("keeps a deliberate same-line space between elements", () => {
+      expect(
+        childKinds(`const j = <div><span>a</span> <span>b</span></div>;`),
+      ).toEqual(["JSXElement", "text: ", "JSXElement"]);
+    });
+
+    it("keeps the explicit-space placeholder working across a line break", () => {
+      expect(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: `${" "}` is MX placeholder syntax under test, not a JS placeholder
+        childKinds(`const k = <p>a\${" "}\n  b</p>;`).filter(
+          (c) => c !== "JSXExpressionContainer",
+        ),
+      ).toEqual(["text:a", "text:b"]);
+    });
+  });
 });
 
 describe("void elements (review #6)", () => {

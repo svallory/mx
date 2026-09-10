@@ -3,7 +3,7 @@ import { spread as _$spread } from "@solidjs/web";
 import { mergeProps as _$mergeProps } from "@solidjs/web";
 import { ref as _$ref } from "@solidjs/web";
 import { effect as _$effect } from "@solidjs/web";
-var _tmpl$ = /* @__PURE__ */ _$template(`<div><span>static</span><p class="badge big">shorthand plus object`);
+var _tmpl$ = /* @__PURE__ */ _$template(`<div>static<p class="badge big">shorthand plus object`);
 import { createSignal } from "solid-js";
 export function Attrs(props) {
  const [active, setActive] = createSignal(false);
