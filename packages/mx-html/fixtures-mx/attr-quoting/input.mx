@@ -1,0 +1,3 @@
+<a title='a" onerror="alert(1)' href="/x?a=1&b=2">link</a>
+<div.card class='x" onload="alert(1)'>merged</div>
+<span title="plain">ok</span>

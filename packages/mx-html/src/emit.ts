@@ -7,6 +7,8 @@ import type {
   MxTemplate,
 } from "@markox/parser";
 import { isVoidTag, normalizeText } from "@markox/parser";
+// biome-ignore lint/suspicious/noShadowRestrictedNames: the compiler calls the same helper the emitted module imports, so a static value and a runtime one are escaped by one implementation
+import { escape } from "./escape.ts";
 
 /**
  * The string-emitting lowering target: an `MxTemplate` in, TypeScript source
@@ -47,6 +49,16 @@ interface EmitContext {
 }
 
 const INDENT = "  ";
+
+/**
+ * A well-formed HTML attribute name, as source text for the emitted module.
+ *
+ * Used to validate the keys of a spread object, which are only known at run
+ * time. Anything outside this shape — most importantly anything containing a
+ * space, a quote, `/` or `>` — could end the attribute name and start live
+ * markup inside the tag, so it is skipped rather than emitted.
+ */
+const ATTR_NAME_PATTERN = "/^[A-Za-z_:][-A-Za-z0-9_:.]*$/";
 
 function fail(message: string, range: MxRange): never {
   throw new EmitError(message, range.start, range.end);
@@ -100,7 +112,16 @@ function isComponent(name: string): boolean {
   return first !== undefined && first >= "A" && first <= "Z";
 }
 
-/** The source text of an attribute that carries a value, quotes stripped. */
+/**
+ * The source text of an attribute that carries a value, quotes stripped.
+ *
+ * The returned text is **raw** — exactly what the author typed between the
+ * quotes. For a static value that reaches HTML it must be escaped first; see
+ * `staticAttrValue`. This function stays raw because two callers need the
+ * unescaped form: the `class` shorthand merge (which escapes the joined
+ * result once) and every expression-valued attribute, where the text is
+ * TypeScript source rather than HTML.
+ */
 function attrValueText(
   ctx: EmitContext,
   attr: Extract<MxAttr, { kind: "static" | "dynamic" }>,
@@ -110,6 +131,32 @@ function attrValueText(
     return text(ctx, attr.value).slice(1, -1);
   }
   return text(ctx, attr.value);
+}
+
+/**
+ * A static attribute value, escaped for the double-quoted context the emitter
+ * always writes.
+ *
+ * MX takes the author's quote style from the source but emits one fixed style,
+ * so the two can disagree: `title='a" onerror="alert(1)'` is a single-quoted
+ * attribute that legally contains a raw `"`. Splicing that text into a
+ * double-quoted literal closes the attribute early and turns the remainder
+ * into live markup — an executing event handler from a value the author
+ * believed was inert text.
+ *
+ * Escaping at compile time rather than trusting the source quoting is what
+ * makes the emitted quote style independent of the written one. The value is
+ * known statically, so this costs nothing at render time.
+ *
+ * The Solid target has no equivalent hole: it builds a Babel `StringLiteral`
+ * and the printer re-quotes it, so the original quoting is preserved rather
+ * than reinterpreted.
+ */
+function staticAttrValue(
+  ctx: EmitContext,
+  attr: Extract<MxAttr, { kind: "static" }>,
+): string {
+  return escape(attrValueText(ctx, attr));
 }
 
 /**
@@ -142,12 +189,18 @@ function emitAttrs(ctx: EmitContext, el: MxElement): void {
     ]
       .filter((part) => part !== "")
       .join(" ");
-    emitLiteral(ctx, ` class="${merged}"`);
+    // Escaped for the same reason a plain static value is: the merged-in
+    // `class="..."` half carries the author's own quoting, so a single-quoted
+    // `class='x" onload="…'` would otherwise close the attribute here.
+    emitLiteral(ctx, ` class="${escape(merged)}"`);
   }
 
   const shorthandId = el.shorthandIds[0];
   if (shorthandId) {
-    emitLiteral(ctx, ` id="${text(ctx, shorthandId).slice(1)}"`);
+    // A shorthand `#id` comes from the tag name, where the tokenizer already
+    // stops at a quote or space, so it cannot carry one — escaped anyway so
+    // no attribute value reaches the output on an unescaped path.
+    emitLiteral(ctx, ` id="${escape(text(ctx, shorthandId).slice(1))}"`);
   }
 
   for (const attr of el.attrs) {
@@ -160,7 +213,7 @@ function emitAttrs(ctx: EmitContext, el: MxElement): void {
     }
     switch (attr.kind) {
       case "static":
-        emitLiteral(ctx, ` ${attr.name}="${attrValueText(ctx, attr)}"`);
+        emitLiteral(ctx, ` ${attr.name}="${staticAttrValue(ctx, attr)}"`);
         break;
 
       case "dynamic": {
@@ -175,9 +228,20 @@ function emitAttrs(ctx: EmitContext, el: MxElement): void {
         break;
 
       case "spread": {
-        // Keys are rendered as they come; `false`/`null`/`undefined` drop out,
-        // matching how HTML treats an absent attribute, and `true` renders the
-        // bare name like any other boolean attribute.
+        // Values: `false`/`null`/`undefined` drop out, matching how HTML
+        // treats an absent attribute, and `true` renders the bare name like
+        // any other boolean attribute.
+        //
+        // Keys are validated, not escaped. The object is user-controlled at
+        // runtime, so a hostile key such as `x onload="alert(1)"` would
+        // otherwise be concatenated straight into the tag and start a second,
+        // live attribute. Escaping cannot fix that: a key containing a space
+        // ends the attribute name whatever its other characters are encoded
+        // as, so the only safe treatment is to reject anything that is not a
+        // well-formed attribute name. The pattern is HTML's own name
+        // production, and a key that fails it is skipped rather than thrown
+        // on — one bad key in a spread should not take down a whole page
+        // render.
         const value = text(ctx, attr.value);
         push(ctx, `for (const [key, value] of Object.entries(${value})) {`);
         ctx.indent++;
@@ -185,6 +249,7 @@ function emitAttrs(ctx: EmitContext, el: MxElement): void {
           ctx,
           "if (value === false || value === null || value === undefined) continue;",
         );
+        push(ctx, `if (!${ATTR_NAME_PATTERN}.test(key)) continue;`);
         push(
           ctx,
           'out += value === true ? " " + key : " " + key + "=\\"" + escape(value) + "\\"";',
