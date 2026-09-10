@@ -39,7 +39,10 @@ Parse errors in this area, with their messages:
 |---|---|
 | `<@name attr=…>` | ``attribute tags take params or a body, not attributes (v1)`` |
 | the same `<@name>` twice on one parent | ``attribute tag `@name` given twice (repeatable attribute tags are not supported)`` |
+| `<@name>` whose name is already an attribute on the parent | ``attribute tag `@name` collides with attribute `name` `` |
+| `<@children>` beside any ordinary child | ``attribute tag `@children` collides with the parent's ordinary children`` |
 | `<@name>` at the top level | ``attribute tag `<@name>` outside a tag body`` |
+| `<@name>` directly inside another attribute tag's body | ``attribute tag `<@name>` inside attribute tag `<@outer>` `` |
 | `<@name>` inside `<if>`/`<else>`/`<for>`/`<fragment>` | ``attribute tag `<@name>` inside `<if>` `` (etc.) |
 | an attribute tag other than `<@catch>`/`<@placeholder>` inside `<try>` | ``attribute tag `<@name>` inside `<try>` `` |
 

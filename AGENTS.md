@@ -72,9 +72,15 @@ Two syntax decisions are settled and encoded in the lowering table:
   *on top of* this: `lowerTry` reads `<@catch>`/`<@placeholder>` out of the
   same `collectAttributeTags` every other tag uses, so the special and
   generic paths cannot drift. Control tags take no attribute tags other than
-  `<try>`'s two. The still-unsupported construct `mx.test.ts` uses to
-  exercise the LowerError-to-SyntaxError path is now the dynamic tag name
-  (`<${x}>`), not an attribute tag.
+  `<try>`'s two. An attribute tag whose name is already an attribute on the
+  parent is a parse error rather than a second `name=` the last writer wins —
+  and `children` counts, since ordinary children lower into that prop, so
+  `<@children>` beside any ordinary child collides too. The params callback's
+  body range is measured over the *stripped* children (the `<@name>` ones
+  consumed into props are gone), or the arrow's `loc` overruns into text that
+  belongs to a prop: right JS, wrong source map. The still-unsupported
+  construct `mx.test.ts` uses to exercise the LowerError-to-SyntaxError path
+  is now the dynamic tag name (`<${x}>`), not an attribute tag.
 - **Tag params (`|a, b|`) come before `=value`.** `<if|u|=user()>`, not `<if=user()|u|>` — the latter parses but folds `|u|` into the condition expression and reports no params, matching `<for|item, i| of=...>`'s own order. `notes/solidmx-spec.md` §5.1 writes `<if=user()|u|>` as loose prose; the real grammar is params-first.
 
 ## Standalone MX (`.mx`) and `@markox/html`
