@@ -123,9 +123,7 @@ describe("counter-app", () => {
     });
 
     afterAll(async () => {
-      await new Promise<void>((resolve, reject) => {
-        server?.httpServer.close((err) => (err ? reject(err) : resolve()));
-      });
+      await server?.close();
     });
 
     it("renders and increments from the built dist/", async () => {
