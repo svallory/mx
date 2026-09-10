@@ -1,0 +1,92 @@
+{
+  "taglibId": "mx-translator-core",
+  "<if>": {
+    "parseOptions": { "controlFlow": true },
+    "@value": { "type": "expression" }
+  },
+  "<else>": {
+    "parseOptions": { "controlFlow": true },
+    "@if": { "type": "expression" }
+  },
+  "<else-if>": {
+    "parseOptions": { "controlFlow": true },
+    "@value": { "type": "expression" }
+  },
+  "<for>": {
+    "parseOptions": { "controlFlow": true },
+    "@of": { "type": "expression" },
+    "@in": { "type": "expression" },
+    "@from": { "type": "expression" },
+    "@to": { "type": "expression" },
+    "@until": { "type": "expression" },
+    "@step": { "type": "expression" },
+    "@by": { "type": "expression" }
+  },
+  "<let>": {
+    "parseOptions": { "openTagOnly": true },
+    "@value": { "type": "expression" }
+  },
+  "<const>": {
+    "parseOptions": { "openTagOnly": true },
+    "@value": { "type": "expression" }
+  },
+  "<define>": {},
+  "<id>": {
+    "parseOptions": { "openTagOnly": true }
+  },
+  "<effect>": {},
+  "<lifecycle>": {
+    "parseOptions": { "openTagOnly": true }
+  },
+  "<script>": {
+    "parseOptions": { "text": true, "preserveWhitespace": true }
+  },
+  "<style>": {
+    "parseOptions": {
+      "html": false,
+      "text": true,
+      "rawOpenTag": true,
+      "preserveWhitespace": true
+    }
+  },
+  "<html-comment>": {
+    "parseOptions": { "text": true }
+  },
+  "<html-script>": {
+    "html": true,
+    "parseOptions": { "text": true, "preserveWhitespace": true }
+  },
+  "<html-style>": {
+    "html": true,
+    "parseOptions": { "text": true, "preserveWhitespace": true }
+  },
+  "<await>": {},
+  "<try>": {},
+  "<log>": {
+    "parseOptions": { "openTagOnly": true }
+  },
+  "<debug>": {
+    "parseOptions": { "openTagOnly": true }
+  },
+  "<return>": {
+    "parseOptions": { "openTagOnly": true }
+  },
+  "<import>": {
+    "parseOptions": { "statement": true, "rawOpenTag": true }
+  },
+  "<static>": {
+    "parseOptions": { "statement": true, "rawOpenTag": true }
+  },
+  "<export>": {
+    "parseOptions": { "statement": true, "rawOpenTag": true }
+  },
+  "<client>": {
+    "parseOptions": { "statement": true, "rawOpenTag": true }
+  },
+  "<server>": {
+    "parseOptions": { "statement": true, "rawOpenTag": true }
+  },
+  "<class>": {
+    "parseOptions": { "statement": true, "rawOpenTag": true }
+  }
+}

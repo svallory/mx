@@ -15,3 +15,6 @@ coverage/
 # when "zed: install dev extension" is run against packages/zed-extension.
 # Not our output, not meant to be committed.
 packages/zed-extension/grammars/
+
+# Agent probe scratch (oracle harness experiments)
+.probe/
