@@ -46,6 +46,24 @@
         "vitest": "3.2.7",
       },
     },
+    "examples/todomvc": {
+      "name": "@markox/example-todomvc",
+      "version": "0.0.0",
+      "dependencies": {
+        "@solidjs/web": "2.0.0-rc.7",
+        "solid-js": "2.0.0-rc.7",
+        "todomvc-app-css": "2.4.3",
+        "todomvc-common": "1.0.5",
+      },
+      "devDependencies": {
+        "@markox/vite-plugin": "workspace:*",
+        "@solidjs/vite-plugin": "3.0.0-next.41",
+        "playwright": "1.63.0",
+        "typescript": "5.9.3",
+        "vite": "8.2.2",
+        "vitest": "3.2.7",
+      },
+    },
     "packages/babel-plugin-mx": {
       "name": "@markox/babel-plugin",
       "version": "0.0.0",
@@ -235,6 +253,8 @@
     "@markox/eslint-plugin": ["@markox/eslint-plugin@workspace:packages/eslint-plugin-mx"],
 
     "@markox/example-counter-app": ["@markox/example-counter-app@workspace:examples/counter-app"],
+
+    "@markox/example-todomvc": ["@markox/example-todomvc@workspace:examples/todomvc"],
 
     "@markox/oracle": ["@markox/oracle@workspace:packages/oracle"],
 
@@ -539,6 +559,10 @@
     "tinyrainbow": ["tinyrainbow@2.0.0", "", {}, "sha512-op4nsTR47R6p0vMUUoYl/a+ljLFVtlfaXkLQmqfLR1qHma1h/ysYk4hEXZ880bf2CYgTskvTa/e196Vd5dDQXw=="],
 
     "tinyspy": ["tinyspy@4.0.6", "", {}, "sha512-u8KszXvGfU68hVcZpRHKG28T0krMuv2G5nDhiHaMLen/gIuFEgIJhaJuO69qjnXg5paSrbPMFfx3brNuN8eVSg=="],
+
+    "todomvc-app-css": ["todomvc-app-css@2.4.3", "", {}, "sha512-mSnWZaKBWj9aQcFRsGguY/a8O8NR8GmecD48yU1rzwNemgZa/INLpIsxxMiToFGVth+uEKBrQ7IhWkaXZxwq5Q=="],
+
+    "todomvc-common": ["todomvc-common@1.0.5", "", {}, "sha512-D8kEJmxVMQIWwztEdH+WeiAfXRbbSCpgXq4NkYi+gduJ2tr8CNq7sYLfJvjpQ10KD9QxJwig57rvMbV2QAESwQ=="],
 
     "tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 

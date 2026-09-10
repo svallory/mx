@@ -1,0 +1,61 @@
+import { createSignal } from "solid-js";
+import type { Todo } from "./types";
+
+export function TodoItem(props: {
+  todo: Todo;
+  onToggle: (id: number) => void;
+  onDestroy: (id: number) => void;
+  onEdit: (id: number, text: string) => void;
+}) {
+  const [editing, setEditing] = createSignal(false);
+  const [draft, setDraft] = createSignal("");
+  let editInput: HTMLInputElement | undefined;
+
+  const startEdit = () => {
+    setDraft(props.todo.text);
+    setEditing(true);
+    queueMicrotask(() => editInput?.focus());
+  };
+
+  const commitEdit = () => {
+    const text = draft().trim();
+    if (text.length === 0) {
+      props.onDestroy(props.todo.id);
+    } else {
+      props.onEdit(props.todo.id, text);
+    }
+    setEditing(false);
+  };
+
+  const cancelEdit = () => setEditing(false);
+
+  return (
+    <li class={completed: props.todo.completed, editing: editing()}>
+      <if=(!editing())>
+        <div class="view">
+          <input
+            class="toggle"
+            type="checkbox"
+            checked=props.todo.completed
+            onChange() { props.onToggle(props.todo.id) }
+          />
+          <label ondblclick() { startEdit() }>${props.todo.text}</label>
+          <button class="destroy" onClick() { props.onDestroy(props.todo.id) }></button>
+        </div>
+      </if>
+      <else>
+        <input
+          class="edit"
+          ref=editInput
+          value=draft()
+          onInput(e) { setDraft(e.currentTarget.value) }
+          onBlur() { commitEdit() }
+          onKeyDown(e) {
+            if (e.key === "Enter") commitEdit();
+            if (e.key === "Escape") cancelEdit();
+          }
+        />
+      </else>
+    </li>
+  );
+}

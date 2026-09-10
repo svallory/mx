@@ -1,0 +1,124 @@
+import { createEffect, createMemo, createSignal } from "solid-js";
+import { Footer } from "./Footer.solid.mx";
+import { TodoItem } from "./TodoItem.solid.mx";
+import type { Filter, Todo } from "./types";
+
+const STORAGE_KEY = "mx-todomvc";
+
+function loadTodos(): Todo[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Todo[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function filterFromHash(): Filter {
+  const hash = location.hash.replace("#/", "");
+  if (hash === "active" || hash === "completed") return hash;
+  return "all";
+}
+
+export function App() {
+  const [todos, setTodos] = createSignal<Todo[]>(loadTodos());
+  const [filter, setFilter] = createSignal<Filter>(filterFromHash());
+  const [newTodo, setNewTodo] = createSignal("");
+
+  const onHashChange = () => setFilter(filterFromHash());
+  window.addEventListener("hashchange", onHashChange);
+
+  createEffect(
+    () => todos(),
+    (list) => localStorage.setItem(STORAGE_KEY, JSON.stringify(list)),
+  );
+
+  const visible = createMemo(() => {
+    const f = filter();
+    if (f === "active") return todos().filter((t) => !t.completed);
+    if (f === "completed") return todos().filter((t) => t.completed);
+    return todos();
+  });
+
+  const itemsLeft = createMemo(() => todos().filter((t) => !t.completed).length);
+  const hasCompleted = createMemo(() => todos().some((t) => t.completed));
+  const allCompleted = createMemo(
+    () => todos().length > 0 && todos().every((t) => t.completed),
+  );
+
+  const addTodo = () => {
+    const text = newTodo().trim();
+    if (text.length === 0) return;
+    setTodos([...todos(), { id: Date.now(), text, completed: false }]);
+    setNewTodo("");
+  };
+
+  const toggleTodo = (id: number) => {
+    setTodos(
+      todos().map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)),
+    );
+  };
+
+  const toggleAll = () => {
+    const next = !allCompleted();
+    setTodos(todos().map((t) => ({ ...t, completed: next })));
+  };
+
+  const destroyTodo = (id: number) => {
+    setTodos(todos().filter((t) => t.id !== id));
+  };
+
+  const editTodo = (id: number, text: string) => {
+    setTodos(todos().map((t) => (t.id === id ? { ...t, text } : t)));
+  };
+
+  const clearCompleted = () => {
+    setTodos(todos().filter((t) => !t.completed));
+  };
+
+  return (
+    <fragment>
+      <header class="header">
+        <h1>todos</h1>
+        <input
+          class="new-todo"
+          placeholder="What needs to be done?"
+          autofocus
+          value=newTodo()
+          onInput(e) { setNewTodo(e.currentTarget.value) }
+          onKeyDown(e) { if (e.key === "Enter") addTodo() }
+        />
+      </header>
+      <if=(todos().length > 0)>
+        <main class="main">
+          <div class="toggle-all-container">
+            <input
+              id="toggle-all"
+              class="toggle-all"
+              type="checkbox"
+              checked=allCompleted()
+              onChange() { toggleAll() }
+            />
+            <label for="toggle-all">Mark all as complete</label>
+          </div>
+          <ul class="todo-list">
+            <for|todo| of=visible() by="id">
+              <TodoItem
+                todo=todo()
+                onToggle=toggleTodo
+                onDestroy=destroyTodo
+                onEdit=editTodo
+              />
+            </for>
+          </ul>
+        </main>
+        <Footer
+          itemsLeft=itemsLeft()
+          filter=filter()
+          hasCompleted=hasCompleted()
+          onClearCompleted=clearCompleted
+        />
+      </if>
+    </fragment>
+  );
+}

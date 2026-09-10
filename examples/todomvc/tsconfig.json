@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@solidjs/web",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@markox/vite-plugin": ["../../packages/mx-vite-plugin/src/index.ts"]
+    }
+  },
+  "include": ["src", "e2e", "vite.config.ts"]
+}
