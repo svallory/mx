@@ -76,12 +76,23 @@ export function wrapChildren(
 }
 
 export function elementChildrenRange(el: MxElement): MxRange {
-  if (el.children.length === 0) return el.range;
-  const first = el.children[0] as MxChild;
-  const last = el.children[el.children.length - 1] as MxChild;
-  const start = childRange(first).start;
-  const end = childRange(last).end;
-  return { start, end };
+  return childrenRange(el.children, el.range);
+}
+
+/**
+ * The source span of a child list, or `fallback` when the list is empty.
+ *
+ * Taken over an explicit list rather than an element's own `children` because
+ * a tag with both params and attribute tags needs the span of what actually
+ * remains its body: the consumed `<@name>` children are no longer in it, and
+ * measuring the original list would give the params callback a `loc` running
+ * past its real body and into text belonging to a prop.
+ */
+export function childrenRange(children: MxChild[], fallback: MxRange): MxRange {
+  if (children.length === 0) return fallback;
+  const first = children[0] as MxChild;
+  const last = children[children.length - 1] as MxChild;
+  return { start: childRange(first).start, end: childRange(last).end };
 }
 
 function childRange(child: MxChild): MxRange {
@@ -808,9 +819,30 @@ export interface AttributeTag {
  * every other tag turns each entry straight into a prop.
  *
  * Rejections live here for the same reason — an attribute tag carrying its
- * own attributes, or written twice on one parent, is reported identically
- * wherever it appears.
+ * own attributes, written twice on one parent, or colliding with one of the
+ * parent's own attributes, is reported identically wherever it appears.
  */
+/**
+ * True when an element has a child that will lower into its `children` prop:
+ * any element that is not an attribute tag, or any non-whitespace text or
+ * placeholder. Comments and whitespace-only text lower to nothing, so they do
+ * not count.
+ */
+function hasOrdinaryChild(el: MxElement): boolean {
+  return el.children.some((child) => {
+    switch (child.kind) {
+      case "comment":
+        return false;
+      case "text":
+        return child.range.start !== child.range.end;
+      case "element":
+        return !child.element.staticName?.startsWith("@");
+      default:
+        return true;
+    }
+  });
+}
+
 export function collectAttributeTags(
   ctx: LowerContext,
   el: MxElement,
@@ -818,6 +850,15 @@ export function collectAttributeTags(
   const tags: AttributeTag[] = [];
   const rest: MxChild[] = [];
   const seen = new Set<string>();
+
+  // The parent's own attribute names. An attribute tag lowers to a JSX
+  // attribute, so a name already present here would emit the prop twice and
+  // the last one would silently win.
+  const parentAttrNames = new Set(
+    el.attrs
+      .filter((a) => "name" in a && a.name !== "")
+      .map((a) => (a as { name: string }).name),
+  );
 
   for (const child of el.children) {
     if (child.kind !== "element") {
@@ -831,6 +872,21 @@ export function collectAttributeTags(
     }
 
     const name = tagName.slice(1);
+    if (parentAttrNames.has(name)) {
+      fail(
+        `attribute tag \`@${name}\` collides with attribute \`${name}\``,
+        child.element.name,
+      );
+    }
+    // `children` is the one prop the parent produces without an attribute of
+    // that name: ordinary children lower into it. `<@children>` alongside any
+    // ordinary child would therefore be a second producer of the same prop.
+    if (name === "children" && hasOrdinaryChild(el)) {
+      fail(
+        "attribute tag `@children` collides with the parent's ordinary children",
+        child.element.name,
+      );
+    }
     // Marko's repeatable attribute tags (which collect into an array prop)
     // are out of scope for v1; without this the second one would silently
     // win, which is the worse of the two behaviours.
@@ -851,6 +907,21 @@ export function collectAttributeTags(
         "attribute tags take params or a body, not attributes (v1)",
         child.element.name,
       );
+    }
+
+    // An attribute tag's own body is an ordinary tag body, so a `<@name>`
+    // nested directly inside one has no parent tag to become a prop of. It
+    // reaches `lowerElement` and would otherwise be reported with the generic
+    // "outside a tag body" message, which does not say where it actually sat.
+    for (const inner of child.element.children) {
+      if (inner.kind !== "element") continue;
+      const innerName = inner.element.staticName;
+      if (innerName?.startsWith("@")) {
+        fail(
+          `attribute tag \`<${innerName}>\` inside attribute tag \`<@${name}>\``,
+          inner.element.name,
+        );
+      }
     }
 
     tags.push({

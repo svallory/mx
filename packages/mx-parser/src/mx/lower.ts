@@ -12,8 +12,8 @@ import {
 } from "./attrs.ts";
 import {
   callbackChild,
+  childrenRange,
   collectAttributeTags,
-  elementChildrenRange,
   lowerFor,
   lowerFragment,
   lowerIfChain,
@@ -742,7 +742,11 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
   // the author's error, reported against their own code.
   if (el.params) {
     const params = tagParams(ctx, el.params);
-    const bodyRange = elementChildrenRange(el);
+    // Measured over the *stripped* children: any `<@name>` child has been
+    // consumed into a prop above, and the original list would give the arrow
+    // a `loc` running past its real body into text that belongs to a prop.
+    // The emitted JS is identical either way; the source map is not.
+    const bodyRange = childrenRange(ordinaryChildren, el.range);
     children = [
       callbackChild(
         ctx,

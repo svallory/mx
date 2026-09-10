@@ -15,6 +15,26 @@ function printFirstExpression(source: string): string {
   return generate(init).code;
 }
 
+/** The first node of `type` in a tree, by depth-first walk. */
+function collectFirst(node: unknown, type: string): unknown {
+  if (node === null || typeof node !== "object") return null;
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const hit = collectFirst(item, type);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  const record = node as Record<string, unknown>;
+  if (record.type === type) return record;
+  for (const key of Object.keys(record)) {
+    if (key === "loc" || key === "extra") continue;
+    const hit = collectFirst(record[key], type);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 function expectSyntaxError(source: string, expected: string) {
   let error: unknown;
   try {
@@ -131,7 +151,81 @@ describe("attribute tags become props", () => {
   });
 });
 
+describe("attribute tag / attribute collisions", () => {
+  // An attribute tag lowers to a JSX attribute, so a name the parent already
+  // carries would emit the prop twice and let the last one silently win.
+  it("rejects an attribute tag colliding with a static attribute", () => {
+    expectSyntaxError(
+      `const el = <Layout id="x"><@id>y</@id></Layout>;`,
+      "attribute tag `@id` collides with attribute `id`",
+    );
+  });
+
+  it("rejects an attribute tag colliding with a dynamic attribute", () => {
+    expectSyntaxError(
+      `const el = <Layout header=h()><@header>y</@header></Layout>;`,
+      "attribute tag `@header` collides with attribute `header`",
+    );
+  });
+
+  it("rejects an attribute tag colliding with a boolean attribute", () => {
+    expectSyntaxError(
+      `const el = <Layout flag><@flag>y</@flag></Layout>;`,
+      "attribute tag `@flag` collides with attribute `flag`",
+    );
+  });
+
+  it("rejects an attribute tag colliding with an attribute method", () => {
+    expectSyntaxError(
+      `const el = <Layout onDone() { f(); }><@onDone>y</@onDone></Layout>;`,
+      "attribute tag `@onDone` collides with attribute `onDone`",
+    );
+  });
+
+  it("rejects `<@children>` alongside an explicit `children=` attribute", () => {
+    expectSyntaxError(
+      `const el = <Layout children=c()><@children>y</@children></Layout>;`,
+      "attribute tag `@children` collides with attribute `children`",
+    );
+  });
+
+  it("rejects `<@children>` when the parent also has ordinary children", () => {
+    // The ordinary children lower to the `children` prop, so `<@children>`
+    // would be a second producer of the same prop.
+    expectSyntaxError(
+      `const el = <Layout><@children>y</@children><p>body</p></Layout>;`,
+      "attribute tag `@children` collides with",
+    );
+  });
+});
+
+describe("source positions", () => {
+  it("ends the params callback at its real body, not at a consumed attribute tag", () => {
+    // The `<@fallback>` child is consumed into a prop, so the arrow's body is
+    // only `<b>...</b>`. Measuring the original child list would run the
+    // arrow's `loc` past that and into the attribute tag's text — right JS,
+    // wrong source map.
+    const source = `const el = <Show|u| when=user()><b>hi</b><@fallback>NOPE</@fallback></Show>;`;
+    const file = parseMx(source);
+    const arrow = collectFirst(file, "ArrowFunctionExpression") as {
+      start: number;
+      end: number;
+    };
+    const text = source.slice(arrow.start, arrow.end);
+    expect(text).toContain("<b>hi</b>");
+    expect(text).not.toContain("NOPE");
+    expect(text).not.toContain("@fallback");
+  });
+});
+
 describe("attribute tag parse errors", () => {
+  it("names the enclosing attribute tag when one is nested inside another", () => {
+    expectSyntaxError(
+      `const el = <Layout><@header><@inner>x</@inner></@header></Layout>;`,
+      "attribute tag `<@inner>` inside attribute tag `<@header>`",
+    );
+  });
+
   it("rejects attributes on an attribute tag", () => {
     expectSyntaxError(
       `const el = <Layout><@header class="x">H</@header></Layout>;`,
