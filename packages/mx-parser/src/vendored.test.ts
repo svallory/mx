@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parse as parseNpm } from "@babel/parser";
 import { describe, expect, it } from "vitest";
@@ -6,17 +6,25 @@ import { parse as parseVendored } from "./babel/index.ts";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const fixturesDir = `${repoRoot}/fixtures`;
+const distEntry = fileURLToPath(new URL("../dist/index.js", import.meta.url));
 
-const parserOptions: {
+type ParserOptions = {
   sourceType: "module";
   plugins: ("jsx" | "typescript")[];
-  tokens: false;
+  tokens: boolean;
   ranges: false;
-} = {
+};
+
+const parserOptions: ParserOptions = {
   sourceType: "module",
   plugins: ["jsx", "typescript"],
   tokens: false,
   ranges: false,
+};
+
+const tokenizedOptions: ParserOptions = {
+  ...parserOptions,
+  tokens: true,
 };
 
 function fixtureTwins(): { name: string; source: string }[] {
@@ -51,9 +59,9 @@ const syntheticSnippets: { name: string; source: string }[] = [
   },
 ];
 
-describe("vendored @babel/parser equivalence", () => {
-  const cases = [...fixtureTwins(), ...syntheticSnippets];
+const cases = [...fixtureTwins(), ...syntheticSnippets];
 
+describe("vendored @babel/parser equivalence", () => {
   for (const { name, source } of cases) {
     it(`produces an identical AST to node_modules/@babel/parser for ${name}`, () => {
       const vendoredAst = parseVendored(source, parserOptions);
@@ -62,4 +70,52 @@ describe("vendored @babel/parser equivalence", () => {
       expect(vendoredAst).toEqual(npmAst);
     });
   }
+
+  // tokens: true exercises State's initial flags (e.g. canStartJSXElement)
+  // in a way tokens: false's parse-only path doesn't: a wrong initial flag
+  // value changes what the first token is, not just internal bookkeeping.
+  //
+  // Each parser module has its own singleton TokenType table (tt), so a
+  // token's `type` property holds function references (e.g.
+  // `updateContext`) that are structurally identical but never `===` across
+  // the two module instances — toEqual treats that as a real difference.
+  // This is expected, not a bug in either parser: strip `type` down to its
+  // `label` (the only field that identifies which token type it is) before
+  // comparing.
+  function stripTokenType<T>(ast: T): T {
+    return JSON.parse(
+      JSON.stringify(ast, (key, value) =>
+        key === "type" && value && typeof value === "object" && "label" in value
+          ? value.label
+          : value,
+      ),
+    );
+  }
+
+  for (const { name, source } of cases) {
+    it(`produces identical tokens to node_modules/@babel/parser for ${name}`, () => {
+      const vendoredAst = parseVendored(source, tokenizedOptions);
+      const npmAst = parseNpm(source, tokenizedOptions);
+
+      expect(stripTokenType(vendoredAst)).toEqual(stripTokenType(npmAst));
+    });
+  }
+});
+
+const distExists = existsSync(distEntry);
+
+describe.runIf(distExists)("built dist/index.js equivalence", () => {
+  it("produces an identical AST to node_modules/@babel/parser for every case", async () => {
+    const { parse: parseDist } = await import(distEntry);
+
+    for (const { source } of cases) {
+      const distAst = parseDist(source, parserOptions);
+      const npmAst = parseNpm(source, parserOptions);
+      expect(distAst).toEqual(npmAst);
+    }
+  });
+});
+
+describe.skipIf(distExists)("built dist/index.js equivalence", () => {
+  it.skip("skipped: dist/index.js not found — run `bun run build` in packages/mx-parser first", () => {});
 });
