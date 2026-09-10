@@ -81,9 +81,9 @@ the compiler. The seam is `config.translator`: a translator that supplies only
 runtime surface is one `escape` import (plus, only when a template calls for
 it, an inlined `classValue`/`styleValue`/`renderDynamic` helper).
 
-The evidence is `bun run oracle:marko`'s second table: 28 stock `.marko`
+The evidence is `bun run oracle:marko`'s second table: 29 stock `.marko`
 fixtures rendered both through the real Marko 6 toolchain and through this
-translator, compared for semantic HTML equality. **28 of 28 pass, with no
+translator, compared for semantic HTML equality. **29 of 29 pass, with no
 skips and no recorded divergences.**
 
 ### Proposal draft
@@ -158,6 +158,21 @@ Plain `<!-- -->` comments are **stripped**, because Marko strips them.
 |---|---|
 | `<await>` | Suspends on a promise. This target is a synchronous `(input) => string`. Marko itself refuses to render one to a string: *"Cannot consume asynchronous render with 'toString'"*. |
 | `<try>` with `<@placeholder>` | Needs a second render pass over suspended content, with nowhere to schedule it. A `<try>` **without** a placeholder lowers to a plain `try`/`catch`, with `<@catch>` as the catch block. |
+| `class:foo` / `style:foo` | **Marko has no such modifier.** Its own parser rejects every form — static, dynamic, alone, or beside a plain `class` — with *"`class:active` is not a valid attribute, did you mean `class={ active: condition }`?"*. Matching Marko means rejecting them; inventing a lowering would be inventing markup the target does not have. The error repeats Marko's own fix-it. |
+| a binding named `input` | `<let/input=…>`, `<const/input=…>`, `<for|input|>`. The emitted module is `function (input: Input)`, so such a binding shadows it and makes the template's own input unreachable. Marko rejects the same thing: *"Duplicate declaration of `input`"*. |
+
+### Rejected by Marko's own parser, before this translator runs
+
+Some constructs need no row of their own, because a `.marko` file containing
+them never compiles far enough to reach a translator. Recorded so their
+absence from the table above is not mistaken for silent tolerance:
+
+- `key=` on an element — *"`key` is not a valid attribute, did you mean
+  `<for by>`?"*
+- `$!{…}` in an attribute value (`<div title=$!{x}>`) — a raw placeholder is
+  not valid in attribute position; Marko raises a parse error there, and the
+  same error surfaces through `compile()` as a Marko `CompileError` rather
+  than a `TranslateError`.
 
 ## Attribute tags differ from `@markox/html`
 
@@ -193,7 +208,7 @@ fixtures:
 | `var` | drops `<div/ref>` | error, or lower |
 | `typeArguments` | drops `<Card<string>>` | error |
 | `attributes` on a no-output tag | drops them | error |
-| `modifier` | emits `class="x"` for `class:foo="x"` — **different markup**, not a drop | error, or lower |
+| `modifier` | emits `class="x"` for `class:foo="x"` — **different markup**, not a drop | error, naming Marko's own guidance (see below) |
 | `bound` | drops `value:=v` | lower the initial value |
 
 The modifier row is the worst kind: the output is not missing, it is *wrong*,
@@ -208,8 +223,21 @@ is an error naming it. Seven scattered copies would drift, and the next field
 Marko adds would be dropped by whichever copy was forgotten.
 
 Inert constructs are declared to the same guard rather than skipped, so
-"accepted with no output" and "silently swallowed" cannot be confused: an inert
-tag carrying content nobody renders is still reported.
+"accepted with no output" and "silently swallowed" cannot be confused. Each
+inert row declares the **shape it is inert in** — the body and attributes its
+own Marko tag definition allows — and anything else is an error naming the tag
+and what was found:
+
+```marko
+<effect() { go() }><div>inside</div></effect>
+```
+> `` `<effect>` does not support body content; it emits nothing, so the body
+> would be silently discarded ``
+
+That matches Marko, which rejects the same template with *"The `<effect>` tag
+does not support body content"*. `<script>` is the one inert tag that **does**
+take a body — its definition declares a raw-text one — and it is declared that
+way rather than special-cased.
 
 ## Fixtures
 
@@ -221,7 +249,7 @@ Marko 6 toolchain, not written by hand.
 `bun run oracle:marko` renders every fixture both ways and compares them
 semantically (parse5, decoded content, resume markers stripped). The run fails
 if the glob is empty, a fixture is missing one of its three files, or fewer
-than 25 fixtures were processed — a gate must assert it did work, not merely
+than 29 fixtures were processed — a gate must assert it did work, not merely
 that nothing failed.
 
 ## Pins

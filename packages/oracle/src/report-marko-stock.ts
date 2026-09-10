@@ -28,7 +28,7 @@ import { renderTranslator } from "./translator-render";
  * processed — a gate must assert it did work, not merely that nothing failed.
  */
 
-const MIN_FIXTURES = 25;
+const MIN_FIXTURES = 29;
 
 interface FixtureMeta {
   /** "skip" is never compiled; "divergence" is compiled and expected to differ. */

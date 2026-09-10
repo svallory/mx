@@ -101,7 +101,33 @@ export const VOID_TAGS = new Set([
  * this" is never a disposition; only "this target cannot express it" is.
  */
 export type Disposition =
-  | { kind: "inert"; reason: string }
+  | {
+      kind: "inert";
+      reason: string;
+      /**
+       * The shape the tag is inert *in*, per its own Marko tag definition.
+       *
+       * Inert means "this construct emits nothing", never "whatever the author
+       * wrote here may be discarded". A tag whose definition takes no body
+       * still has to reject one, or authored markup disappears from a
+       * successful compile — the silent-drop class (S8) the field guard exists
+       * to close, reopened for every inert row.
+       *
+       * `body: "text"` is for a tag whose definition declares a raw-text body
+       * (`<script>`): the text is genuinely consumed and emits nothing.
+       */
+      body?: "none" | "text";
+      /**
+       * Whether the tag's own definition accepts attributes beyond its value.
+       *
+       * Per tag, not uniform, because Marko is: `<effect foo="bar"/>` and
+       * `<log=1 foo="bar"/>` are "does not support the `foo` attribute" there,
+       * while `<lifecycle foo="bar"/>` compiles — a lifecycle tag's
+       * attributes *are* its configuration. Verified against Marko for each
+       * row.
+       */
+      attributes?: "none" | "any";
+    }
   | { kind: "error"; reason: string };
 
 export interface Policy {
@@ -128,6 +154,13 @@ export interface Policy {
    * whose target emits them in an order other than the author's.
    */
   orderAttrs?(tagName: string, attrs: Node[]): Node[];
+  /**
+   * Inspects a binding a construct is about to introduce at render scope —
+   * a `<for>` or `<define>` tag param, a `<let>`/`<const>` variable. A dialect
+   * uses this to reject a name that would collide with something the emitted
+   * module already binds.
+   */
+  checkBinding?(target: Node, what: string): void;
   /**
    * Whether an HTML comment reaches the output. Stock Marko drops every
    * comment; MX keeps `<!-- -->` and treats `//` as author-only.
@@ -333,6 +366,61 @@ export function rejectUnsupportedFields(
   }
 }
 
+/**
+ * Enforces that an inert tag appears in the shape its own definition allows.
+ *
+ * A tag is inert because *it* emits nothing, not because anything written
+ * inside it may be thrown away. `<effect><div>x</div></effect>` compiled clean
+ * with the `<div>` gone before this existed — a successful compile that
+ * silently deleted authored markup, which is the exact failure class (S8) the
+ * field guard was built to close.
+ *
+ * The declared shapes come from each tag's own Marko definition, and the
+ * outcomes match what Marko itself does: `<effect>` with a body is
+ * "does not support body content" there, an unknown attribute is "does not
+ * support the `foo` attribute", and `<lifecycle>`/`<id>`/`<log>`/`<debug>` are
+ * `openTagOnly` so a body is a parse error before any translator sees it.
+ */
+function rejectInertShape(
+  ctx: Ctx,
+  node: Node,
+  name: string,
+  disposition: Extract<Disposition, { kind: "inert" }>,
+): void {
+  rejectUnsupportedFields(ctx, node, `\`<${name}>\``, {
+    params: true,
+    args: true,
+    var: true,
+  });
+
+  for (const attr of node.attributes ?? []) {
+    if (attr.type === "MarkoSpreadAttribute") {
+      fail(
+        `spread attributes on \`<${name}>\` are not supported: the tag emits nothing, so a spread's keys would be silently discarded`,
+        attr,
+      );
+    }
+    if (disposition.attributes !== "none") continue;
+    // A control tag's own value attribute (`<log=x/>`) is spelled `value` or
+    // marked `default` by the parser depending on the form; either way it is
+    // the tag's own argument, not an extra. An `effect() { … }` body arrives
+    // as an attribute with `arguments`, which is likewise the tag's own.
+    if (attr.name === "value" || attr.default || attr.arguments) continue;
+    fail(
+      `\`<${name}>\` does not support the \`${attr.name}\` attribute; it emits nothing, so the attribute would be silently discarded`,
+      attr,
+    );
+  }
+
+  if (disposition.body === "text") return;
+  if (hasContent(node.body?.body ?? [])) {
+    fail(
+      `\`<${name}>\` does not support body content; it emits nothing, so the body would be silently discarded`,
+      node,
+    );
+  }
+}
+
 export function attrByName(node: Node, name: string): Node | undefined {
   return (node.attributes ?? []).find(
     (a: Node) => a.type === "MarkoAttribute" && a.name === name,
@@ -457,6 +545,10 @@ export function emitFor(ctx: Ctx, node: Node): void {
 
   rejectUnsupportedFields(ctx, node, "`<for>`", { params: true });
 
+  for (const param of node.body?.params ?? []) {
+    ctx.policy.checkBinding?.(param, "`<for>`");
+  }
+
   const params: string[] = (node.body?.params ?? []).map((p: Node) =>
     expr(ctx, p),
   );
@@ -532,6 +624,10 @@ export function emitConst(ctx: Ctx, node: Node): void {
     );
   }
   rejectUnsupportedFields(ctx, node, "`<const>`", { var: true });
+  // `<const>` is dispatched by the core switch, before a policy's own
+  // `emitSpecial` ever sees it, so the binding check has to happen here or a
+  // dialect's rule silently applies to `<let>` and not to `<const>`.
+  ctx.policy.checkBinding?.(node.var, "`<const>`");
   const value = attrByName(node, "value") ?? node.attributes?.[0];
   if (!value?.value) fail("`<const>` without a value", node);
   push(ctx, `const ${expr(ctx, node.var)} = ${expr(ctx, value.value)};`);
@@ -546,6 +642,10 @@ export function emitDefine(ctx: Ctx, node: Node): void {
     var: true,
     params: true,
   });
+  for (const param of node.body?.params ?? []) {
+    ctx.policy.checkBinding?.(param, "`<define>`");
+  }
+
   const name = expr(ctx, node.var);
   const paramNames: string[] = (node.body?.params ?? []).map((p: Node) =>
     expr(ctx, p),
@@ -675,14 +775,7 @@ function emitTag(ctx: Ctx, node: Node): void {
   const disposition = ctx.policy.tags[name];
   if (disposition) {
     if (disposition.kind === "error") fail(disposition.reason, node);
-    // Inert: accepted, contributes no output. The guard still runs, so an
-    // inert tag carrying content nobody renders is reported rather than
-    // silently swallowed.
-    rejectUnsupportedFields(ctx, node, `\`<${name}>\``, {
-      params: true,
-      args: true,
-      var: true,
-    });
+    rejectInertShape(ctx, node, name, disposition);
     return;
   }
 

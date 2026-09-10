@@ -18,6 +18,124 @@ import { compile } from "./index.ts";
 const src = (body: string) => (body.endsWith("\n") ? body : `${body}\n`);
 const file = "/tmp/mx-translator-test/probe.marko";
 
+describe("an inert tag is inert only in its declared shape", () => {
+  // Inert means the construct emits nothing — never that a body or an extra
+  // attribute may be discarded. `<effect><div>x</div></effect>` compiled clean
+  // with the `<div>` gone before this rule existed: a successful compile that
+  // silently deleted authored markup, the S8 failure class the field guard
+  // exists to close. Marko itself rejects both shapes.
+  // `<effect>` is the tag that actually reaches this guard. `<log>`, `<debug>`,
+  // `<id>` and `<lifecycle>` are `openTagOnly` in Marko's own definition, so a
+  // body on those is a parse error before any translator runs — the guard
+  // still declares `body: "none"` for them, for a taglib that omits that parse
+  // option, but the reachable case to pin is this one.
+  it("rejects a body on <effect>", () => {
+    expect(() =>
+      compile(src("<effect() { go() }><div>inside</div></effect>"), file),
+    ).toThrow(/`<effect>` does not support body content/);
+  });
+
+  it("rejects an unexpected attribute on <effect>", () => {
+    expect(() => compile(src('<effect foo="bar"/>'), file)).toThrow(
+      /`<effect>` does not support the `foo` attribute/,
+    );
+  });
+
+  it("accepts the attributes a tag's own definition allows", () => {
+    // Per tag, not uniform, because Marko is: `<lifecycle foo="bar"/>`
+    // compiles there while `<effect foo="bar"/>` does not — a lifecycle tag's
+    // attributes are its configuration.
+    const { code } = compile(
+      src('<p>a</p>\n<lifecycle onMount() { } foo="bar"/>'),
+      file,
+    );
+    expect(code).toContain('out += "<p>a</p>"');
+  });
+
+  it("rejects a spread on an inert tag", () => {
+    expect(() => compile(src("<effect ...input.attrs/>"), file)).toThrow(
+      /spread attributes on `<effect>` are not supported/,
+    );
+  });
+
+  it("still accepts <script>'s raw-text body, which Marko declares", () => {
+    // `text: true` in Marko's own tag definition: the body is client script
+    // source, genuinely consumed and genuinely emitting nothing.
+    const { code } = compile(
+      src("<script>console.log(1)</script>\n<p>a</p>"),
+      file,
+    );
+    expect(code).toContain('out += "<p>a</p>"');
+    expect(code).not.toContain("console.log");
+  });
+});
+
+describe("class:foo / style:foo modifiers", () => {
+  // Marko 5.42.5 has no such modifier: its own parser rejects every form
+  // ("`class:active` is not a valid attribute, did you mean
+  // `class={ active: condition }`?"), so matching Marko means rejecting them.
+  // The message must be this dialect's own — the shared core's fallback is
+  // `@markox/html`'s "standalone template" wording, which is `.mx` vocabulary
+  // leaking into a Marko-parity target.
+  it.each([
+    ["class:active", "<div class:active=input.on>a</div>"],
+    ["style:color", '<div style:color="red">d</div>'],
+  ])("rejects %s with Marko's own guidance", (_name, body) => {
+    expect(() => compile(src(body), file)).toThrow(
+      /is not a valid attribute; Marko rejects this form too/,
+    );
+    expect(() => compile(src(body), file)).not.toThrow(/standalone template/);
+  });
+});
+
+describe("bindings may not shadow the input parameter", () => {
+  // The emitted module is `function (input: Input)`, so a `const input = …`
+  // inside it makes the template's own input unreachable with no diagnostic.
+  // Marko rejects the same thing ("Duplicate declaration of `input`").
+  it.each([
+    ["let", "<let/input=1/>"],
+    ["const", "<const/input=1/>"],
+    ["for", "<for|input| of=[1,2]><p>y</p></for>"],
+  ])("rejects <%s> binding `input`", (_name, body) => {
+    expect(() => compile(src(body), file)).toThrow(
+      /collides with the template input parameter/,
+    );
+  });
+
+  it("leaves any other binding name alone", () => {
+    const { code } = compile(src("<for|item| of=[1,2]><p>y</p></for>"), file);
+    expect(code).toContain("for (const item of");
+  });
+});
+
+describe("<html-comment> lowers placeholders", () => {
+  it("emits interpolated values rather than dropping them", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: Marko placeholder syntax in template source
+    const body = "<html-comment>build ${input.sha}</html-comment>";
+    const { code } = compile(src(body), file);
+    expect(code).toContain("escapeComment(input.sha)");
+    expect(code).toContain("function escapeComment");
+  });
+
+  it("escapes only `>`, as Marko's own _escape_comment does", () => {
+    const body = "<html-comment>a > b < c & d</html-comment>";
+    const { code } = compile(src(body), file);
+    expect(code).toContain("a &gt; b < c & d");
+  });
+
+  it("treats markup inside a comment as text, as Marko's taglib declares", () => {
+    // `<html-comment>` is `text: true` in Marko's own definition, so a `<div>`
+    // in there never becomes a tag — it is comment text, escaped by the same
+    // `>`-only rule. The translator's "only text and placeholders" guard still
+    // stands for a taglib that omits that parse option, but this is the
+    // behaviour a stock `.marko` file actually gets.
+    const body = "<html-comment>x<div>y</div></html-comment>";
+    expect(compile(src(body), file).code).toContain(
+      "<!--x<div&gt;y</div&gt;-->",
+    );
+  });
+});
+
 describe("inert constructs (decision 65): accepted, no output", () => {
   // Each was verified against Marko's own server render: the emitted HTML is
   // byte-identical with and without the construct. Rejecting them would be an

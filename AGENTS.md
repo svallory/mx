@@ -436,8 +436,26 @@ byte-identical against Marko): `<effect>`, `<lifecycle>`, `<script>`, `<id>`,
 value**: `<let>`, `<const>`, `:=`. **Error** — only what the target genuinely
 cannot: `<await>` (Marko itself refuses to render one to a string) and
 `<try>` with a `<@placeholder>` (needs a second pass). A plain `<try>` with
-`<@catch>` lowers to `try`/`catch`. `key=` needs no row: Marko's own parser
-rejects it first.
+`<@catch>` lowers to `try`/`catch`.
+
+**Inert is a shape, not a licence to drop.** An inert row declares the body
+and attributes its own Marko tag definition allows, and anything else is an
+error naming the tag and what was found — otherwise
+`<effect><div>x</div></effect>` compiles clean with the `<div>` deleted, which
+is the S8 silent-drop class reopened. The declarations are per tag because
+Marko is: `<effect foo="bar"/>` and `<log=1 foo="bar"/>` are refused there,
+while `<lifecycle foo="bar"/>` compiles (a lifecycle tag's attributes are its
+configuration), and `<script>` is the one inert tag taking a body (raw text).
+
+Some constructs need no row at all, because Marko's own parser rejects them
+before a translator runs — do not add code for these, and do not read their
+absence as tolerance: `key=` on an element, `class:foo`/`style:foo` modifiers
+(*"`class:active` is not a valid attribute, did you mean
+`class={ active: condition }`?"* — so the translator matches Marko by
+rejecting them, repeating that fix-it), and `$!{…}` in an attribute value.
+A binding named `input` (`<let/input=…>`, `<for|input|>`) is rejected too: it
+would shadow the emitted `function (input: Input)` parameter, and Marko
+refuses it as a duplicate declaration.
 
 Two behaviours worth knowing before editing the policy, both verified rather
 than assumed:
@@ -456,9 +474,15 @@ than assumed:
 
 `bun run oracle:marko` prints **two** tables: the existing `.mx` set
 (`packages/mx-html/fixtures-mx`, 30 fixtures, 12 recorded divergences) and
-the stock set (`packages/translator/fixtures-marko`, 28 fixtures, minimum 25,
-currently 28 pass / 0 skipped / 0 bug). Fixture `expected.html` files are
+the stock set (`packages/translator/fixtures-marko`, 29 fixtures, minimum 29,
+currently 29 pass / 0 skipped / 0 bug). Fixture `expected.html` files are
 generated from real Marko, never hand-written.
+
+`<html-comment>` lowers placeholders as Marko does, through an emitted
+`escapeComment` helper that escapes **only `>`** — `<`, `&` and quotes pass
+through raw, matching Marko's own `_escape_comment`. Filtering placeholders
+out (an earlier bug) turned `<html-comment>build ${input.sha}</html-comment>`
+into `<!--build -->`.
 
 ## Bun loader
 

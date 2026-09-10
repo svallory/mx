@@ -59,38 +59,71 @@ export { TranslateError } from "@markox/html/core";
  */
 const TAGS: Record<string, Disposition> = {
   // ---- inert: configures post-render behaviour, emits nothing ----
+  //
+  // Each row declares the shape the tag is inert *in*, taken from its own
+  // Marko tag definition. Inert means the construct emits nothing; it never
+  // means a body or an extra attribute may be discarded. Marko itself rejects
+  // both (`<effect>` with a body is "does not support body content" there),
+  // and the shapes below reproduce that.
   effect: {
     kind: "inert",
     reason:
       "`<effect>` runs after render, on the client; a server render emits nothing for it (verified against Marko's own html output)",
+    body: "none",
+    // Marko: `<effect foo="bar"/>` is "does not support the `foo` attribute",
+    // and a spread is refused too. Only the `effect() { … }` call is its own.
+    attributes: "none",
   },
   lifecycle: {
     kind: "inert",
     reason:
       "`<lifecycle>` is a client-side lifecycle hook; a server render emits nothing for it",
+    // `openTagOnly` in Marko's definition, so a body is a parse error there
+    // before a translator ever sees the node; rejected here too for the case
+    // where a taglib does not carry that parse option.
+    body: "none",
+    // Marko accepts arbitrary attributes here (`<lifecycle foo="bar"/>`
+    // compiles): a lifecycle tag's attributes *are* its configuration.
+    attributes: "any",
   },
   script: {
     kind: "inert",
     reason:
       "`<script>` as a Marko tag is client-only behaviour, not markup; use `<html-script>` for a literal script element",
+    // Marko declares `text: true`: the body is raw client-side script source,
+    // genuinely consumed and genuinely emitting nothing. Verified: Marko's own
+    // server render of `<script>console.log(1)</script>` emits no bytes.
+    body: "text",
+    attributes: "any",
   },
   id: {
     kind: "inert",
     reason:
       "`<id>` allocates a unique identifier for the reactive runtime; nothing is emitted for it here",
+    body: "none",
+    attributes: "none",
   },
   log: {
     kind: "inert",
     reason: "`<log>` writes to the console; it emits no markup",
+    // `openTagOnly` in Marko, so a body is a parse error there first.
+    body: "none",
+    // Marko: `<log=1 foo="bar"/>` is refused; only the logged value is its own.
+    attributes: "none",
   },
   debug: {
     kind: "inert",
     reason: "`<debug>` is a debugger hook; it emits no markup",
+    body: "none",
+    attributes: "none",
   },
   client: {
     kind: "inert",
     reason:
       "a `client` block is evaluated only on the client; a server render emits nothing for it",
+    // A statement tag: its "attributes" are the statement's own words.
+    body: "none",
+    attributes: "any",
   },
 
   // ---- error: this target genuinely cannot express it ----
@@ -119,12 +152,63 @@ function emitBinding(ctx: Ctx, node: Node, name: string): boolean {
     );
   }
   rejectUnsupportedFields(ctx, node, `\`<${name}>\``, { var: true });
+  rejectInputShadowing(node.var, `\`<${name}>\``);
   const value = attrByName(node, "value") ?? node.attributes?.[0];
   // `<let/x/>` with no value is a declared-but-unset binding; Marko renders
   // `undefined` for it, and so does an initialiser-less `const` here.
   const init = value?.value ? expr(ctx, value.value) : "undefined";
   push(ctx, `const ${expr(ctx, node.var)} = ${init};`);
   return true;
+}
+
+/**
+ * Rejects a binding that would shadow the render function's `input` parameter.
+ *
+ * The emitted module is `function (input: Input)`, so `<let/input=1/>` lowers
+ * to `const input = 1` inside it — every later `${input.x}` then reads the
+ * local, and the template's actual input becomes unreachable with no
+ * diagnostic. Marko rejects the same thing outright ("Duplicate declaration of
+ * `input`"), so this matches its outcome rather than inventing a rule.
+ */
+function rejectInputShadowing(target: Node, what: string): void {
+  if (!bindingNames(target).includes("input")) return;
+  fail(
+    `\`input\` on ${what} collides with the template input parameter: the emitted render function takes \`input\`, so this binding would shadow it and make the template's own input unreachable`,
+    target,
+  );
+}
+
+/** Every identifier a binding pattern introduces. */
+function bindingNames(pattern: Node): string[] {
+  if (!pattern || typeof pattern !== "object") return [];
+  switch (pattern.type) {
+    case "Identifier":
+      return [pattern.name];
+    case "ObjectPattern":
+      return (pattern.properties ?? []).flatMap((p: Node) =>
+        bindingNames(p.value ?? p.argument),
+      );
+    case "ArrayPattern":
+      return (pattern.elements ?? []).flatMap((e: Node) => bindingNames(e));
+    case "AssignmentPattern":
+      return bindingNames(pattern.left);
+    case "RestElement":
+      return bindingNames(pattern.argument);
+    default:
+      return [];
+  }
+}
+
+/**
+ * Marko's own comment escaping, as `_escape_comment` implements it.
+ *
+ * Only `>` is escaped. `<`, `&` and quotes pass through raw — verified against
+ * Marko's own render, both for static text and for an interpolated value. This
+ * is not `escape()`: a comment is not markup, and over-escaping it would put
+ * literal `&amp;` in the reader's comment.
+ */
+function escapeComment(text: string): string {
+  return text.replace(/>/g, "&gt;");
 }
 
 /**
@@ -282,11 +366,27 @@ function emitSpecial(ctx: Ctx, node: Node, name: string): boolean {
 
   if (name === "html-comment") {
     rejectUnsupportedFields(ctx, node, "`<html-comment>`");
-    const text = (node.body?.body ?? [])
-      .filter((c: Node) => c.type === "MarkoText")
-      .map((c: Node) => c.value)
-      .join("");
-    push(ctx, `out += ${quote(`<!--${text}-->`)};`);
+    emitLiteral(ctx, "<!--");
+    for (const child of node.body?.body ?? []) {
+      if (child.type === "MarkoText") {
+        // A static run is escaped at compile time by the same rule, and
+        // merged into the surrounding literal so a fully static comment stays
+        // one `out +=`.
+        emitLiteral(ctx, escapeComment(child.value));
+      } else if (child.type === "MarkoPlaceholder") {
+        // Filtering placeholders out (the previous behaviour) silently dropped
+        // `<html-comment>build ${input.sha}</html-comment>` down to
+        // `<!--build -->`. Marko lowers them, through its own
+        // `_escape_comment`.
+        push(ctx, `out += escapeComment(${expr(ctx, child.value)});`);
+      } else if (child.type !== "MarkoComment") {
+        fail(
+          "`<html-comment>` takes only text and placeholders; a comment cannot contain markup",
+          child,
+        );
+      }
+    }
+    emitLiteral(ctx, "-->");
     return true;
   }
 
@@ -421,6 +521,38 @@ function emitBoundAttr(ctx: Ctx, attr: Node): boolean {
 }
 
 /**
+ * `class:foo` / `style:foo` — rejected, with this dialect's own message.
+ *
+ * The brief asked for these to lower to Marko's semantics. Marko 5.42.5 /
+ * `marko@6.3.51` has no such semantics to lower: its own parser rejects every
+ * form of them outright —
+ *
+ *     `class:active` is not a valid attribute, did you mean
+ *     `class={ active: condition }`?
+ *
+ * — for a static value, a dynamic value, alone, and combined with a plain
+ * `class`. Verified against Marko's own compiler for `class:active`,
+ * `class:big`, `style:color` (static and dynamic) and `class="base"
+ * class:active=…`. Matching Marko therefore means *rejecting* them, and
+ * inventing a lowering would be inventing markup the target does not have —
+ * exactly what decision 65's table forbids. Recorded as a divergence from the
+ * brief's expectation, not from Marko.
+ *
+ * A fixture is impossible for the same reason: no `.marko` file using this
+ * syntax compiles through Marko, so there is nothing to compare against.
+ *
+ * The hook exists so the message is *this* dialect's. Without it the shared
+ * core falls back to `@markox/html`'s wording ("not supported in a standalone
+ * template"), which is `.mx`'s vocabulary leaking into a Marko-parity target.
+ */
+function emitModifier(_ctx: Ctx, attr: Node): boolean {
+  fail(
+    `\`${attr.name}:${attr.modifier}\` is not a valid attribute; Marko rejects this form too — write \`${attr.name}={ ${attr.modifier}: condition }\``,
+    attr,
+  );
+}
+
+/**
  * `<input value=…>` emits `value` before every other attribute, as Marko does.
  *
  * Not cosmetic and not Marko being arbitrary: a browser parsing
@@ -448,7 +580,9 @@ export const policy: Policy = {
   isComponent,
   emitComponent,
   attrValue,
+  checkBinding: rejectInputShadowing,
   emitBoundAttr,
+  emitModifier,
   orderAttrs,
   escapeFrom: "@markox/translator",
   emitSpecial,
@@ -488,6 +622,11 @@ const STYLE_VALUE = `function styleValue(value) {
   return escape(value);
 }`;
 
+const ESCAPE_COMMENT = `function escapeComment(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/>/g, "&gt;");
+}`;
+
 const RENDER_DYNAMIC = `function renderDynamic(target, props) {
   if (target === null || target === undefined) return "";
   if (typeof target === "string") {
@@ -518,6 +657,7 @@ export function emitProgram(
   const helpers = [
     ["classValue(", CLASS_VALUE],
     ["styleValue(", STYLE_VALUE],
+    ["escapeComment(", ESCAPE_COMMENT],
     ["renderDynamic(", RENDER_DYNAMIC],
   ]
     .filter(([call]) => code.includes(call as string))
