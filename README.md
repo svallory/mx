@@ -84,10 +84,11 @@ Runnable via `bun run <name>` or `moon run :<name>`:
 
 ## Try it
 
-A runnable Solid 2 app whose components are written in MX:
+Runnable Solid 2 apps whose components are written in MX:
 
 ```
 cd examples/counter-app && bun run dev
+cd examples/todomvc && bun run dev
 ```
 
 `bun run build` builds it, and `bun run e2e` drives the dev server and the

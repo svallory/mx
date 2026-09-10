@@ -149,9 +149,20 @@ builds before it tests.
 ## Examples
 
 `examples/counter-app` is a Solid 2 app whose components are `.solid.mx`.
-Root `package.json` `workspaces` includes `examples/*`, so `@markox/vite-plugin`
-and `@markox/parser` resolve as workspace deps, and root `typecheck` covers
+`examples/todomvc` is the canonical TodoMVC app (todomvc.com spec), also
+entirely in MX: `App.solid.mx` (state, hash-routed filter, localStorage
+persistence), `TodoItem.solid.mx` (toggle, double-click-to-edit, destroy),
+`Footer.solid.mx` (count, filters, clear-completed). Root `package.json`
+`workspaces` includes `examples/*`, so `@markox/vite-plugin` and
+`@markox/parser` resolve as workspace deps, and root `typecheck` covers
 `examples/*/` as well as `packages/*/`.
+
+Solid 2's `createEffect` requires **two** arguments — a compute function and
+an effect function (`createEffect(() => signal(), value => doWork(value))`).
+The single-callback Solid 1 form (`createEffect(() => { ... })`) throws
+`MISSING_EFFECT_FN` at runtime and halts the reactive system. This is a Solid
+2 API change, not an MX lowering issue — MX passes `createEffect` calls
+through untouched.
 
 ```
 cd examples/counter-app
