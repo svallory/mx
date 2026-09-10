@@ -737,6 +737,21 @@ static bool scan_open_tag(TSLexer *lexer, unsigned *budget, bool *self_closed) {
         // nested generics balance; `>` pops. This is type argument syntax, not
         // a nested element — verified upstream: `<Foo<Bar> x=1/>` reports the
         // open tag name as just `Foo` and consumes the whole thing.
+        //
+        // APPROXIMATION, stated deliberately: this counts `<` and `>` without
+        // string or comment awareness, so a `>` inside a string type literal
+        // (`<Foo<"a>b">`) closes the type-argument list early. htmljs is more
+        // precise here — it runs a full EXPRESSION with `inType`.
+        //
+        // Why that is safe rather than merely tolerable: a mis-balanced count
+        // makes the scan diverge from the real tag shape, and every path out of
+        // that divergence is a FAILED token, not a wrong one. The scan either
+        // hits EOF without the root closing (returns false), or exhausts
+        // `spend()`'s budget (returns false). A failed `mx_element` degrades to
+        // an ordinary TypeScript parse error at the `<`, which is the same
+        // fallback that rejects a generic arrow. The clamp below additionally
+        // stops a stray `>` from driving the count negative and terminating the
+        // loop as if the list had balanced.
         if (c == '<') {
             int angle_depth = 0;
             do {
@@ -746,7 +761,9 @@ static bool scan_open_tag(TSLexer *lexer, unsigned *budget, bool *self_closed) {
                 if (lexer->lookahead == '<') {
                     angle_depth++;
                 } else if (lexer->lookahead == '>') {
-                    angle_depth--;
+                    if (angle_depth > 0) {
+                        angle_depth--;
+                    }
                 } else if (is_eof(lexer)) {
                     return false;
                 }

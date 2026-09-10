@@ -19,6 +19,21 @@ tasks:
       - "scripts/**/*"
       - "vendor/**/*"
 
+  # Drift check for the vendored tree. Defined AND wired:
+  # .github/workflows/upstream-check.yml runs it on every PR touching this
+  # package. A check that is documented but never invoked is not a check.
+  #
+  # It is NOT a dependency of `test`: it re-fetches the pin from GitHub, so
+  # wiring it into the local test chain would make `bun run test` fail offline.
+  # CI is where it is binding; run it locally with `bun run vendor:check`.
+  vendor-check:
+    command: "bash"
+    args: ["scripts/vendor.sh", "--check"]
+    inputs:
+      - "patches/**/*"
+      - "scripts/vendor.sh"
+      - "vendor/**/*"
+
   typecheck:
     # No TypeScript sources: this package is a tree-sitter grammar (JS + C).
     # The task exists so the root `moon run :typecheck` aggregate resolves.

@@ -123,3 +123,144 @@ const r = fn<number>(1);
           (predefined_type))
         arguments: (arguments
           (number))))))
+
+================================================================================
+Generic arrow spanning multiple lines is NOT an MX element
+================================================================================
+
+const f = <
+  T,
+>(x: T) => x;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (arrow_function
+        type_parameters: (type_parameters
+          (type_parameter
+            name: (type_identifier)))
+        parameters: (formal_parameters
+          (required_parameter
+            pattern: (identifier)
+            type: (type_annotation
+              (type_identifier))))
+        body: (identifier)))))
+
+================================================================================
+Generic arrow whose body IS an MX element — both readings in one expression
+================================================================================
+
+const f = <T,>(x: T) => <div>${x}</div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (arrow_function
+        type_parameters: (type_parameters
+          (type_parameter
+            name: (type_identifier)))
+        parameters: (formal_parameters
+          (required_parameter
+            pattern: (identifier)
+            type: (type_annotation
+              (type_identifier))))
+        body: (mx_element)))))
+
+================================================================================
+Type parameter constrained by an object type: braces inside the type params
+================================================================================
+
+const f = <T extends { a: string }>(x: T) => x;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (arrow_function
+        type_parameters: (type_parameters
+          (type_parameter
+            name: (type_identifier)
+            constraint: (constraint
+              (object_type
+                (property_signature
+                  name: (property_identifier)
+                  type: (type_annotation
+                    (predefined_type)))))))
+        parameters: (formal_parameters
+          (required_parameter
+            pattern: (identifier)
+            type: (type_annotation
+              (type_identifier))))
+        body: (identifier)))))
+
+================================================================================
+Generic arrow at end of input with no trailing newline
+================================================================================
+
+const f = <T,>(x: T) => x;
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (arrow_function
+        type_parameters: (type_parameters
+          (type_parameter
+            name: (type_identifier)))
+        parameters: (formal_parameters
+          (required_parameter
+            pattern: (identifier)
+            type: (type_annotation
+              (type_identifier))))
+        body: (identifier)))))
+
+================================================================================
+const type parameter modifier is NOT an MX element
+================================================================================
+
+const f = <const T,>(x: T) => x;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (arrow_function
+        type_parameters: (type_parameters
+          (type_parameter
+            name: (type_identifier)))
+        parameters: (formal_parameters
+          (required_parameter
+            pattern: (identifier)
+            type: (type_annotation
+              (type_identifier))))
+        body: (identifier)))))
+
+================================================================================
+An unterminated element is an error, not a silently-consumed region
+================================================================================
+
+const a = <div>never closed;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      (ERROR
+        (type_parameters
+          (type_parameter
+            name: (type_identifier)))
+        (identifier))
+      value: (identifier))))

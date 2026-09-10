@@ -1,0 +1,98 @@
+================================================================================
+Legacy on: namespace scans as a region (checklist 20)
+================================================================================
+
+const a = <div on:scroll=handler/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Legacy oncapture: namespace scans as a region (checklist 21)
+================================================================================
+
+const a = <div oncapture:click=handler/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Legacy attr: namespace scans as a region (checklist 22)
+================================================================================
+
+const a = <div attr:data-x=value/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Legacy bool: namespace scans as a region (checklist 23)
+================================================================================
+
+const a = <div bool:open=isOpen/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+Legacy use: directive scans as a region (checklist 24)
+================================================================================
+
+const a = <div use:tooltip={opts}/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
+
+================================================================================
+JSX-valued prop as an attribute expression (checklist 32, 68)
+================================================================================
+
+const a = <Show fallback=<Spin/>/>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))
+    (ERROR)))
+
+================================================================================
+for with step= scans as a region (checklist 46)
+================================================================================
+
+const a = <for|i| from=0 to=100 step=5><p>${i}</p></for>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))

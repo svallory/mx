@@ -8,11 +8,59 @@ on:
   pull_request:
     paths:
       - "packages/zed-extension/**"
+      - "packages/tree-sitter-solidmx/**"
 
 permissions:
   contents: read
 
 jobs:
+  solidmx-vendor-matches:
+    # packages/tree-sitter-solidmx vendors tree-sitter-typescript at a pinned
+    # sha and reapplies patches/*.patch on top. `vendor.sh --check` re-fetches
+    # the pin into a temp dir, reapplies the patches, and diffs against
+    # vendor/ — so a hand-edit to vendor/ that was never captured as a patch
+    # (exactly the edit the next re-vendor would silently revert) fails here.
+    #
+    # Same standard as `vendored-files-match` below: the drift check is only
+    # worth defining if something actually runs it.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/tree-sitter-solidmx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: .
+      - name: vendor.sh --check
+        run: ./scripts/vendor.sh --check
+
+  solidmx-generated-output-matches:
+    # The generated parser is committed because Zed compiles it directly and
+    # never runs `tree-sitter generate` (UPSTREAM.md). That only holds if the
+    # committed output actually corresponds to grammar.js + the vendored tree,
+    # so regenerate and diff. Catches a hand-edited src/grammar.json, and a
+    # grammar.js change committed without regenerating.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/tree-sitter-solidmx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: .
+      - run: ./scripts/vendor.sh
+      - run: bunx tree-sitter generate
+      - run: |
+          if ! git diff --exit-code -- src; then
+            echo "src/ doesn't match what 'tree-sitter generate' produces from grammar.js + vendor/." >&2
+            echo "Run 'bun run generate' in packages/tree-sitter-solidmx and commit the result." >&2
+            exit 1
+          fi
+
   vendored-files-match:
     # Regenerates languages/mx/*.scm from the pinned revs (no live upstream
     # HEAD lookup — just what vendor.sh's normal mode already does) and

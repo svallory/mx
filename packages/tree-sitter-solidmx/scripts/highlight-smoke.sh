@@ -22,7 +22,20 @@ mapfile -t FILES < <(
 
 # Zero files highlighted is a failure, not a pass — see parse-all.sh for why a
 # check must assert it did work rather than only that nothing failed.
-MIN_FILES="${MX_MIN_PARSE_FILES:-12}"
+#
+# Hardcoded for the same reason as parse-all.sh: an env-overridable floor can be
+# set to 0 by any caller, which makes the guard advisory rather than binding.
+MIN_FILES=12
+
+# Testing hook: may only RAISE the floor, never lower it, so it cannot disable
+# the guard.
+if [[ -n "${MX_PARSE_FLOOR_OVERRIDE_FOR_TESTING:-}" ]]; then
+  if [[ "$MX_PARSE_FLOOR_OVERRIDE_FOR_TESTING" -lt "$MIN_FILES" ]]; then
+    echo "highlight-smoke: refusing to lower the file floor below $MIN_FILES" >&2
+    exit 2
+  fi
+  MIN_FILES="$MX_PARSE_FLOOR_OVERRIDE_FOR_TESTING"
+fi
 
 if [[ ${#FILES[@]} -lt "$MIN_FILES" ]]; then
   echo "highlight-smoke: found only ${#FILES[@]} .solid.mx file(s), expected at least $MIN_FILES" >&2

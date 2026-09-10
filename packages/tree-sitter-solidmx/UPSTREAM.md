@@ -98,6 +98,29 @@ offered that position (so `valid_symbols` is not what declines it).
 `<A, B>` parse as `type_parameters`, while `<div>` and `<div.card>` parse as
 `mx_element`.
 
+## What the corpus is measured against
+
+`test/corpus/*.txt` is scored against **`notes/zed/solidmx-corpus-checklist.md`**
+— 74 catalogued constructs from spec sections 3 and 4, derived from the SolidMX
+spec by the squad rather than from this grammar. That file lives in the
+operator's `notes/` at the project-space root and is **not versioned with this
+repo**, so record the number here for it to mean anything later:
+
+**Coverage at the time of writing: 59 of 74 constructs.** The uncovered ones are
+checklist 56-59 (`<let>`, `<const>`, `<effect>`, `:=`), which the checklist
+itself marks NON-GOAL for v1, plus entries that are file-level or lowering-level
+rather than syntactic (60-61, 69, 74-88) and so have no distinct parse to pin.
+
+Note what a corpus entry can and cannot assert here. The MX region is one opaque
+token, so a construct's test pins **that the scanner finds the right region end**
+— not that the construct is semantically valid. The legacy namespaces
+(`on:`/`oncapture:`/`attr:`/`bool:`/`use:`, checklist 20-24), `fallback=<Spin/>`
+(32, 68) and `<for step=>` (46) are all specified as *parse errors*, but they are
+errors raised by `@markox/parser` during lowering, not by this grammar:
+`test/corpus/legacy-namespaces.txt` pins that each still scans as a
+well-formed `mx_element` so the editor highlights the line instead of collapsing
+the rest of the file into an error node. Diagnosing them is the parser's job.
+
 ## Bump procedure
 
 1. Update `PIN_SHA` / `PIN_TAG` in `scripts/vendor.sh` and the table above.
