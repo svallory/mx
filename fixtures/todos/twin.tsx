@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal } from "solid-js";
 
 interface Todo {
   id: number;
@@ -16,11 +16,16 @@ export function Todos() {
 
   return (
     <div>
-      <input value={text()} onInput={(e) => setText(e.currentTarget.value)} />
+      <input
+        value={text()}
+        onInput={(e) => {
+          setText(e.currentTarget.value);
+        }}
+      />
       <button onClick={addTodo}>Add</button>
       <Show when={todos().length > 0} fallback={<p>No todos</p>}>
         <ul>
-          <For each={todos()}>{(todo) => <li>{todo.text}</li>}</For>
+          <For each={todos()}>{(todo, i) => <li>{todo.text}</li>}</For>
         </ul>
       </Show>
     </div>
