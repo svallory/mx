@@ -97,7 +97,24 @@ Two htmljs-parser facts that are easy to get wrong (both verified against
   the statement's source span, so the text is sliced back out and re-parsed.
   They are declared `TagType.void` so the parser does not hunt for a close tag.
 
-Also: `<!doctype html>` is silently dropped by htmljs-parser (no event fires).
+- **`<!doctype html>` reaches you only through `onDoctype`.** It fires no text
+  or element event, so a handler set without `onDoctype` silently drops the
+  doctype from a full HTML page. Template mode records it as a `doctype` child
+  and emits it verbatim.
+
+## Running tests in a fresh worktree
+
+`@markox/parser`'s `main` is `dist/index.js`, so a freshly created worktree
+needs `bun install` **and** `bun run build` before any dependent package's
+tests will run — without `dist/` every consumer fails with "Failed to resolve
+entry for package @markox/parser" (the oracle fails the same way). `bun run
+verify` builds before it tests, so this only bites when running one package's
+tests directly.
+
+Per-package vitest runs need the root config: `bunx vitest run --root ../..
+--project @markox/<name>`. A bare `bunx vitest run` inside a package directory
+fails with "No projects were found", because `projects: ["packages/*"]` is
+resolved relative to the root.
 
 `packages/mx-html` (`@markox/html`) holds the string target:
 
