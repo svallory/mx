@@ -95,6 +95,13 @@ export interface Options {
    * You can provide a start index to alternatively start with.
    * Useful for integration with other source tools.
    */
+  /**
+   * MX FORK: when true, `<` in expression position is parsed as MX (via
+   * src/mx/bridge.ts) instead of JSX. Defaults to false, which leaves the
+   * vendored parser behaving exactly like upstream @babel/parser.
+   */
+  mx?: boolean;
+
   startIndex?: number;
 
   /**
@@ -177,6 +184,8 @@ function createDefaultOptions(): OptionsWithDefaults {
     sourceFilename: undefined,
     // Index (0-based) from which to start counting source. Useful for
     // integration with other tools.
+    // MX FORK: opt-in MX element parsing; false means upstream JSX behavior.
+    mx: false,
     startIndex: 0,
     // Column (0-based) from which to start counting source. Useful for
     // integration with other tools.

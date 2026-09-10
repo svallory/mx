@@ -18,6 +18,7 @@ import type { Position } from "../../util/location.ts";
 import { isNewLine } from "../../util/whitespace.ts";
 import { Errors, ParseErrorEnum } from "../../parse-error.ts";
 import type { Undone } from "../../parser/node.ts";
+import { mxParseElementAt } from "../../../mx/bridge.ts";
 
 /* eslint sort-keys: "error" */
 const JsxErrors = ParseErrorEnum`jsx`({
@@ -464,7 +465,31 @@ export default (superClass: typeof Parser) =>
     // Parses entire JSX element, including it"s opening tag
     // (starting after "<"), attributes, contents and closing tag.
 
+    // MX FORK: `<` in expression position hands off to htmljs-parser via
+    // src/mx/bridge.ts, which returns ordinary lowered JSX nodes and leaves the
+    // tokenizer positioned after the root tag closes. The original Babel body
+    // is preserved verbatim as `jsxParseElementAtOriginal` below and is still
+    // reachable for plain-TSX parses (see src/index.ts `parse`/`parseExpression`).
     jsxParseElementAt(startLoc: Position): N.JSXElement | N.JSXFragment {
+      if (this.mxEnabled()) {
+        return mxParseElementAt(
+          this as unknown as Parameters<typeof mxParseElementAt>[0],
+          startLoc,
+        ) as N.JSXElement | N.JSXFragment;
+      }
+      return this.jsxParseElementAtOriginal(startLoc);
+    }
+
+    /** True when the `mx` parser option opted this parse into MX syntax. */
+    mxEnabled(): boolean {
+      return (
+        (this as unknown as { options: { mx?: boolean } }).options.mx === true
+      );
+    }
+
+    jsxParseElementAtOriginal(
+      startLoc: Position,
+    ): N.JSXElement | N.JSXFragment {
       const node = this.startNodeAt<N.JSXElement | N.JSXFragment>(startLoc);
       const children = [];
       const openingElement = this.jsxParseOpeningElementAt(startLoc);
@@ -480,7 +505,7 @@ export default (superClass: typeof Parser) =>
                 closingElement = this.jsxParseClosingElementAt(startLoc);
                 break contents;
               }
-              children.push(this.jsxParseElementAt(startLoc));
+              children.push(this.jsxParseElementAtOriginal(startLoc));
               break;
 
             case tt.jsxText:
