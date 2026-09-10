@@ -432,6 +432,28 @@ describe("for: ranges lower to <Repeat>", () => {
     expect(list.params).toHaveLength(1);
   });
 
+  it("rejects a valueless from= instead of silently defaulting it to 0", () => {
+    // `to=`/`until=` already reject these kinds; `from` treating them as 0
+    // would compile a wrong range rather than report the mistake.
+    const err = parseError(`const el = <for|i| from to=5><li>x</li></for>;`);
+    expect(err.message).toContain("`<for from=...>`");
+    expect(err.message).toContain("requires an expression value");
+  });
+
+  it("rejects an attr-method from=", () => {
+    const err = parseError(
+      `const el = <for|i| from(a) { b() } to=5><li>x</li></for>;`,
+    );
+    expect(err.message).toContain("requires an expression value");
+  });
+
+  it("still defaults an absent from= to 0", () => {
+    const list = listAttrs(`const el = <for|i| to=5><li>x</li></for>;`);
+    expect(list.name).toBe("Repeat");
+    expect(list.attrNames).toEqual(["count"]);
+    expect(list.attr("count")?.value).toBe(6);
+  });
+
   it("rejects step= with a fix-it to a computed array", () => {
     const err = parseError(
       `const el = <for|i| from=0 to=9 step=2><li>x</li></for>;`,

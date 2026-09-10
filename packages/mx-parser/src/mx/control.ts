@@ -724,8 +724,21 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
       fail("`<for>` requires `to=` or `until=`", el.name);
     }
     const params = tagParams(ctx, el.params);
-    const hasFrom = from && (from.kind === "dynamic" || from.kind === "static");
-    const fromExpr = hasFrom
+    // A written-but-valueless `from` (`<for|i| from to=5>`, or the spread /
+    // method / bound kinds) is a mistake, not a request for the default: `to=`
+    // and `until=` already reject exactly these kinds, and silently treating
+    // `from` as 0 would compile a wrong range instead of reporting it. Absent
+    // entirely is still fine — that is what defaults to 0.
+    if (from && from.kind !== "dynamic" && from.kind !== "static") {
+      // A spread (`...obj`) carries no attribute name, so it has no
+      // `nameRange` to point at; its whole range is the best position.
+      fail(
+        "`<for from=...>` requires an expression value",
+        "nameRange" in from ? from.nameRange : from.range,
+      );
+    }
+    const hasFrom = from !== undefined;
+    const fromExpr = from
       ? subParseNode(ctx, from.value, "for `from` expression")
       : numericLiteral(ctx, 0, el.range);
     const boundAttr = to ?? until;
