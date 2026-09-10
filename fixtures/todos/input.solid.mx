@@ -19,7 +19,7 @@ export function Todos() {
     <div>
       <input value=text() onInput(e) { setText(e.currentTarget.value) }/>
       <button onClick=addTodo>Add</button>
-      <if=todos().length > 0>
+      <if=(todos().length > 0)>
         <ul>
           <for|todo, i| of=todos() by=identity><li>${todo.text}</li></for>
         </ul>
