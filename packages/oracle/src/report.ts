@@ -7,12 +7,19 @@ const here = dirname(fileURLToPath(import.meta.url));
 const fixturesRoot = join(here, "..", "..", "..", "fixtures");
 const divergencesPath = join(fixturesRoot, "divergences.md");
 
+const args = process.argv.slice(2);
+const strict = args.includes("--strict");
+const updateGoldens = args.includes("--update");
+
 const fixtures = discoverFixtures(fixturesRoot);
 const rows: { name: string; variant: string; status: string }[] = [];
 let failed = false;
 
 for (const fixture of fixtures) {
-  const results = compare(join(fixturesRoot, fixture), { divergencesPath });
+  const results = compare(join(fixturesRoot, fixture), {
+    divergencesPath,
+    updateGoldens,
+  });
   for (const r of results) {
     rows.push({ name: r.name, variant: r.variant, status: r.status });
     if (r.status === "fail") failed = true;
@@ -42,5 +49,14 @@ console.log(
     .map(([status, count]) => `${status}: ${count}`)
     .join(", "),
 );
+
+const allSkipped = rows.length > 0 && rows.every((r) => r.status === "skipped");
+if (allSkipped) {
+  console.log("");
+  console.log("ALL SKIPPED: no MX parser wired; this is not a pass.");
+}
+
+const hasSkipped = rows.some((r) => r.status === "skipped");
+if (strict && hasSkipped) failed = true;
 
 process.exit(failed ? 1 : 0);

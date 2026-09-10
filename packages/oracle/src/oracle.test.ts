@@ -47,16 +47,20 @@ describe("compile: .tsx pipeline", () => {
   });
 });
 
-describe("compare: fixtures without mxParser are skipped", () => {
+describe("compare: fixtures never report fail without a real divergence", () => {
   for (const fixture of fixtures) {
-    it(`${fixture}: all variants report skipped`, () => {
+    it(`${fixture}: all variants report skipped, pass, or divergent`, () => {
       const results = compare(join(fixturesRoot, fixture), { divergencesPath });
       expect(results.length).toBe(VARIANTS.length);
       for (const r of results) {
-        expect(r.status).toBe("skipped");
+        expect(r.status).not.toBe("fail");
       }
     });
   }
+
+  it("reports at least one fixture", () => {
+    expect(fixtures.length).toBeGreaterThan(0);
+  });
 });
 
 describe("compare: golden snapshots", () => {
@@ -96,5 +100,15 @@ describe("normalize", () => {
   it("trims trailing spaces", () => {
     const code = "const x = 1;   \nconst y = 2;\t\n";
     expect(normalize(code)).toBe("const x = 1;\nconst y = 2;\n");
+  });
+
+  it("a quote inside a line comment doesn't start string state; later whitespace still collapses", () => {
+    const code = "// it's fine\nconst   x   =   1;";
+    expect(normalize(code)).toBe("// it's fine\nconst x = 1;");
+  });
+
+  it("a quote inside a block comment doesn't start string state", () => {
+    const code = "/* it's   fine */\nconst   x   =   1;";
+    expect(normalize(code)).toBe("/* it's   fine */\nconst x = 1;");
   });
 });

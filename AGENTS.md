@@ -37,6 +37,6 @@ Design docs, specs, and research notes live outside this repo, at the project sp
 
 `packages/oracle` (`@mx/oracle`) compares compiled `dom-expressions` output between `fixtures/<name>/input.solid.mx` and its hand-written `fixtures/<name>/twin.tsx` twin, for both Solid generate variants. `bun run oracle` runs it standalone and prints a fixture/variant/status table; see `fixtures/README.md` for the fixture and `divergences.md` contract.
 
-A `skipped` status is not a pass: until `@mx/parser` exists, `.solid.mx` compiles throw `MxParserUnavailable` and every fixture reports `skipped`. Only `pass`, `fail`, or `divergent` mean the parser actually ran.
+A `skipped` status is not a pass: until `@mx/parser` exists, `.solid.mx` compiles throw `MxParserUnavailable` and every fixture reports `skipped`. Only `pass`, `fail`, or `divergent` mean the parser actually ran. `bun run oracle` prints an `ALL SKIPPED` banner when every row is skipped; pass `--strict` to also fail the run in that case (use once the parser is wired in).
 
-Golden snapshots (`fixtures/<name>/__golden__/twin.<variant>.js`) pin `twin.tsx`'s own compiled output, independent of MX, to catch a `babel-preset-solid`/`solid-js` pin bump changing generated code. Regenerate them deliberately (delete the stale file, rerun `bun run oracle`) and call it out in the PR — never let a pin bump change them as a silent side effect.
+Golden snapshots (`fixtures/<name>/__golden__/twin.<variant>.js`) pin `twin.tsx`'s own compiled output, independent of MX, to catch a `babel-preset-solid`/`solid-js` pin bump changing generated code. Regenerate them deliberately with `bun run oracle -- --update` and call it out in the PR — never let a pin bump change them as a silent side effect.
