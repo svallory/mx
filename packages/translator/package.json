@@ -8,7 +8,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "example": "bun run src/example.ts"
+    "example": "bun run --tsconfig-override=../../tsconfig.base.json src/example.ts"
   },
   "dependencies": {
     "@marko/compiler": "5.42.5",

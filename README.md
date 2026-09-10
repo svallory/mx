@@ -114,6 +114,15 @@ runtime, no Solid. It imports `.mx` files directly via `@markox/html/bun`
 by `@markox/vite-plugin`'s `.mx` handling, bundled by `vite build` to an SSR
 entry, then run once to write `dist/*.html`.
 
+`@markox/translator` needs no app at all — it renders a fixture to stdout,
+showing the stock `.marko` template, the compiled runtime-free module, and
+the HTML it produces:
+
+```
+cd packages/translator && bun run example
+cd packages/translator && bun run example nested-layout
+```
+
 ```
 cd examples/mx-vite && bun run build
 ```

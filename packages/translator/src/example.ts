@@ -13,7 +13,7 @@ import { escape } from "@markox/html";
 import { compileFile } from "./index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const fixture = process.argv[2] ?? "greeting";
+const fixture = process.argv[2] ?? "class-object";
 const dir = join(here, "..", "fixtures-marko", fixture);
 
 const { code } = compileFile(join(dir, "input.marko"));

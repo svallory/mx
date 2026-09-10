@@ -400,6 +400,66 @@ strip-only TypeScript loader rejects. `types` still points at
 `src/public.d.ts`, so typechecking never needs a build; `bun run verify`
 builds before it tests.
 
+## `@markox/translator`: stock `.marko` to a pure function
+
+`packages/translator` (`@markox/translator`, decision 66) compiles an
+**ordinary Marko template** to the same runtime-free `(input) => string`
+module `@markox/html` produces for `.mx`. Not a rename and not a dialect:
+tag discovery through taglibs and `tags/` directories, Marko's own
+HTML/SVG/MathML element registry, Marko's attribute-tag and component
+conventions. The seam is `config.translator` — package-name discovery is a
+dead end, since 5.42.5 scans only `@marko/runtime-*`.
+
+The two packages **share a lowering core**, `packages/mx-html/src/core.ts`
+(exported as `@markox/html/core`), which owns everything that is a property
+of the string target itself: buffering, block functions, the `<for>`/`<if>`
+lowerings, statement hoisting, the eight-field guard, the emitted module
+shape. Each package supplies a `Policy` for what is a property of its
+*dialect*. Do not copy `translate.ts` between them; add a policy hook.
+
+Where the dialects differ, each difference is Marko's convention rather than
+a preference, and each was measured against Marko 5.42.5's own server render:
+
+| | `@markox/translator` (Marko) | `@markox/html` (`.mx`) |
+|---|---|---|
+| `<@header>` | a **renderable**, rendered `<${input.header}/>` | a callable prop, `input.header()` |
+| repeated `<@item>` | an **array** of renderables | last one wins |
+| ordinary children | `input.content` | `input.children` |
+| components | taglib + `tags/` discovery + imports | explicit `import`/`<define>` only |
+| `<!-- -->` | stripped (Marko strips them) | preserved |
+| `<let>` | evaluates its initial value | a translate error |
+
+Policy table (decision 65): the target renders what Marko's server render
+emits, minus resume markers. **Inert** (accepted, no output, each verified
+byte-identical against Marko): `<effect>`, `<lifecycle>`, `<script>`, `<id>`,
+`<log>`, `<debug>`, `client` blocks, and `by=` on `<for>`. **Evaluate initial
+value**: `<let>`, `<const>`, `:=`. **Error** — only what the target genuinely
+cannot: `<await>` (Marko itself refuses to render one to a string) and
+`<try>` with a `<@placeholder>` (needs a second pass). A plain `<try>` with
+`<@catch>` lowers to `try`/`catch`. `key=` needs no row: Marko's own parser
+rejects it first.
+
+Two behaviours worth knowing before editing the policy, both verified rather
+than assumed:
+
+- **Marko hoists `value` first on `<input>`**, so
+  `<input type="text" value=x>` emits `<input value=… type=text>`. A browser
+  applies `type` before `value`, and some types reinterpret a later `value`.
+  `orderAttrs` in the policy reproduces it; `htmlEquals` compares attribute
+  order, so getting this wrong fails the oracle.
+- **`class`/`style` take structured values**: `class={a: true, b: false}` →
+  `class="a"`, `class=["x", {y: true}]` → `class="x y"`,
+  `style={color: "red", top: 0}` → `style="color:red;top:0"`. These lower to
+  emitted `classValue`/`styleValue` helpers, inlined only when called, so a
+  template using none of them still compiles to `escape` and concatenation
+  alone.
+
+`bun run oracle:marko` prints **two** tables: the existing `.mx` set
+(`packages/mx-html/fixtures-mx`, 30 fixtures, 12 recorded divergences) and
+the stock set (`packages/translator/fixtures-marko`, 28 fixtures, minimum 25,
+currently 28 pass / 0 skipped / 0 bug). Fixture `expected.html` files are
+generated from real Marko, never hand-written.
+
 ## Bun loader
 
 `packages/mx-html/src/bun.ts` (`@markox/html/bun`) is the Bun-side `.mx`
