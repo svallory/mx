@@ -167,7 +167,15 @@ export function codeFrame(
  * specifiers at all.
  */
 export default function mx(options: MxPluginOptions = {}): Plugin {
-  const extensions = options.extensions ?? DEFAULT_EXTENSIONS;
+  // Longest first: `.mx` is a string suffix of `.solid.mx`, so a caller-
+  // supplied `extensions` in the other order must not silently misroute a
+  // `.solid.mx` file through the `.mx` (compile()/HTML) branch instead of
+  // `.solid.mx` (print()/JSX) — sorting once here makes both `matchExt` and
+  // `isMxModule` order-independent regardless of the order `extensions` is
+  // given in.
+  const extensions = [...(options.extensions ?? DEFAULT_EXTENSIONS)].sort(
+    (a, b) => b.length - a.length,
+  );
   const matchExt = (file: string): string | undefined =>
     extensions.find((ext) => file.endsWith(ext));
   const isMxModule = (file: string): string | undefined =>

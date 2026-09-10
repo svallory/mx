@@ -396,5 +396,30 @@ describe("mx()", () => {
 
       expect(result?.code).toContain("<button");
     });
+
+    it("routes .solid.mx correctly even when extensions lists .mx first", async () => {
+      // `.mx` is a string suffix of `.solid.mx` — a caller-supplied order
+      // with `.mx` before `.solid.mx` must not misroute a `.solid.mx` file
+      // through the .mx (compile()/HTML) branch instead of print()/JSX.
+      const plugin = mx({ extensions: [".mx", ".solid.mx"] });
+
+      const resolveId = resolveIdOf(plugin);
+      const resolved = await resolveId.call(
+        makeContext(),
+        "./Counter.solid.mx",
+        "/root/src/index.tsx",
+      );
+      // .tsx (print()/JSX), not .ts (compile()/HTML) — proves the .solid.mx
+      // branch won even with .mx listed first.
+      expect(resolved).toBe(`/root/src/Counter.solid.mx${MX_SUFFIX}`);
+
+      const path = writeMx("Counter.solid.mx", COUNTER);
+      const transform = transformOf(plugin);
+      const result = await transform.call({}, COUNTER, path + MX_SUFFIX);
+
+      expect(result?.code).toContain("<button");
+      expect(result?.code).toContain("onClick={");
+      expect(result?.code).not.toContain("export default function");
+    });
   });
 });

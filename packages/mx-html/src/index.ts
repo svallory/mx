@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { emitProgram, TranslateError } from "./translate.ts";
+import { emitProgram } from "./translate.ts";
 
 export { escape } from "./escape.ts";
 export { TranslateError } from "./translate.ts";
@@ -56,16 +56,11 @@ export function compile(source: string, filename: string): CompileResult {
     },
   };
 
-  try {
-    compiler.compileSync(source, filename, {
-      translator,
-      output: "html",
-      writeVersionComment: false,
-    });
-  } catch (error) {
-    if (error instanceof TranslateError) throw error;
-    throw error;
-  }
+  compiler.compileSync(source, filename, {
+    translator,
+    output: "html",
+    writeVersionComment: false,
+  });
 
   if (code === null) {
     throw new Error(`${filename}: translator produced no output`);

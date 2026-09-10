@@ -30,5 +30,6 @@ tasks:
       - "typecheck"
       - "lint"
       - "test"
+      - "mx-html:test-bun"
     options:
       runDepsInParallel: false

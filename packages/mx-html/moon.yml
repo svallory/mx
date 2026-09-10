@@ -18,3 +18,17 @@ tasks:
       - "src/**/*"
       - "fixtures-mx/**/*"
       - "/vitest.config.ts"
+
+  test-bun:
+    command: "bun"
+    args:
+      [
+        "--tsconfig-override=../../tsconfig.base.json",
+        "test",
+        "src/bun.test.ts",
+      ]
+    inputs:
+      - "src/bun.ts"
+      - "src/bun.test.ts"
+      - "src/index.ts"
+      - "fixtures-mx/attributes/**/*"
