@@ -39,14 +39,17 @@ All dependencies below are pinned to an exact version (no `^`/`~`) at the root `
 | `@types/babel__core` | 7.20.5 |
 | `charcodes` | 0.2.0 |
 | `@babel/helper-validator-identifier` | 7.28.5 |
-| `@babel/helper-string-parser` | 7.27.1 |
 | `@types/charcodes` | 0.2.2 |
 | `@types/babel__helper-validator-identifier` | 7.15.2 |
 
-The last five entries are build-only dependencies of `packages/mx-parser`'s
+The last four entries are build-only dependencies of `packages/mx-parser`'s
 vendored `@babel/parser` source (`@babel/parser`'s own runtime deps, which
 npm's published bundle doesn't need to declare since Babel's build inlines
-them) — see `packages/mx-parser/README.md` and `UPSTREAM.md`.
+them) — see `packages/mx-parser/README.md` and `UPSTREAM.md`. A fifth such
+dependency, `@babel/helper-string-parser`, is vendored as source instead of
+installed as a package (see `UPSTREAM.md`'s "Local modifications"); its
+pinned version (7.27.1) is recorded there, not here, since there's no
+`package.json` entry for it.
 
 Note: Babel 8 (8.0.x) and TypeScript 7 (7.0.x) were released but are new majors; the spec's parser fork targets Babel 7's `parserOverride`/JSX-plugin shape and TS's current plugin API, so this scaffold pins the latest stable Babel 7 / TypeScript 5 line instead.
 

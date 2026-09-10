@@ -17,7 +17,6 @@
   "devDependencies": {
     "@babel/core": "7.29.7",
     "@babel/generator": "7.29.8",
-    "@babel/helper-string-parser": "7.27.1",
     "@babel/helper-validator-identifier": "7.28.5",
     "@babel/parser": "7.29.8",
     "@babel/preset-typescript": "7.29.7",

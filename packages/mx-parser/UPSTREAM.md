@@ -22,11 +22,17 @@ this source ourselves.
 
 - `plugins/flow/` — MX has no Flow story; deleted entirely.
 - `flow` removed from the `mixinPlugins`/`mixinPluginNames` registration in
-  `plugin-utils.ts` (the import and the two map entries). Stray runtime
-  guards elsewhere in the tree (`this.hasPlugin("flow")`, the `flow`/
-  `flowComments` plugin-name string-literal unions in `typings.d.ts`) were
-  left as-is: they're inert once `flow` can't be registered, and touching
-  them would widen the diff against upstream for no behavioral change.
+  `plugin-utils.ts` (the import and the two map entries). This also removed
+  the 4-line `flow`+`typescript` mutual-exclusion check in
+  `validatePlugins` (`if (pluginsMap.has("flow") && pluginsMap.has("typescript")) { throw ... }`,
+  upstream `plugin-utils.ts:44-47`) — dead code once `flow` can never be
+  registered, since `pluginsMap.has("flow")` is now always `false`; listed
+  here explicitly since it's a deletion inside a kept file, not a whole
+  dropped file. Stray runtime guards elsewhere in the tree
+  (`this.hasPlugin("flow")`, the `flow`/`flowComments` plugin-name
+  string-literal unions in `typings.d.ts`) were left as-is: they're inert
+  once `flow` can't be registered, and touching them would widen the diff
+  against upstream for no behavioral change.
 
 Kept: `estree`, `jsx`, `typescript`, `placeholders`, `v8intrinsic` — the
 build didn't force dropping any of these.
@@ -34,9 +40,9 @@ build didn't force dropping any of these.
 ## Local modifications (all build-related; no parser behavior changed)
 
 1. **`parser/index.ts`**: `import type { ParserOptions, ParseResult, File } from "@babel/parser"` (a self-referential import Babel's own monorepo resolves via TS path-mapping back to this same package) rewritten to `from "../index.ts"`. Standalone, there is no `@babel/parser` self-reference to resolve.
-2. **`tokenizer/state.ts`**: the `@bit`/`@bit.storage` decorators are Babel's own build-time bit-packing transform (`scripts/babel-plugin-bit-decorator`, a Babel plugin that runs as part of Babel's monorepo build, not available standalone). Reimplemented the same packing (mask starts at 1, left-shifts once per `@bit`-decorated accessor, in declaration order) as a small native stage-3 accessor decorator directly in the file, backed by the existing `flags: number` field. Verified against the upstream plugin's source and its own `types.d.ts` reference-implementation comment; semantics match exactly for this file's single storage field.
+2. **`tokenizer/state.ts`**: the `@bit`/`@bit.storage` decorators are Babel's own build-time bit-packing transform (`scripts/babel-plugin-bit-decorator`, a Babel plugin that runs as part of Babel's monorepo build, not available standalone). Reimplemented the same packing (mask starts at 1, left-shifts once per `@bit`-decorated accessor, in declaration order) as a small native stage-3 accessor decorator directly in the file, backed by the existing `flags: number` field. **Round 2 fix**: the first version only defined `get`/`set` on the returned accessor descriptor, so field initializers (e.g. `@bit accessor canStartJSXElement = true`) never folded into `flags` — upstream's transform (`plugin.cjs:118-128`) does fold each initializer's boolean literal into the storage field's own initial value at build time, so upstream `new State()` starts with `flags` already carrying every `true`-initialized bit set. Added an `init(this: State, v: boolean)` hook to the descriptor (native accessor decorators call `init` with the field's own initializer value, before `flags` itself — declared first — has been assigned, so `this.flags |= mask` there correctly ORs into whatever `flags` will resolve to); this makes `new State().canStartJSXElement` `true` again, matching upstream, and was verified directly (`new State().canStartJSXElement === true`) plus via a `tokens: true` parse of `<div/>` matching npm's first token.
 3. **`util/string-parser.ts`** (new file, not part of the original vendored tree — see below): one non-null assertion added (`/^[0-7]+/.exec(...)!`) — the regex always matches at that call site (it starts scanning from a position already confirmed to be `0-7`), but the vendored code's ambient strictness settings let this slide where our stricter base config didn't.
-4. **`util/string-parser.ts` added as a new file**: `@babel/parser`'s own `package.json` depends on `@babel/helper-string-parser` and `charcodes` for these two runtime helpers, but neither publishes `.d.ts` files to npm (a known gap in Babel's own release — `helper-string-parser`'s source comment literally says `// We inline this package`, confirming Babel's own build inlines it rather than treating it as a real external import). Vendored `packages/babel-helper-string-parser/src/index.ts` at the same tag/commit as `util/string-parser.ts`, unmodified except the import rewrite in `tokenizer/index.ts` (`@babel/helper-string-parser` → `../util/string-parser.ts`).
+4. **`util/string-parser.ts` added as a new file**: `@babel/parser`'s own `package.json` depends on `@babel/helper-string-parser` and `charcodes` for these two runtime helpers, but neither publishes `.d.ts` files to npm (a known gap in Babel's own release — `helper-string-parser`'s source comment literally says `// We inline this package`, confirming Babel's own build inlines it rather than treating it as a real external import). Vendored `packages/babel-helper-string-parser/src/index.ts` at the same tag/commit as `util/string-parser.ts`, unmodified except the import rewrite in `tokenizer/index.ts` (`@babel/helper-string-parser` → `../util/string-parser.ts`). **`@babel/helper-string-parser` is not a devDependency** anywhere in this repo — it's fully inlined as source, never imported by name, so there's nothing for a package manager to resolve. The version vendored is pinned here instead of in a `package.json`: **`@babel/helper-string-parser` 7.27.1** (matches the version range `@babel/parser`'s own `package.json` devDependency listed at the vendored tag).
 
 ## tsconfig relaxations (`packages/mx-parser/tsconfig.json`, whole-package)
 
@@ -77,21 +83,25 @@ code that relies on the looser settings.
 ## Re-vendoring procedure
 
 Run `packages/mx-parser/scripts/vendor.sh <tag>` (defaults to the currently
-pinned tag if omitted). It deletes `src/babel/` and re-fetches, then
-reapplies the `flow` drop. It does **not** reapply the four modifications
-above, rerun the build, or rerun the equivalence test — the script prints a
-reminder to do all three by hand, since a new tag may shift line numbers,
-add new plugins, or change the `ParseErrorConstructor` call sites enough
+pinned tag if omitted). It deletes `src/babel/` and re-fetches both
+`packages/babel-parser/src` and `packages/babel-helper-string-parser/src`
+(the latter into `util/string-parser.ts`), then reapplies the `flow` drop.
+It does **not** reapply the four numbered local modifications above, rerun
+the build, or rerun the equivalence test — the script prints a reminder to
+do all three by hand, since a new tag may shift line numbers, add new
+plugins, or change the `ParseErrorConstructor`/`@bit` call sites enough
 that these fixes need re-diffing rather than blindly reapplying.
 
 After running it:
 
 1. Re-check whether `plugins/flow/` still exists at the new tag and whether
-   `plugin-utils.ts` still needs the same edit.
+   `plugin-utils.ts` still needs the same edit (including the
+   `flow`+`typescript` mutual-exclusion check deletion).
 2. Re-check `parser/index.ts`'s self-import and `tokenizer/state.ts`'s
-   `@bit` decorators for the same patterns (upstream could change either).
-3. Re-check whether `@babel/helper-string-parser`/`charcodes` versions moved
-   (see the root `package.json` "Pinned versions" table in `README.md`) and
-   re-vendor `util/string-parser.ts` from the new tag if so.
+   `@bit` decorators (get/set/**init**, all three) for the same patterns
+   (upstream could change either).
+3. Re-check whether `@babel/helper-string-parser`'s version moved (compare
+   against the version `@babel/parser`'s own `package.json` devDependency
+   lists at the new tag) and update the pin recorded above if so.
 4. `bun run build` and `bun run test` (from `packages/mx-parser`), and fix
    whatever the equivalence test or the build surfaces.

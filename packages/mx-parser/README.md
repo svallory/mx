@@ -42,6 +42,11 @@ only devDependencies not otherwise used at runtime by any other package:
 |---|---|---|
 | `charcodes` | 0.2.0 | `@babel/parser`'s own runtime dependency for character-code constants; not published with types under npm's normal resolution for the way `@babel/parser` ships, so pinned directly. |
 | `@babel/helper-validator-identifier` | 7.28.5 | `@babel/parser`'s own runtime dependency for identifier validation. |
-| `@babel/helper-string-parser` | 7.27.1 | Vendored as source instead of consumed as a package — see `UPSTREAM.md` — pinned here only to track the exact version vendored. |
 | `@types/charcodes` | 0.2.2 | `charcodes` ships no types of its own. |
 | `@types/babel__helper-validator-identifier` | 7.15.2 | `@babel/helper-validator-identifier` ships no types of its own (a gap in Babel's own npm publish). |
+
+`@babel/helper-string-parser` (7.27.1) is **not** a devDependency here — it's
+vendored as source into `src/babel/util/string-parser.ts` instead of
+installed as a package, since it ships no `.d.ts` and is meant to be
+inlined (see `UPSTREAM.md`). Its version is pinned in `UPSTREAM.md`, not in
+this table, since there's no `package.json` entry to pin.
