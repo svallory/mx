@@ -1,6 +1,6 @@
 id = "markox"
 name = "MX"
-description = "MX (Marko's syntax with pluggable host-language expressions) language support for Zed."
+description = "MX and SolidMX (Marko-syntax templates with pluggable/Solid host-language expressions) language support for Zed."
 version = "0.1.0"
 schema_version = 1
 authors = ["Saulo Vallory <me@saulo.engineer>"]
@@ -9,3 +9,21 @@ repository = "https://github.com/svallory/mx"
 [grammars.marko]
 repository = "https://github.com/marko-js/tree-sitter"
 rev = "7fb20382b9b0c97c8bdbceee0e0641bea11dd00f"
+
+[grammars.solidmx]
+# DEV FORM. Zed still requires a committed `rev` even for a `file://`
+# repository — it runs `git init` + `git remote add origin <url>` +
+# `git fetch --depth 1 origin <rev>` + `git checkout <rev>`, so uncommitted
+# changes under packages/tree-sitter-solidmx are invisible to it (see
+# notes/zed-extension-decisions.md Z7). `path` points Zed at the grammar's
+# subdirectory inside this monorepo's working tree, since the checked-out
+# `rev` is the whole repo, not a single-grammar repo the way `[grammars.marko]`
+# above is (`GrammarManifestEntry.path`, crates/extension/src/extension_manifest.rs).
+#
+# AT PUBLISH TIME: after `packages/zed-extension` is subtree-split into its
+# own `markox/zed` repo (see scripts/subtree-split.sh), swap `repository` to
+# the split-off `tree-sitter-solidmx` repo's real GitHub URL and drop `path`
+# (that repo's root will already be the grammar root).
+repository = "file:///Users/svallory/work/mx"
+rev = "996444afe290a8d2054421a81c594173bf51d62e"
+path = "packages/tree-sitter-solidmx"

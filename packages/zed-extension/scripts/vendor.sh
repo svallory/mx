@@ -1,26 +1,40 @@
 #!/usr/bin/env bash
-# Builds languages/mx/*.scm from two pinned upstreams, plus overlays.
+# Builds languages/mx/*.scm and languages/solidmx/*.scm from pinned upstreams
+# (and, for SolidMX, this monorepo's own tree-sitter-solidmx package), plus
+# overlays.
 #
 # Sources (see UPSTREAM.md for exact pins):
-#   - marko-js/tree-sitter  queries/highlights.scm, queries/injections.scm
-#   - marko-js/zed          languages/marko/brackets.scm, languages/marko/outline.scm
+#   - marko-js/tree-sitter        queries/highlights.scm, queries/injections.scm
+#   - marko-js/zed                languages/marko/brackets.scm, languages/marko/outline.scm
+#   - packages/tree-sitter-solidmx  queries/highlights.scm (in-repo, not fetched
+#     over the network — that package's own UPSTREAM.md/vendor.sh own the
+#     tree-sitter-typescript pin this grammar is built from)
+#   - base/solidmx/{injections,brackets,outline}.scm  hand-authored base content
+#     for SolidMX (no reference Zed extension exists for this grammar the way
+#     marko-js/zed exists for Marko, so these play that role instead of an
+#     upstream fetch)
 #
-# For each of the four query names this script:
-#   1. fetches the pinned file from its upstream repo at its pinned rev
-#   2. applies patches/<name>.patch to it, if that file exists (git apply)
-#   3. concatenates overlay/mx/<name>.scm onto the result
-#   4. writes the result to languages/mx/<name>.scm
+# For each of the four query names, for each language, this script:
+#   1. takes the base content — fetched from its pinned upstream repo (MX), a
+#      local sibling package's file (SolidMX highlights), or a hand-authored
+#      base/<lang>/<name>.scm (SolidMX injections/brackets/outline)
+#   2. applies patches/<name>.patch to it, if that file exists (MX only; git apply)
+#   3. concatenates overlay/<lang>/<name>.scm onto the result
+#   4. writes the result to languages/<lang>/<name>.scm
 #
 # Zed reads exactly one file per query name (see notes/zed-extension-decisions.md
 # Z6) — there is no multi-file merge at load time, so this concatenation has to
 # happen here, at build time, instead.
 #
 # Usage:
-#   scripts/vendor.sh              # (re)generate languages/mx/*.scm from the pins below
+#   scripts/vendor.sh              # (re)generate languages/{mx,solidmx}/*.scm
 #   scripts/vendor.sh --check      # compare pinned shas against upstream HEAD; exit
 #                                   #   0 = clean, 1 = drift found, 2 = the check
 #                                   #   itself failed (network, DNS, rate limit);
-#                                   #   changes nothing on disk in any case
+#                                   #   changes nothing on disk in any case.
+#                                   #   Covers only the networked MX pins —
+#                                   #   SolidMX's highlights source is local and
+#                                   #   has no upstream HEAD to drift against.
 #   scripts/vendor.sh --update-pins  # rewrite this script's own TS_REV/ZED_REV to
 #                                     # current upstream HEAD (used by the weekly CI
 #                                     # job right after --check finds drift, so the
@@ -28,8 +42,8 @@
 #                                     # up the new revs instead of re-fetching the
 #                                     # same stale ones); changes only this file
 #
-# Never hand-edit languages/mx/*.scm — edit overlay/mx/*.scm or add a patch
-# instead, then rerun this script.
+# Never hand-edit languages/{mx,solidmx}/*.scm — edit overlay/<lang>/*.scm,
+# base/solidmx/*.scm, or add a patch instead, then rerun this script.
 
 set -euo pipefail
 
@@ -38,6 +52,11 @@ PKG_DIR="$(dirname "$SCRIPT_DIR")"
 OUT_DIR="$PKG_DIR/languages/mx"
 OVERLAY_DIR="$PKG_DIR/overlay/mx"
 PATCHES_DIR="$PKG_DIR/patches"
+
+SOLIDMX_OUT_DIR="$PKG_DIR/languages/solidmx"
+SOLIDMX_OVERLAY_DIR="$PKG_DIR/overlay/solidmx"
+SOLIDMX_BASE_DIR="$PKG_DIR/base/solidmx"
+TREE_SITTER_SOLIDMX_DIR="$(cd "$PKG_DIR/../tree-sitter-solidmx" && pwd)"
 
 TS_REPO="https://github.com/marko-js/tree-sitter.git"
 TS_REV="7fb20382b9b0c97c8bdbceee0e0641bea11dd00f"
@@ -179,3 +198,30 @@ build_query "brackets"   "$TMP_DIR/zed/languages/marko/brackets.scm"
 build_query "outline"    "$TMP_DIR/zed/languages/marko/outline.scm"
 
 echo "Done. languages/mx/*.scm regenerated from pinned upstreams + overlays."
+
+build_query_solidmx() {
+  # build_query_solidmx <name> <base-file>
+  local name="$1" base_file="$2"
+  local overlay="$SOLIDMX_OVERLAY_DIR/$name.scm"
+  local out="$SOLIDMX_OUT_DIR/$name.scm"
+
+  {
+    cat "$base_file"
+    if [[ -f "$overlay" ]]; then
+      echo
+      echo "; --- SolidMX overlay (overlay/solidmx/$name.scm) ---"
+      cat "$overlay"
+    fi
+  } > "$out"
+
+  echo "  wrote languages/solidmx/$name.scm"
+}
+
+echo "Building SolidMX queries..."
+mkdir -p "$SOLIDMX_OUT_DIR"
+build_query_solidmx "highlights" "$TREE_SITTER_SOLIDMX_DIR/queries/highlights.scm"
+build_query_solidmx "injections" "$SOLIDMX_BASE_DIR/injections.scm"
+build_query_solidmx "brackets"   "$SOLIDMX_BASE_DIR/brackets.scm"
+build_query_solidmx "outline"    "$SOLIDMX_BASE_DIR/outline.scm"
+
+echo "Done. languages/solidmx/*.scm regenerated from packages/tree-sitter-solidmx + base/solidmx + overlays."
