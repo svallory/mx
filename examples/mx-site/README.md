@@ -28,12 +28,7 @@ in scope. A tag name matching no binding stays a plain HTML element,
 whatever its case; a capitalized tag matching no binding is a compile error,
 since no HTML element is ever capitalized.
 
-`<for>`'s `by=` attribute (identity/custom keying) is not supported by
-`@markox/html`'s emitter and is silently dropped if written — not just here,
-`/list` does not use it. Keying exists to let a diffing renderer reuse DOM
-nodes across re-renders; standalone MX renders once to a string with no
-reconciliation to key against, so there is nothing for `by=` to do. (A
-parallel change is making this a parse error rather than a silent no-op.)
+`by=` is a parse error in template mode: string output has no reconciliation to key (SolidMX `.solid.mx` keeps `by=`).
 
 ## Compiling `.mx` to a runnable module
 
