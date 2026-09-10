@@ -171,9 +171,15 @@ for (const r of rows) {
   );
 }
 
+const passCount = rows.filter((r) => r.verdict === "pass").length;
+const skippedCount = rows.filter(
+  (r) => r.verdict === "skipped (reason)",
+).length;
+const bugCount = rows.filter((r) => r.verdict === "mx bug").length;
+
 console.log("");
 console.log(
-  `processed: ${processed} fixtures (minimum required: ${MIN_FIXTURES})`,
+  `processed: ${processed} fixtures (minimum required: ${MIN_FIXTURES}) — ${passCount} pass, ${skippedCount} skipped(reason), ${bugCount} mx bug`,
 );
 
 let failed = malformed || hasUnresolvedMismatch;

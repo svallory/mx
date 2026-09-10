@@ -219,8 +219,10 @@ indicates a bug.` on every run, to stderr, after the table — a Bun-internal
 warning triggered by the flag itself, not anything `report-marko.ts` emits.
 It does not affect the exit code; expected and harmless.
 
-Current state: 22/30 fixtures pass outright; the other 8 carry a `meta.json`
-citing either a settled decision (S3 "Output module shape", S11/decision 47
+Current state (the script's own footer — the authoritative count, not a
+retyped one): `processed: 30 fixtures (minimum required: 30) — 18 pass, 12
+skipped(reason), 0 mx bug`. The 12 skips each carry a `meta.json` citing
+either a settled decision (S3 "Output module shape", S11/decision 47
 "lowercase tags resolve to in-scope bindings", or a parser limitation
 recorded in `notes/team-standalone-mx.md`) or a genuinely irreconcilable
 toolchain difference (Marko drops HTML comments; Marko leaves an

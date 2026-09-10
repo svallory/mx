@@ -65,9 +65,11 @@ merge.
 | `<for\|k, v\| in=obj()>` | `<For each={Object.entries(obj())} keyed={e => e[0]}>{([k, v]) => body}</For>` |
 | `<for\|i\| from=a to=b>` | `<Repeat count={(b) - (a) + 1} from={a}>{(i) => body}</Repeat>` (`from` omitted when the author didn't write it) |
 | `<for\|i\| from=a until=b>` | `<Repeat count={(b) - (a)} from={a}>{(i) => body}</Repeat>` |
-| `<for\|i\| from=a to=b step=s>` | `<Repeat count={Math.max(0, Math.floor(((b)-(a))/(s))+1)}>{(mxIndex) => { const i = (a) + mxIndex * (s); return body; }}</Repeat>` |
+| `<for\|i\| from=a to=b step=s>` (all three literals) | `<Repeat count={N}>{(mxIndex) => { const i = (a) + mxIndex * (s); return body; }}</Repeat>` — `N` folded at compile time |
+| `<for\|i\| from=a to=b step=s>` (any of the three dynamic) | `<Repeat count={Number.isFinite(Math.max(0, Math.floor(((b)-(a))/(s))+1)) ? Math.max(0, Math.floor(((b)-(a))/(s))+1) : 0}>{(mxIndex) => { const i = (a) + mxIndex * (s); return body; }}</Repeat>` |
 | `<for\|i\| from=a until=b step=s>` | same, with `Math.ceil(((b)-(a))/(s))` (exclusive bound) |
-| `<for\|i\| ... step=0>` | parse error: `step must not be 0` |
+| `<for\|i\| ... step=0>` (literal) | parse error: `step must not be 0` |
+| `<for\|i\| ... step={s()}>` where `s()` returns `0` at runtime | not a parse error (the value isn't known until runtime) — `count` evaluates to `Infinity`/`NaN`, caught by the `Number.isFinite` guard above and clamped to `0` rows, not an infinite `Repeat` |
 
 **`from=`/`to=`/`until=`/`step=` are read once per row when `step=` is
 present, not once for the whole range.** Without `step=`, `Repeat`'s own
@@ -83,9 +85,22 @@ has under Solid's re-read-on-every-access model. See
 `packages/mx-parser/src/mx/control.ts`'s `steppedRepeatElement` for the
 lowering itself.
 
+**A dynamic `step=` that evaluates to 0 at runtime clamps to 0 rows, never
+an infinite `Repeat`.** A literal `step=0` is a parse error, but `step=`
+can be any expression (`step={s()}`), so a runtime value of 0 cannot be
+caught at parse time — `(bound - from) / 0` is `Infinity` (or `NaN` for
+`0 / 0`), and handing `Infinity` to `Repeat`'s `count` would try to render
+an unbounded number of rows. The non-literal-folded `count` expression is
+therefore wrapped in `Number.isFinite(…) ? Math.max(0, …) : 0`, not bare
+`Math.max(0, …)` — `Math.max` alone passes `Infinity`/`NaN` straight
+through, since neither compares as less than `0`.
+
 The stepped callback's raw counter is a hygienic synthetic name, `mxIndex`
-by default, bumped to `mxIndex2`/`mxIndex3`/… only if the author's own body
-already references `mxIndex` — the author's own `|i|` param name is always
+by default, bumped to `mxIndex2`/`mxIndex3`/… if **either** the author's own
+`|i|` param name **or** their body already references `mxIndex` — checking
+the body alone would let `<for|mxIndex| from=0 to=9 step=1>` emit `(mxIndex)
+=> { const mxIndex = ...; ... }`, a duplicate declaration shadowing the very
+param it reads from. Either way, the author's own `|i|` param name is always
 what the body sees as the loop variable, never the synthetic counter.
 
 ## Build

@@ -456,10 +456,12 @@ describe("for: ranges lower to <Repeat>", () => {
   });
 
   it("rejects step=0", () => {
-    const err = parseError(
-      `const el = <for|i| from=0 to=9 step=0><li>x</li></for>;`,
-    );
+    const source = `const el = <for|i| from=0 to=9 step=0><li>x</li></for>;`;
+    const err = parseError(source) as SyntaxError & { pos: number };
     expect(err.message).toContain("step must not be 0");
+    // Points at `step=0`, not the whole `<for>` tag: offset 31 is the `s`
+    // of `step`, matching `from=`'s own nameRange-based error position.
+    expect(err.pos).toBe(source.indexOf("step="));
   });
 
   it("lowers step= to <Repeat count={...}>{(mxIndex) => { const i = ...; return body; }}</Repeat>", () => {
@@ -495,12 +497,40 @@ describe("for: ranges lower to <Repeat>", () => {
     expect(ret.type).toBe("ReturnStatement");
   });
 
-  it("keeps the count as an arithmetic expression when a bound is dynamic", () => {
+  it("keeps the count as a guarded arithmetic expression when a bound is dynamic", () => {
     const list = listAttrs(
       `const el = <for|i| from=0 to=n() step=2><li>x</li></for>;`,
     );
-    const count = list.attr("count") as { type: string };
-    expect(count.type).toBe("CallExpression"); // Math.max(0, ...)
+    // Number.isFinite(Math.max(0, ...)) ? Math.max(0, ...) : 0 — the
+    // Number.isFinite guard so a dynamic step of 0 (Infinity/NaN) clamps to
+    // 0 instead of running Repeat forever.
+    const count = list.attr("count") as {
+      type: string;
+      test: { type: string; callee: { property: { name: string } } };
+      consequent: { type: string };
+      alternate: { type: string; value: number };
+    };
+    expect(count.type).toBe("ConditionalExpression");
+    expect(count.test.type).toBe("CallExpression");
+    expect(count.test.callee.property.name).toBe("isFinite");
+    expect(count.consequent.type).toBe("CallExpression"); // Math.max(0, ...)
+    expect(count.alternate.type).toBe("NumericLiteral");
+    expect(count.alternate.value).toBe(0);
+  });
+
+  it("guards a dynamic step=0 so the count clamps to 0 instead of Infinity", () => {
+    const list = listAttrs(
+      `const el = <for|i| from=0 to=9 step=s()><li>x</li></for>;`,
+    );
+    const count = list.attr("count") as {
+      type: string;
+      test: {
+        callee: { object: { name: string }; property: { name: string } };
+      };
+    };
+    expect(count.type).toBe("ConditionalExpression");
+    expect(count.test.callee.object.name).toBe("Number");
+    expect(count.test.callee.property.name).toBe("isFinite");
   });
 
   it("uses the exclusive bound (ceil) for until= with step=", () => {
@@ -542,6 +572,22 @@ describe("for: ranges lower to <Repeat>", () => {
       params: { name: string }[];
     };
     expect(arrow.params[0]?.name).toBe("mxIndex2");
+  });
+
+  it("picks a hygienic counter name when the author's own param is named mxIndex", () => {
+    // <for|mxIndex| ...> must not emit `(mxIndex) => { const mxIndex = ...
+    // }` — a duplicate declaration shadowing the very param it reads from.
+    const list = listAttrs(
+      `const el = <for|mxIndex| from=0 to=9 step=1><li>x</li></for>;`,
+    );
+    const arrow = list.callback as unknown as {
+      params: { name: string }[];
+      body: {
+        body: [{ declarations: [{ id: { name: string } }] }, unknown];
+      };
+    };
+    expect(arrow.params[0]?.name).toBe("mxIndex2");
+    expect(arrow.body.body[0]?.declarations[0]?.id.name).toBe("mxIndex");
   });
 
   it("without step=, output is unchanged: no Repeat callback body block", () => {

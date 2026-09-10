@@ -575,7 +575,15 @@ function countExpression(
  * `from=0 to=9 step=-1`) never hands `Repeat` a negative count.
  *
  * Folded to a literal only when `from`, the bound and `step` are all numeric
- * literals, matching `countExpression`'s rule for the unstepped case.
+ * literals, matching `countExpression`'s rule for the unstepped case. A
+ * literal `step=0` is already rejected at parse time (see the `step ===
+ * 0` check at the call site), but a *dynamic* `step={s()}` that evaluates to
+ * 0 at runtime is not caught until here: `(bound - from) / 0` is `Infinity`
+ * or `NaN` (`0/0`), and `Repeat` given `Infinity` as `count` would try to
+ * render an unbounded number of rows. The non-folded count is therefore
+ * `Number.isFinite(c) ? Math.max(0, c) : 0`, not bare `Math.max(0, c)` —
+ * `Math.max` alone passes `Infinity`/`NaN` straight through since neither
+ * compares as less than 0.
  */
 function steppedCountExpression(
   ctx: LowerContext,
@@ -617,7 +625,46 @@ function steppedCountExpression(
         range,
       )
     : rounded;
-  return mathCall(ctx, "max", [numericLiteral(ctx, 0, range), count], range);
+  const clamped = mathCall(
+    ctx,
+    "max",
+    [numericLiteral(ctx, 0, range), count],
+    range,
+  );
+  const finiteCheck = at(
+    {
+      type: "CallExpression",
+      callee: at(
+        {
+          type: "MemberExpression",
+          object: at({ type: "Identifier", name: "Number" }, ctx.source, range),
+          property: at(
+            { type: "Identifier", name: "isFinite" },
+            ctx.source,
+            range,
+          ),
+          computed: false,
+          optional: false,
+        },
+        ctx.source,
+        range,
+      ),
+      arguments: [count],
+      optional: false,
+    },
+    ctx.source,
+    range,
+  );
+  return at(
+    {
+      type: "ConditionalExpression",
+      test: finiteCheck,
+      consequent: clamped,
+      alternate: numericLiteral(ctx, 0, range),
+    },
+    ctx.source,
+    range,
+  );
 }
 
 /** `Math.<name>(...args)`. */
@@ -668,11 +715,17 @@ function collectIdentifierNames(node: unknown, out: Set<string>): void {
 
 /**
  * A name for the stepped range's raw counter that cannot clash with any
- * identifier the author's body already references: `mxIndex`, then
- * `mxIndex2`, `mxIndex3`, … on collision.
+ * identifier the author's body *or* their own `|i|` param already
+ * references: `mxIndex`, then `mxIndex2`, `mxIndex3`, … on collision.
+ *
+ * The param has to be scanned too, not just the body: `<for|mxIndex| from=0
+ * to=9 step=1>` would otherwise emit `(mxIndex) => { const mxIndex = 0 +
+ * mxIndex * 1; ... }` — a duplicate `const` declaration shadowing the very
+ * param it reads from, a parse-time SyntaxError in the generated code.
  */
-function hygienicIndexName(body: Node): string {
+function hygienicIndexName(param: Node, body: Node): string {
   const used = new Set<string>();
+  collectIdentifierNames(param, used);
   collectIdentifierNames(body, used);
   if (!used.has("mxIndex")) return "mxIndex";
   let n = 2;
@@ -712,7 +765,7 @@ function steppedRepeatElement(
   body: Node,
   range: MxRange,
 ): Node {
-  const counterName = hygienicIndexName(body);
+  const counterName = hygienicIndexName(param, body);
   const counterId = at(
     { type: "Identifier", name: counterName },
     ctx.source,
@@ -989,7 +1042,7 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
       const stepExpr = subParseNode(ctx, step.value, "for `step` expression");
       const stepValue = numericValueOf(stepExpr);
       if (stepValue === 0) {
-        fail("`<for step=...>`: step must not be 0", el.name);
+        fail("`<for step=...>`: step must not be 0", step.nameRange);
       }
       const singleParam = params[0] as Node;
       const count = steppedCountExpression(
