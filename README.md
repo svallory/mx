@@ -7,8 +7,7 @@ MX: Marko's syntax with pluggable host-language expressions. SolidMX (codename "
 | Package | npm name | Purpose |
 |---|---|---|
 | `packages/mx-parser` | `@mx/parser` | `@babel/parser` fork: MX in expression position -> lowered JSX AST (the language) |
-| `packages/babel-plugin-mx` | `@mx/babel-plugin` | `parserOverride` -> mx-parser; injects runtime helper imports |
-| `packages/mx-solid-runtime` | `@mx/solid-runtime` | `Key`, `mxRange`, `identity` (under 1 KB) |
+| `packages/babel-plugin-mx` | `@mx/babel-plugin` | `parserOverride` -> mx-parser |
 | `packages/mx-typescript-plugin` | `@mx/typescript-plugin` | `@volar/typescript` plugin; virtual `.tsx` via `@babel/generator` source maps |
 | `packages/mx-tsc` | `@mx/tsc` | `tsc` wrapper (`runTsc`) so CI type-checks `.solid.mx` |
 | `packages/mx-vscode` | `@mx/vscode` | TextMate grammar + `typescriptServerPlugins` manifest |
@@ -29,14 +28,17 @@ All dependencies below are pinned to an exact version (no `^`/`~`) at the root `
 | `@babel/traverse` | 7.29.8 |
 | `@babel/types` | 7.29.8 |
 | `htmljs-parser` | 5.15.0 |
-| `babel-preset-solid` | 1.9.15 |
-| `solid-js` | 1.9.15 |
+| `solid-js` | 2.0.0-rc.7 |
+| `@solidjs/web` | 2.0.0-rc.7 |
+| `@solidjs/babel-plugin` | 2.0.0-rc.7 |
+| `@solidjs/compiler` | 2.0.0-rc.7 |
 | `typescript` | 5.9.3 |
 | `vitest` | 3.2.7 |
 | `@biomejs/biome` | 2.5.12 |
 | `@babel/preset-typescript` | 7.29.7 |
 | `@types/node` | 26.5.1 |
 | `@types/babel__core` | 7.20.5 |
+| `@types/babel__generator` | 7.27.0 |
 | `charcodes` | 0.2.0 |
 | `@babel/helper-validator-identifier` | 7.28.5 |
 | `@types/charcodes` | 0.2.2 |
@@ -55,6 +57,19 @@ pinned version (7.27.1) is recorded there, not here, since there's no
 `package.json` entry for it.
 
 Note: Babel 8 (8.0.x) and TypeScript 7 (7.0.x) were released but are new majors; the spec's parser fork targets Babel 7's `parserOverride`/JSX-plugin shape and TS's current plugin API, so this scaffold pins the latest stable Babel 7 / TypeScript 5 line instead.
+
+### Solid 2 RC policy
+
+SolidMX targets **Solid 2 only**. `babel-preset-solid` and `vite-plugin-solid`
+are dead ends: the live packages are `@solidjs/babel-plugin` and
+`@solidjs/vite-plugin`, and `@solidjs/compiler` (native Oxc) is the default
+backend. Solid 2 is pre-stable — `solid-js`'s npm `latest` is still 1.9.15
+and 2.0 lives under the `next` tag, with RCs shipping weekly.
+
+Policy: **pin one RC and stay on it.** Re-sync
+`notes/research/solid-2-impact.md` on each bump we choose to take; do not
+chase every RC. A milestone in flight finishes against its pinned RC even if
+a newer one lands mid-milestone.
 
 ## Scripts
 

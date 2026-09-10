@@ -3,8 +3,32 @@
 Golden/oracle fixtures for `@mx/oracle` (`packages/oracle`). Exit criterion
 this harness checks: byte-parity (whitespace normalized) between compiled
 `dom-expressions` output of a `.solid.mx` file and its hand-written `.tsx`
-twin, for both Solid generate variants (`dom`/non-hydratable and
-`ssr`/hydratable).
+twin, across **both Solid 2 compiler backends** and both generate variants —
+four rows per fixture.
+
+## Backends and variants
+
+| Axis | Values | Where it comes from |
+|---|---|---|
+| backend | `babel`, `native` | `babel` is `@solidjs/babel-plugin` (the `babel-preset-solid` successor, a Babel plugin over a JSX AST); `native` is `@solidjs/compiler`, Solid's Oxc compiler and `@solidjs/vite-plugin`'s default, whose only entry point is `transform(code, options)` over source text |
+| variant | `dom`, `ssr-hydratable` | Solid's own `generate: "dom" \| "ssr"` plus `hydratable`. The 2.0 option names are unchanged from `babel-preset-solid` — both 2.0 packages document the same `generate`/`hydratable` spelling |
+
+Both backends are checked because they are separate codegen
+implementations: passing one says nothing about the other. MX reaches the
+native backend by printing its lowered AST back to JSX **source text**
+(`print()`, spec section 3.2) — the native compiler has no AST-injection API,
+so source text is the only way in.
+
+Two native-compiler facts the spec did not predict, both worked around in
+`packages/oracle/src/compile.ts`:
+
+- The documented `syntax: "auto" | "jsx" | "tsrx"` option (in the README and
+  `types.d.ts`) is **rejected at runtime** by rc.7 (`received unknown option
+  "syntax"`). Frontend routing is by filename instead.
+- The compiler picks its parser dialect from the **filename extension** and
+  rejects `.solid.mx` outright (`Unknown file extension`). The oracle appends
+  `.tsx` to MX filenames for that backend, the same trick
+  `@mx/vite-plugin` uses on its virtual id.
 
 ## Layout
 
@@ -16,11 +40,15 @@ fixtures/
     README.md             optional, notes about the fixture
     PENDING               optional, marks the fixture as not-yet-parseable
     __golden__/
-      twin.dom.js          normalized twin.tsx output, generate: "dom"
-      twin.ssr-hydratable.js  normalized twin.tsx output, generate: "ssr"
+      twin.babel.dom.js              normalized twin.tsx output
+      twin.babel.ssr-hydratable.js
+      twin.native.dom.js
+      twin.native.ssr-hydratable.js
   divergences.md
   README.md (this file)
 ```
+
+Golden filenames are `twin.<backend>.<variant>.js`.
 
 Fixtures are discovered by directory scan (`discoverFixtures` in
 `packages/oracle/src/fixtures.ts`); adding a fixture is just adding a
@@ -73,10 +101,11 @@ way to silence an unexplained failure.
 
 ## Golden snapshots
 
-`__golden__/twin.<variant>.js` pins the normalized output of `twin.tsx`
-alone (no MX involved). Purpose: catch `babel-preset-solid`/`solid-js` pin
-bumps that silently change generated output, independent of whether
-`mx-parser` exists yet.
+`__golden__/twin.<backend>.<variant>.js` pins the normalized output of
+`twin.tsx` alone (no MX involved). Purpose: catch a Solid 2 pin bump
+(`@solidjs/babel-plugin`, `@solidjs/compiler`, `solid-js`, `@solidjs/web`)
+that silently changes generated output, independent of whether `mx-parser`
+exists yet.
 
 - Written automatically the first time a fixture is compared, if missing.
 - To regenerate deliberately (e.g. after a documented pin bump), run
@@ -100,6 +129,16 @@ Defined in `packages/oracle/src/normalize.ts`. What it does, exactly:
 - Trims trailing whitespace from each line.
 - Does **not** reorder, rename, delete, or otherwise touch anything else —
   a real difference in generated code always shows up as a diff.
+
+## Whitespace in a twin
+
+MX follows Marko's whitespace rules, not JSX's: a whitespace-only text run
+containing a newline is **dropped**. A twin written the way a JSX author
+would naturally indent it therefore renders a space the MX source does not,
+and the fixture fails on one character. Write `text<p>…` on one line in the
+twin wherever the MX source has the text and the tag separated only by
+indentation (`fixtures/attrs/twin.tsx` carries this case). `${" "}` is MX's
+escape hatch when a space is actually wanted.
 
 ## `skipped` and `pending` are not `pass`
 
