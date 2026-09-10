@@ -14,7 +14,8 @@ export function Attrs(props: { extra?: Record<string, unknown> }) {
       classList={{ active: active() }}
       style={{ color: color() }}
       ref={el}
-      on:scroll={() => {
+      // biome-ignore lint/correctness/noUnusedFunctionParameters: canonical lowered form of `on:scroll(e) { ... }` keeps the author's param
+      on:scroll={(e) => {
         setActive(true);
         setColor("blue");
       }}

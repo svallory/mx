@@ -49,6 +49,7 @@ Two syntax decisions are settled and encoded in the lowering table:
 
 - **Whitespace follows Marko, not JSX.** A whitespace-only text run containing a newline is dropped entirely, so indented markup renders nothing between children; a whitespace-only run without a newline collapses to one space. `${" "}` is the escape hatch. Comments are dropped from the output and do not count as content when trimming.
 - **Void elements need no slash.** `<input value=x>` parses. The set (`area base br col embed hr img input link meta param source track wbr`) is declared to htmljs-parser as `TagType.void`; a void tag written with a closing tag is a parse error.
+- **Shorthand/explicit attribute conflicts are parse errors, not merges.** `.class` shorthand combined with a non-string `class={...}` (including an object literal, which would otherwise route to `classList`) is a parse error, as is `#id` shorthand combined with an explicit `id=`. Shorthand plus a *string* `class="x"` is the one allowed merge (`class="card x"`, shorthand first). `style=` only accepts an object-literal value (`style={color: c()}` → `style={{color: c()}}`); any other `style=` expression is a parse error for v1.
 
 ## Design docs
 
@@ -60,6 +61,8 @@ Design docs, specs, and research notes live outside this repo, at the project sp
 
 `@mx/parser` is wired into the harness (`packages/oracle` depends on it and `report.ts` passes its `parse` as `mxParser`), so fixtures compile for real. Statuses: `pass`, `fail` and `divergent` mean the parser ran; `skipped` means no parser was available (now a real failure, not "not implemented"); `pending` means the fixture carries a `PENDING` marker naming constructs the parser cannot lower yet. Neither `skipped` nor `pending` is a pass, and `--strict` fails the run on either — see `fixtures/README.md` for the `PENDING` contract.
 
-Current state: `counter` passes both variants; `todos` and `attrs` are `pending` (control flow, spread, and namespaced attributes are not lowered yet). So `bun run oracle` exits 0 and `bun run oracle -- --strict` exits 1 on exactly those two fixtures.
+Current state: `counter` and `attrs` pass both variants; `todos` is `pending` (control flow is not lowered yet). So `bun run oracle` exits 0 and `bun run oracle -- --strict` exits 1 on `todos` alone.
+
+`packages/oracle/src/compile.ts` runs `@babel/preset-typescript` after parsing `.solid.mx` too, not only `.tsx`: `mxParser`'s `parserOverride` only replaces the *parse* step, so TS type nodes (typed props, `let x: T`) are still in the AST afterward and need the same stripping pass a `.tsx` file gets, or they leak into the compiled output as syntax errors downstream tools won't accept.
 
 Golden snapshots (`fixtures/<name>/__golden__/twin.<variant>.js`) pin `twin.tsx`'s own compiled output, independent of MX, to catch a `babel-preset-solid`/`solid-js` pin bump changing generated code. Regenerate them deliberately with `bun run oracle -- --update` and call it out in the PR — never let a pin bump change them as a silent side effect.

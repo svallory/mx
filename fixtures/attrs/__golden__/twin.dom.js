@@ -31,7 +31,7 @@ export function Attrs(props) {
  color: color()
  };
  },
- "on:scroll": () => {
+ "on:scroll": e => {
  setActive(true);
  setColor("blue");
  }

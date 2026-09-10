@@ -168,14 +168,11 @@ describe("unsupported constructs raise a clear error", () => {
       `const el = <L><@header>x</@header></L>;`,
       "attribute tag",
     ],
-    ["class shorthand", `const el = <div.card>x</div>;`, "`.class` shorthand"],
-    ["spread", `const el = <div ...props>x</div>;`, "spread attribute"],
     [
-      "namespaced attr",
-      `const el = <div on:scroll=fn>x</div>;`,
-      "namespaced attribute",
+      "raw placeholder mixed with other children",
+      `const el = <p>x$!{raw}</p>;`,
+      "raw placeholder must be the only child",
     ],
-    ["unescaped placeholder", `const el = <p>$!{raw}</p>;`, "$!{...}"],
   ];
 
   for (const [name, source, expected] of cases) {
@@ -271,7 +268,7 @@ describe("error reporting (review #2, #3)", () => {
     // with errorRecovery on, so throwing matches it.
     for (const source of [
       `const a = <button>oops;`,
-      `const b = <div ...props>x</div>;`,
+      `const b = <if=cond()>x</if>;`,
     ]) {
       let error: unknown;
       try {

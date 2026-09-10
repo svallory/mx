@@ -1,0 +1,256 @@
+import type { MxAttr, MxElement, MxRange } from "./walk.ts";
+
+/**
+ * Attribute-side lowering: spread, class/id shorthand, `class={}`/`style={}`
+ * object routing, namespaced attributes, `ref`, `data-*`/`aria-*` pass-through,
+ * and the `$!{}` sole-child innerHTML rule. Kept in its own module so the
+ * parallel `lower-control` task's edits to the control-flow branch of the
+ * lowering table merge cleanly against this one.
+ */
+
+/** Any Babel node; the vendored parser's internal node types are structural. */
+type Node = Record<string, unknown>;
+
+export interface AttrsContext {
+  source: string;
+  fail(construct: string, range: MxRange): never;
+  subParse(range: MxRange, what: string): Node;
+  at<T extends Node>(node: T, range: MxRange): T;
+  jsxIdentifier(name: string, range: MxRange): Node;
+}
+
+/** Splits `on:scroll` into a `JSXNamespacedName`'s namespace/name parts. */
+function namespacedName(
+  ctx: AttrsContext,
+  name: string,
+  nameRange: MxRange,
+): Node {
+  const colon = name.indexOf(":");
+  const namespace = name.slice(0, colon);
+  const local = name.slice(colon + 1);
+  const namespaceRange: MxRange = {
+    start: nameRange.start,
+    end: nameRange.start + namespace.length,
+  };
+  const localRange: MxRange = {
+    start: nameRange.start + colon + 1,
+    end: nameRange.end,
+  };
+  return ctx.at(
+    {
+      type: "JSXNamespacedName",
+      namespace: ctx.jsxIdentifier(namespace, namespaceRange),
+      name: ctx.jsxIdentifier(local, localRange),
+    },
+    nameRange,
+  );
+}
+
+/** The `JSXIdentifier` or `JSXNamespacedName` for an attribute's name. */
+function attrNameNode(
+  ctx: AttrsContext,
+  name: string,
+  nameRange: MxRange,
+): Node {
+  if (name.includes(":")) return namespacedName(ctx, name, nameRange);
+  return ctx.jsxIdentifier(name, nameRange);
+}
+
+/** Wraps an already-lowered value expression in a `JSXExpressionContainer`. */
+function exprAttr(
+  ctx: AttrsContext,
+  name: string,
+  nameRange: MxRange,
+  expression: Node,
+  valueRange: MxRange,
+  wholeRange: MxRange,
+): Node {
+  const container = ctx.at(
+    { type: "JSXExpressionContainer", expression },
+    valueRange,
+  );
+  return ctx.at(
+    {
+      type: "JSXAttribute",
+      name: attrNameNode(ctx, name, nameRange),
+      value: container,
+    },
+    wholeRange,
+  );
+}
+
+/**
+ * `class={a: on(), b: true}` / `class=someObj` / `style={color: c()}`.
+ *
+ * Detection is syntactic: an `ObjectExpression` value routes `class` to
+ * `classList`; any other expression keeps `class`. `style` always gets the
+ * double-brace container regardless of expression shape (Solid accepts a
+ * plain object style with no rename).
+ */
+function lowerClassOrStyle(
+  ctx: AttrsContext,
+  attr: Extract<MxAttr, { kind: "dynamic" }>,
+  hasShorthandClass: boolean,
+): Node {
+  const expression = ctx.subParse(attr.value, "attribute value");
+
+  if (attr.name === "style") {
+    if (expression.type !== "ObjectExpression") {
+      // Style values are always wrapped as an object container per the spec
+      // table (`style={color: c()}` -> `style={{color: c()}}`); a non-object
+      // style expression has no defined lowering yet.
+      ctx.fail("`style=` with a non-object value", attr.value);
+    }
+    const wrapper = ctx.at(
+      { type: "ObjectExpression", properties: [] },
+      attr.value,
+    );
+    (wrapper as Node & { properties: unknown }).properties = (
+      expression as unknown as { properties: unknown }
+    ).properties;
+    return exprAttr(ctx, attr.name, attr.nameRange, wrapper, attr.value, {
+      start: attr.nameRange.start,
+      end: attr.value.end,
+    });
+  }
+
+  // attr.name === "class"
+  if (expression.type === "ObjectExpression") {
+    if (hasShorthandClass) {
+      ctx.fail(
+        "`class={...}` object combined with `.class` shorthand",
+        attr.value,
+      );
+    }
+    const wrapper = ctx.at(
+      { type: "ObjectExpression", properties: [] },
+      attr.value,
+    );
+    (wrapper as Node & { properties: unknown }).properties = (
+      expression as unknown as { properties: unknown }
+    ).properties;
+    return exprAttr(ctx, "classList", attr.nameRange, wrapper, attr.value, {
+      start: attr.nameRange.start,
+      end: attr.value.end,
+    });
+  }
+
+  if (hasShorthandClass) {
+    ctx.fail(
+      "`.class` shorthand combined with a non-string `class={...}` value (combine shorthand with a string class or use class={...})",
+      attr.value,
+    );
+  }
+
+  return exprAttr(ctx, "class", attr.nameRange, expression, attr.value, {
+    start: attr.nameRange.start,
+    end: attr.value.end,
+  });
+}
+
+/** `ref=el` -> `ref={el}`. The attr-method form (`ref(el) { ... }`) is handled by the generic method lowering in `lower.ts`. */
+function lowerRef(
+  ctx: AttrsContext,
+  attr: Extract<MxAttr, { kind: "dynamic" }>,
+): Node {
+  const expression = ctx.subParse(attr.value, "attribute value");
+  return exprAttr(ctx, "ref", attr.nameRange, expression, attr.value, {
+    start: attr.nameRange.start,
+    end: attr.value.end,
+  });
+}
+
+/**
+ * Lowers one non-spread, non-boolean, non-method, non-static attribute
+ * (`kind: "dynamic"`), applying the `class`/`style`/`ref` special cases and
+ * namespaced pass-through. Falls back to a plain `name={expr}` attribute.
+ */
+export function lowerDynamicAttr(
+  ctx: AttrsContext,
+  attr: Extract<MxAttr, { kind: "dynamic" }>,
+  hasShorthandClass: boolean,
+): Node {
+  if (attr.name === "class" || attr.name === "style") {
+    return lowerClassOrStyle(ctx, attr, hasShorthandClass);
+  }
+  if (attr.name === "ref") {
+    return lowerRef(ctx, attr);
+  }
+
+  const expression = ctx.subParse(attr.value, "attribute value");
+  return exprAttr(ctx, attr.name, attr.nameRange, expression, attr.value, {
+    start: attr.nameRange.start,
+    end: attr.value.end,
+  });
+}
+
+/** `...expr` -> `JSXSpreadAttribute`. */
+export function lowerSpreadAttr(
+  ctx: AttrsContext,
+  attr: Extract<MxAttr, { kind: "spread" }>,
+): Node {
+  const expression = ctx.subParse(attr.value, "spread attribute value");
+  return ctx.at(
+    { type: "JSXSpreadAttribute", argument: expression },
+    attr.range,
+  );
+}
+
+/** Builds the `class="card big[ x]"` static attribute from shorthand classes, optionally merged with an explicit static `class="x"`. */
+export function lowerShorthandClass(
+  ctx: AttrsContext,
+  el: MxElement,
+  explicitStaticClass: Extract<MxAttr, { kind: "static" }> | null,
+): Node {
+  // Each range covers the leading `.`, e.g. `.card`; strip it for the value.
+  const shorthand = el.shorthandClasses
+    .map((r) => ctx.source.slice(r.start + 1, r.end))
+    .join(" ");
+  let value = shorthand;
+  let raw = `"${shorthand}"`;
+  const nameRange = el.shorthandClasses[0] as MxRange;
+  let wholeRange: MxRange = nameRange;
+
+  if (explicitStaticClass) {
+    const explicitRaw = ctx.source.slice(
+      explicitStaticClass.value.start,
+      explicitStaticClass.value.end,
+    );
+    const explicitValue = explicitRaw.slice(1, -1);
+    value = `${shorthand} ${explicitValue}`;
+    raw = JSON.stringify(value);
+    wholeRange = { start: nameRange.start, end: explicitStaticClass.value.end };
+  }
+
+  const literal = ctx.at(
+    { type: "StringLiteral", value, extra: { raw, rawValue: value } },
+    wholeRange,
+  );
+  return ctx.at(
+    {
+      type: "JSXAttribute",
+      name: ctx.jsxIdentifier("class", nameRange),
+      value: literal,
+    },
+    wholeRange,
+  );
+}
+
+/** `<div#main>` -> `id="main"`. */
+export function lowerShorthandId(ctx: AttrsContext, idRange: MxRange): Node {
+  // The range covers the leading `#`, e.g. `#main`; strip it for the value.
+  const value = ctx.source.slice(idRange.start + 1, idRange.end);
+  const raw = `"${value}"`;
+  const literal = ctx.at(
+    { type: "StringLiteral", value, extra: { raw, rawValue: value } },
+    idRange,
+  );
+  return ctx.at(
+    {
+      type: "JSXAttribute",
+      name: ctx.jsxIdentifier("id", idRange),
+      value: literal,
+    },
+    idRange,
+  );
+}

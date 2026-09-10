@@ -70,9 +70,11 @@ export function compile(
       { generate: variant.generate, hydratable: variant.hydratable },
     ],
   ];
-  if (!isMx) {
-    presets.push([typescriptPreset, { isTSX: true, allExtensions: true }]);
-  }
+  // `mxParser` already parsed `.solid.mx` (including its TS type
+  // annotations) into a Babel AST via `parserOverride`, so this preset never
+  // re-parses MX source; it only strips the TS type nodes the same as it
+  // would for a `.tsx` file, which MX source needs too (e.g. typed props).
+  presets.push([typescriptPreset, { isTSX: true, allExtensions: true }]);
 
   const result = transformSync(source, {
     filename,

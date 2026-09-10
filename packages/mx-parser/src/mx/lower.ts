@@ -1,6 +1,13 @@
 import type { Expression, File } from "@babel/types";
 import type { ParserOptions } from "../babel/index.ts";
 import { parseExpression, parse as parseProgram } from "../babel/index.ts";
+import type { AttrsContext } from "./attrs.ts";
+import {
+  lowerDynamicAttr,
+  lowerShorthandClass,
+  lowerShorthandId,
+  lowerSpreadAttr,
+} from "./attrs.ts";
 import type {
   MxAttr,
   MxChild,
@@ -146,7 +153,59 @@ export function normalizeText(
   return text;
 }
 
-function lowerAttr(ctx: LowerContext, attr: MxAttr): Node {
+/** Builds the `AttrsContext` view of `lower.ts`'s shared helpers, for `attrs.ts`. */
+function attrsContext(ctx: LowerContext): AttrsContext {
+  return {
+    source: ctx.source,
+    fail: (construct, range) => fail(construct, range),
+    subParse: (range, what) => subParse(ctx, range, what) as unknown as Node,
+    at: (node, range) => at(node, ctx.source, range),
+    jsxIdentifier: (name, range) => jsxIdentifier(ctx, name, range),
+  };
+}
+
+/** `name={...}` on a namespaced attribute name (`on:scroll`, `prop:value`, ...), for the attr-method form. */
+function namespacedAttrName(
+  ctx: LowerContext,
+  name: string,
+  nameRange: MxRange,
+): Node {
+  const colon = name.indexOf(":");
+  const namespace = name.slice(0, colon);
+  const local = name.slice(colon + 1);
+  const namespaceRange: MxRange = {
+    start: nameRange.start,
+    end: nameRange.start + namespace.length,
+  };
+  const localRange: MxRange = {
+    start: nameRange.start + colon + 1,
+    end: nameRange.end,
+  };
+  return at(
+    {
+      type: "JSXNamespacedName",
+      namespace: jsxIdentifier(ctx, namespace, namespaceRange),
+      name: jsxIdentifier(ctx, local, localRange),
+    },
+    ctx.source,
+    nameRange,
+  );
+}
+
+function attrNameNode(
+  ctx: LowerContext,
+  name: string,
+  nameRange: MxRange,
+): Node {
+  if (name.includes(":")) return namespacedAttrName(ctx, name, nameRange);
+  return jsxIdentifier(ctx, name, nameRange);
+}
+
+function lowerAttr(
+  ctx: LowerContext,
+  attr: MxAttr,
+  hasShorthandClass: boolean,
+): Node {
   switch (attr.kind) {
     case "static": {
       // The recorded range keeps the original quotes, which is exactly what a
@@ -165,7 +224,7 @@ function lowerAttr(ctx: LowerContext, attr: MxAttr): Node {
       return at(
         {
           type: "JSXAttribute",
-          name: jsxIdentifier(ctx, attr.name, attr.nameRange),
+          name: attrNameNode(ctx, attr.name, attr.nameRange),
           value: literal,
         },
         ctx.source,
@@ -173,23 +232,8 @@ function lowerAttr(ctx: LowerContext, attr: MxAttr): Node {
       );
     }
 
-    case "dynamic": {
-      const expression = subParse(ctx, attr.value, "attribute value");
-      const container = at(
-        { type: "JSXExpressionContainer", expression },
-        ctx.source,
-        attr.value,
-      );
-      return at(
-        {
-          type: "JSXAttribute",
-          name: jsxIdentifier(ctx, attr.name, attr.nameRange),
-          value: container,
-        },
-        ctx.source,
-        { start: attr.nameRange.start, end: attr.value.end },
-      );
-    }
+    case "dynamic":
+      return lowerDynamicAttr(attrsContext(ctx), attr, hasShorthandClass);
 
     case "boolean": {
       const literal = at(
@@ -205,7 +249,7 @@ function lowerAttr(ctx: LowerContext, attr: MxAttr): Node {
       return at(
         {
           type: "JSXAttribute",
-          name: jsxIdentifier(ctx, attr.name, attr.nameRange),
+          name: attrNameNode(ctx, attr.name, attr.nameRange),
           value: container,
         },
         ctx.source,
@@ -291,7 +335,7 @@ function lowerAttr(ctx: LowerContext, attr: MxAttr): Node {
       return at(
         {
           type: "JSXAttribute",
-          name: jsxIdentifier(ctx, attr.name, attr.nameRange),
+          name: attrNameNode(ctx, attr.name, attr.nameRange),
           value: container,
         },
         ctx.source,
@@ -300,11 +344,40 @@ function lowerAttr(ctx: LowerContext, attr: MxAttr): Node {
     }
 
     case "spread":
-      return fail("spread attribute (`...props`)", attr.range);
+      return lowerSpreadAttr(attrsContext(ctx), attr);
 
     case "bound":
       return fail("bound attribute (`:=`)", attr.value);
   }
+}
+
+/**
+ * Returns the `$!{...}` (raw, unescaped) placeholder child when it is the
+ * element's only content-bearing child (comments and pure-whitespace text
+ * runs do not count), else null. Whitespace and comments are allowed
+ * alongside it because they contribute nothing to the rendered output either
+ * way; any other child makes it "mixed", which `lowerChildren` rejects.
+ */
+function soleRawPlaceholder(
+  ctx: LowerContext,
+  children: MxChild[],
+): Extract<MxChild, { kind: "placeholder" }> | null {
+  let found: Extract<MxChild, { kind: "placeholder" }> | null = null;
+  for (const child of children) {
+    if (child.kind === "comment") continue;
+    if (child.kind === "text") {
+      const raw = ctx.source.slice(child.range.start, child.range.end);
+      if (raw.trim() === "") continue;
+      return null;
+    }
+    if (child.kind === "placeholder" && !child.escape) {
+      if (found) return null;
+      found = child;
+      continue;
+    }
+    return null;
+  }
+  return found;
 }
 
 function lowerChildren(ctx: LowerContext, children: MxChild[]): Node[] {
@@ -349,7 +422,10 @@ function lowerChildren(ctx: LowerContext, children: MxChild[]): Node[] {
 
       case "placeholder": {
         if (!child.escape) {
-          fail("`$!{...}` (unescaped placeholder)", child.range);
+          // The sole-child case (`innerHTML`) is handled in `lowerElement`
+          // before children are lowered; reaching here means `$!{}` was mixed
+          // with other children.
+          fail("raw placeholder must be the only child", child.range);
         }
         const expression = subParse(ctx, child.value, "placeholder");
         out.push(
@@ -395,25 +471,88 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
   const unsupported = UNSUPPORTED_TAGS[name];
   if (unsupported) fail(unsupported, el.name);
 
-  if (el.shorthandClasses.length > 0) {
-    fail("`.class` shorthand", el.shorthandClasses[0] as MxRange);
-  }
-  if (el.shorthandIds.length > 0) {
-    fail("`#id` shorthand", el.shorthandIds[0] as MxRange);
-  }
   if (el.params) fail("tag params (`|a, b|`)", el.params);
   if (el.tagArgs) fail("tag arguments", el.tagArgs);
   if (el.tagVar) fail("tag variable (`/name`)", el.tagVar);
   if (name.includes(":")) fail(`namespaced tag \`<${name}>\``, el.name);
 
-  for (const attr of el.attrs) {
-    if (attr.kind !== "spread" && attr.name.includes(":")) {
-      fail(`namespaced attribute \`${attr.name}\``, attr.nameRange);
-    }
+  const hasShorthandClass = el.shorthandClasses.length > 0;
+  const hasShorthandId = el.shorthandIds.length > 0;
+
+  const explicitStaticClass = el.attrs.find(
+    (a): a is Extract<MxAttr, { kind: "static" }> =>
+      a.kind === "static" && a.name === "class",
+  );
+  // A non-object `class={...}` combined with shorthand classes is rejected
+  // inside `attrs.ts` (`lowerDynamicAttr` receives `hasShorthandClass`); the
+  // object-literal case there is rejected the same way, so no check is
+  // needed here beyond passing the flag through.
+  const hasExplicitId = el.attrs.some(
+    (a) => a.kind !== "spread" && a.kind !== "bound" && a.name === "id",
+  );
+  if (hasShorthandId && hasExplicitId) {
+    fail(
+      "`#id` shorthand combined with an explicit `id=` attribute",
+      el.shorthandIds[0] as MxRange,
+    );
   }
 
-  const attributes = el.attrs.map((attr) => lowerAttr(ctx, attr));
-  const children = lowerChildren(ctx, el.children);
+  const attributes: Node[] = [];
+  if (hasShorthandClass) {
+    attributes.push(
+      lowerShorthandClass(attrsContext(ctx), el, explicitStaticClass ?? null),
+    );
+  }
+  if (hasShorthandId) {
+    attributes.push(
+      lowerShorthandId(attrsContext(ctx), el.shorthandIds[0] as MxRange),
+    );
+  }
+  for (const attr of el.attrs) {
+    // The shorthand-merge cases (`class`, `id`) were already emitted above;
+    // skip the explicit static `class`/`id` attribute that fed the merge so
+    // it is not duplicated.
+    if (hasShorthandClass && attr.kind === "static" && attr.name === "class") {
+      continue;
+    }
+    if (
+      hasShorthandId &&
+      attr.kind !== "spread" &&
+      attr.kind !== "bound" &&
+      attr.name === "id"
+    ) {
+      continue;
+    }
+    attributes.push(lowerAttr(ctx, attr, hasShorthandClass));
+  }
+
+  // `$!{html}` as the sole child becomes an `innerHTML` attribute instead of a
+  // child; mixed with any other child (even whitespace-only text) it is a
+  // parse error, raised inside `lowerChildren` when it is not the sole
+  // content-bearing child.
+  const rawChild = soleRawPlaceholder(ctx, el.children);
+  let children: Node[];
+  if (rawChild) {
+    const expression = subParse(ctx, rawChild.value, "raw placeholder");
+    attributes.push(
+      at(
+        {
+          type: "JSXAttribute",
+          name: jsxIdentifier(ctx, "innerHTML", rawChild.range),
+          value: at(
+            { type: "JSXExpressionContainer", expression },
+            ctx.source,
+            rawChild.value,
+          ),
+        },
+        ctx.source,
+        rawChild.range,
+      ),
+    );
+    children = [];
+  } else {
+    children = lowerChildren(ctx, el.children);
+  }
 
   // The opening element spans `<name ...>`; when the tag self-closes that is
   // the whole element.
