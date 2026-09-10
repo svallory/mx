@@ -96,7 +96,21 @@ stages dispatch on the file extension and `.solid.mx` satisfies none of them:
 
 The `.tsx`-suffixed id satisfies all three at once, which is why the
 example's `vite.config.ts` is just `plugins: [mx(), solid()]` with no Solid
-configuration. Diagnostics and source maps keep the original `.solid.mx`
+configuration.
+
+The suffixed path is produced by Vite's own resolver, never by path
+arithmetic in the plugin: `resolveId` calls `this.resolve(id, importer,
+{ skipSelf: true })` and appends the suffix to whatever comes back. That is
+what makes relative ids from nested importers, root-relative (`/src/x.solid.mx`)
+and `/@fs/` ids, `resolve.alias` entries and bare specifiers into workspace
+packages all work; computing the path locally got each of those wrong. Any
+`?query` on the id is re-attached after the suffix, so `./A.solid.mx?raw`
+still returns the file's text rather than the compiled module.
+
+`load` claims the suffixed id only when the un-suffixed `.solid.mx` file
+actually exists on disk. A real `Foo.solid.mx.tsx` checked into a project is a
+different module and must not be shadowed by MX's virtual one, so when there is
+no `Foo.solid.mx` beside it the hook returns null and Vite reads the real file. Diagnostics and source maps keep the original `.solid.mx`
 filename: `transform` prints against the stripped path, and parse errors are
 re-raised with a Vite-shaped `loc` (`{ file, line, column }`) so the overlay
 points at the MX line.
