@@ -106,7 +106,16 @@ needs a browser — so it stays behind the example's own script.
 
 `examples/mx-site` is a different kind of example: a Hono-on-Bun server
 rendering `.mx` templates to HTML strings with `@markox/html`, no client
-runtime, no Solid. See `examples/mx-site/README.md`.
+runtime, no Solid. It imports `.mx` files directly via `@markox/html/bun`
+(no prebuild step). See `examples/mx-site/README.md`.
+
+`examples/mx-vite` is a minimal static-site build: two `.mx` pages compiled
+by `@markox/vite-plugin`'s `.mx` handling, bundled by `vite build` to an SSR
+entry, then run once to write `dist/*.html`.
+
+```
+cd examples/mx-vite && bun run build
+```
 
 ## Editors
 

@@ -10,6 +10,58 @@ design decisions behind this package.
 
 ## Usage
 
+The everyday path is importing a `.mx` file directly and calling the default
+export — no manual `compile()` call, no generated file on disk:
+
+```ts
+import page from "./greeting.mx";
+
+page({ name: "Ada" }); // "<h1>Hello, Ada</h1>"
+```
+
+Two loaders make that import resolve, one per runtime:
+
+- **Bun**: `@markox/html/bun` is a `BunPlugin` that intercepts `.mx` imports
+  and compiles them on the fly. Register it once via `bunfig.toml`:
+
+  ```toml
+  preload = ["@markox/html/bun"]
+  ```
+
+  or at runtime with `Bun.plugin`:
+
+  ```ts
+  import mxPlugin from "@markox/html/bun";
+  Bun.plugin(mxPlugin);
+  ```
+
+  See `examples/mx-site` for a full app built this way.
+
+- **Vite**: `@markox/vite-plugin`'s `mx()` plugin handles `.mx` alongside
+  `.solid.mx` — add it to `plugins` and import `.mx` files as usual. See
+  `examples/mx-vite`.
+
+`import page from "./x.mx"` typechecks against the ambient declaration in
+`types/mx.d.ts`:
+
+```ts
+declare module "*.mx" {
+  const render: (input: any) => string;
+  export default render;
+}
+```
+
+Reference it from a consumer's `tsconfig.json` `include` (both loaders'
+example apps do this) — it types every `.mx` import as `(input: any) => string`.
+`any`, not each file's real `Input` interface: per-file typing needs a virtual-
+file projection of the compiled module, which is the phase-3 language
+server's job (see `@markox/typescript-plugin`'s equivalent role for
+`.solid.mx`), not something this ambient declaration can derive on its own.
+
+For anything that needs the compiled code directly — writing it to disk,
+a bundler integration, tooling — `compile()` is the lower-level API both
+loaders are built on:
+
 ```ts
 import { compile } from "@markox/html";
 

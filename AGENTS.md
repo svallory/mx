@@ -318,6 +318,44 @@ Two Marko-toolchain facts worth knowing before touching `packages/oracle/src/mar
 `@solidjs/vite-plugin`. Both plugins are `enforce: "pre"`, so their relative
 order is their order in the `plugins` array — `mx()` must come first.
 
+`mx()`'s default `extensions` is `[".solid.mx", ".mx"]`: plain `.mx` (not
+`.solid.mx`) compiles through `@markox/html`'s `compile()` instead of
+`print()`, to a plain `(input) => string` module (no JSX, no Solid) —
+`suffixFor(ext)` picks `.ts` for that path and `.tsx` for `.solid.mx`, so
+rolldown never runs a JSX transform over code that has none. `.solid.mx` is
+otherwise byte-for-byte unchanged by this: same suffix, same `print()` call,
+same source map. The `.mx` path returns `map: null` from `transform` —
+`compile()`'s map is presently an identity placeholder (see
+`packages/mx-html`'s own doc comment: no AST is printed on that path), so
+there is nothing real to hand Vite yet.
+
+`compileHtml()` inside the plugin dynamically `import()`s `@markox/html`
+rather than importing it statically at module top level, and this is load-
+bearing, not a style choice: `@markox/html` has no compiled entry (`main` is
+`src/index.ts`), and its `translate.ts` pulls in `@marko/compiler`. A static
+import would load that dependency the instant `vite.config.ts` imports this
+plugin — including for a `.solid.mx`-only project like `examples/counter-app`
+that never touches plain `.mx` — and previously broke `vite build` for such
+projects, because Vite's own config loader (and, separately, Node's plain
+`import()`/`require()`) reads TypeScript through Node's native strip-only
+mode, which used to reject a `readonly` parameter property in
+`TranslateError`'s constructor (`packages/mx-html/src/translate.ts`; fixed to
+plain fields as part of this same change, since it is public API a
+no-build-step consumer can hit directly). A dynamic `import()`, not
+`require()`: `require()` on a bare specifier whose `main` is TS source goes
+through Node's native loader with zero transform under a Node-native
+`require` (e.g. inside a Vitest test), hitting the same class of error one
+import further in; dynamic `import()` goes through Vite's/Vitest's own
+transform pipeline, which strips TypeScript fully.
+
+Any consumer of this plugin needs `allowImportingTsExtensions` in its own
+`tsconfig.json`, even one that only writes `.solid.mx`: resolving
+`@markox/html`'s types at all — even through the plugin's own dynamic
+`import()`, cast away at the call site — means `tsc` walks that package's
+`.ts` source, which needs the flag wherever it lands. `examples/counter-app`
+and `examples/todomvc` both carry it for exactly this reason, not because
+either project imports `.ts` paths itself.
+
 `resolveId` rewrites the resolved path to `<path>.solid.mx.tsx` and `load`
 reads the real file from disk. That suffix is not cosmetic; three separate
 stages dispatch on the file extension and `.solid.mx` satisfies none of them:
@@ -361,6 +399,55 @@ source makes Node load the vendored Babel tree, whose `const enum`s the
 strip-only TypeScript loader rejects. `types` still points at
 `src/public.d.ts`, so typechecking never needs a build; `bun run verify`
 builds before it tests.
+
+## Bun loader
+
+`packages/mx-html/src/bun.ts` (`@markox/html/bun`) is the Bun-side `.mx`
+integration, decision 58 roadmap item 2, half A. It exports a `BunPlugin`
+that registers `build.onLoad({ filter: /\.mx$/ }, ...)`: on each `.mx` file it
+reads the source, runs it through `compile()`, and returns
+`{ contents: code, loader: "ts" }` — `compile()`'s output is plain TypeScript
+(an `import`, an optional `export interface Input`, a default-exported
+function, no JSX), so Bun's own TS stripper handles it directly with no
+second transform.
+
+The plugin object self-registers at import time (`Bun.plugin(mxPlugin)` runs
+at module scope, in addition to the `export default`): `bunfig.toml`'s
+`preload = ["@markox/html/bun"]` runs a preloaded module purely for its side
+effects — it does **not** call `Bun.plugin` on a default export automatically
+— so without the self-registration call, `.mx` imports silently fall through
+to Bun's default loader and resolve to the file's path string, not a compiled
+function. `Bun.plugin` is idempotent for an already-registered plugin object,
+so `import mxPlugin from "@markox/html/bun"; Bun.plugin(mxPlugin)` (the
+programmatic form) still works without double-registering.
+
+`examples/mx-site` uses this loader: `bunfig.toml` preloads it, `.mx` pages
+import each other directly (`import Layout from "./layout.mx"`), and
+`src/server.ts`/`src/build.ts` import pages directly with no prebuild step.
+The compiled-output equality check decision 58 calls for ("cannot paper over
+an emit bug") lives in the e2e suite's own content assertions
+(`e2e/routes.spec.ts`), run against both the dev server and the static
+build — there is no separate golden-file diff, since the rendered HTML
+itself is the golden.
+
+`packages/mx-html/src/bun.test.ts` is a `bun:test` file (not vitest — it
+exercises `Bun.plugin` and Bun's own dynamic `import()`, both Bun-runtime
+only), run via `bun run test:bun` in that package. `packages/mx-html`'s own
+`vitest.config.ts` excludes it from the vitest project so the root
+`bun run test` does not try to load `bun:test` under Node/Vite.
+
+## `.mx` import typing
+
+`packages/mx-html/types/mx.d.ts` declares `declare module "*.mx"` typing
+every `.mx` import as `(input: any) => string`. `any`, not each file's real
+`Input` interface: per-file typing needs a virtual-file projection of the
+compiled module (mirroring `@markox/typescript-plugin`'s role for
+`.solid.mx`), which is the phase-3 language server's job, not something an
+ambient wildcard declaration can derive. A consumer references it by adding
+the file to its own `tsconfig.json` `include` (see `examples/mx-site` and
+`examples/mx-vite`); there is no package-level `types` wiring that pulls it
+in automatically, since a `.solid.mx`-only project (the Solid examples) has
+no reason to load it.
 
 ## Examples
 
@@ -411,12 +498,11 @@ component; real per-export types arrive with `@markox/typescript-plugin`'s
 virtual-`.tsx` projection (spec section 7.2).
 
 `examples/mx-site` is a plain-string example: a Hono-on-Bun server and a
-static build both rendering `.mx` templates via `@markox/html`'s `compile()`,
-no Solid, no client runtime. `compile()` returns a TS module whose imports are
-still `./x.mx` (not runnable as-is), so the example's `src/compile-pages.ts`
-compiles every page and rewrites those imports to the generated `./x.mx.ts`
-sibling under `.gen/` before either the dev server or the static build
-imports them.
+static build both rendering `.mx` templates via `@markox/html/bun` (the Bun
+loader — see its own section above), no Solid, no client runtime, no
+prebuild step. `src/server.ts` and `src/build.ts` `import renderX from
+"./pages/x.mx"` directly, exactly like any other module; `bunfig.toml`
+preloads the loader.
 
 `packages/mx-html/tsconfig.json` maps `@markox/parser` to
 `../mx-parser/src/public.d.ts` in its `paths`, for typechecking against the
@@ -433,3 +519,16 @@ importing file lives. Work around it with `bun run
 is a property of `mx-html`'s tsconfig, not a bug in `@markox/html` itself or
 in Bun's resolver generally — vitest is unaffected because it does not resolve
 bare specifiers through `tsconfig.json` `paths` the same way.
+
+`examples/mx-vite` is a minimal static-site build exercising
+`@markox/vite-plugin`'s `.mx` handling (not `.solid.mx`): two `.mx` pages
+under `src/pages/`, a tiny `src/build.ts` that imports both and writes
+`dist/*.html`, and a `vite.config.ts` whose `build.ssr` is that script rather
+than a browser entry — `vite build` bundles it through the plugin's `.mx`
+transform, then `bun run dist-ssr/build.js` actually runs it and writes the
+HTML. `vite.config.ts`'s `ssr.external: ["@markox/html"]` keeps that
+package's own `import { escape } from "@markox/html"` (present in every
+compiled `.mx` page) out of the rolldown bundle — left un-external, rolldown
+would try to bundle `@markox/html`'s raw TS source itself, pulling in
+`@marko/compiler`'s transitive syntax the same way the plugin's own dynamic
+`import()` has to route around (see the Vite plugin section above).
