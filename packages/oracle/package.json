@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@markox/html": "workspace:*",
-    "@markox/parser": "workspace:*"
+    "@markox/parser": "workspace:*",
+    "@markox/translator": "workspace:*"
   },
   "devDependencies": {
     "@marko/compiler": "5.42.5",

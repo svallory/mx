@@ -1,0 +1,77 @@
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { compileFile } from "@marko/compiler";
+import * as translator from "marko/translator";
+
+/**
+ * Renders a *stock* `.marko` fixture through the real Marko 6 toolchain, for
+ * `oracle:marko`'s second table.
+ *
+ * Simpler than `marko-compile.ts`, which exists to make MX's `.mx` files
+ * legible to a toolchain that has never heard of that extension: these
+ * fixtures are already `.marko`, so nothing is renamed and no import is
+ * rewritten to a different extension. What still has to happen is compiling
+ * each file ahead of time to a sibling `.mjs` — Marko's loader cannot compile
+ * a `.marko` file reached through a plain `import` — and pointing the
+ * fixture's own imports at those compiled modules.
+ *
+ * The whole fixture directory is copied, `tags/` included, so Marko's own tag
+ * discovery finds the same components the translator does.
+ */
+export async function renderStockMarko(
+  fixtureDir: string,
+  input: unknown,
+): Promise<string> {
+  const scratch = mkdtempSync(join(tmpdir(), "mx-oracle-stock-"));
+  cpSync(fixtureDir, scratch, { recursive: true });
+
+  for (const relative of markoFiles(scratch)) {
+    const compiled = await compileFile(join(scratch, relative), {
+      translator,
+      output: "html",
+      modules: "esm",
+      // Without this, Marko emits resume/hydration markers even for a pure
+      // server-html render. It does not suppress them entirely, which is why
+      // `normalize-html.ts` still strips a trailing marker before comparing.
+      optimize: true,
+    });
+    // A component is imported by its `.marko` path but must resolve to the
+    // module actually compiled beside it.
+    writeFileSync(
+      join(scratch, `${relative.slice(0, -".marko".length)}.mjs`),
+      compiled.code.replace(/(from\s+")([^"]+)\.marko(")/g, "$1$2.mjs$3"),
+    );
+  }
+
+  const mod = (await import(join(scratch, "input.mjs"))) as {
+    default: { render: (input: unknown) => { toString(): string } | string };
+  };
+  const rendered = mod.default.render(input);
+  return typeof rendered === "string" ? rendered : String(await rendered);
+}
+
+/** Every `.marko` file in the fixture, including those under `tags/`. */
+function markoFiles(root: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      for (const nested of readdirSync(join(root, entry.name))) {
+        if (nested.endsWith(".marko")) found.push(join(entry.name, nested));
+      }
+      continue;
+    }
+    if (entry.name.endsWith(".marko")) found.push(entry.name);
+  }
+  // A component must be compiled before the template importing it is loaded,
+  // and `tags/`-discovered components are the leaves here, so deepest first.
+  return found.sort((a, b) => b.split("/").length - a.split("/").length);
+}
+
+void existsSync;

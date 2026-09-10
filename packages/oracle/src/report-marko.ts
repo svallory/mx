@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { renderWithMarko } from "./marko-compile";
 import { renderMxHtml } from "./mx-html-render";
 import { htmlEquals } from "./normalize-html";
+import { runStockTable } from "./report-marko-stock";
 
 /**
  * `oracle:marko` (decision 51/55): parity check between Marko's own
@@ -182,7 +183,14 @@ console.log(
   `processed: ${processed} fixtures (minimum required: ${MIN_FIXTURES}) — ${passCount} pass, ${skippedCount} skipped(reason), ${bugCount} mx bug`,
 );
 
-let failed = malformed || hasUnresolvedMismatch;
+// Decision 66's second table: the same parity question asked of stock
+// `.marko` templates through `@markox/translator`. Kept in its own module so
+// the two tables cannot entangle: the `.mx` set carries a dozen recorded
+// divergences by design, while the stock set is expected to match Marko
+// outright.
+const stock = await runStockTable();
+
+let failed = malformed || hasUnresolvedMismatch || stock.failed;
 
 if (processed < MIN_FIXTURES) {
   console.error(
