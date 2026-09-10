@@ -1,5 +1,5 @@
 {
-  "name": "@mx/vscode",
+  "name": "@markox/vscode",
   "version": "0.0.0",
   "private": true,
   "type": "module",

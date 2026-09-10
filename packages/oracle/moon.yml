@@ -13,7 +13,7 @@ tasks:
 
   test:
     command: "vitest"
-    args: ["run", "--root", "../..", "--project", "@mx/oracle"]
+    args: ["run", "--root", "../..", "--project", "@markox/oracle"]
     inputs:
       - "src/**/*"
       - "/vitest.config.ts"

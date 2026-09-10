@@ -1,4 +1,4 @@
-# @mx/parser
+# @markox/parser
 
 MX's parser is a fork of `@babel/parser` with one plugin function replaced
 (the JSX element parser — not done yet, see below). `@babel/parser` has no

@@ -1,9 +1,9 @@
 /**
  * Ambient declaration for `.solid.mx` imports.
  *
- * `@mx/vite-plugin` turns these into ordinary JSX modules at build time, but
+ * `@markox/vite-plugin` turns these into ordinary JSX modules at build time, but
  * `tsc` cannot see through the transform, so every export is typed as a Solid
- * component. `@mx/typescript-plugin`'s virtual-`.tsx` projection (spec section
+ * component. `@markox/typescript-plugin`'s virtual-`.tsx` projection (spec section
  * 7.2) is what will give these real per-export types; until it ships this is
  * what keeps the example type-checkable.
  */

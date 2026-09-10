@@ -66,7 +66,7 @@ Design docs, specs, and research notes live outside this repo, at the project sp
 
 ## Oracle harness
 
-`packages/oracle` (`@mx/oracle`) compares compiled `dom-expressions` output between `fixtures/<name>/input.solid.mx` and its hand-written `fixtures/<name>/twin.tsx` twin, across **both Solid 2 backends and both generate variants** — four rows per fixture. `bun run oracle` runs it standalone and prints a fixture/backend/variant/status table; see `fixtures/README.md` for the fixture and `divergences.md` contract.
+`packages/oracle` (`@markox/oracle`) compares compiled `dom-expressions` output between `fixtures/<name>/input.solid.mx` and its hand-written `fixtures/<name>/twin.tsx` twin, across **both Solid 2 backends and both generate variants** — four rows per fixture. `bun run oracle` runs it standalone and prints a fixture/backend/variant/status table; see `fixtures/README.md` for the fixture and `divergences.md` contract.
 
 Backends (`compile.ts`'s `backend: "babel" | "native"`):
 
@@ -78,13 +78,13 @@ Variant names are unchanged from Solid 1 (`generate: "dom" | "ssr"` plus `hydrat
 Two native-compiler gotchas, worked around in `compile.ts`:
 
 - The documented `syntax` option (README and `types.d.ts`) is **rejected at runtime** by rc.7. Frontend routing is by filename.
-- The compiler picks its parser dialect from the **filename extension** and rejects `.solid.mx`. The oracle appends `.tsx` to MX filenames for that backend, like `@mx/vite-plugin`'s virtual id.
+- The compiler picks its parser dialect from the **filename extension** and rejects `.solid.mx`. The oracle appends `.tsx` to MX filenames for that backend, like `@markox/vite-plugin`'s virtual id.
 
-`@mx/parser` exports two printer entry points, both sharing one set of `@babel/generator` options so they cannot drift: `print(source, filename)` for the ordinary case, and `printAst(ast, filename)` for callers that must run their own pass over the AST first. The oracle needs the second one — `.solid.mx` fixtures use TypeScript syntax, `@babel/preset-typescript` has to erase it before printing, and `print` would re-parse the source and skip that erasure, handing `interface Todo { ... }` to a JSX-only frontend.
+`@markox/parser` exports two printer entry points, both sharing one set of `@babel/generator` options so they cannot drift: `print(source, filename)` for the ordinary case, and `printAst(ast, filename)` for callers that must run their own pass over the AST first. The oracle needs the second one — `.solid.mx` fixtures use TypeScript syntax, `@babel/preset-typescript` has to erase it before printing, and `print` would re-parse the source and skip that erasure, handing `interface Todo { ... }` to a JSX-only frontend.
 
 A twin must not introduce whitespace MX drops. MX follows Marko's rules — a whitespace-only run containing a newline is dropped — so `text<p>…` goes on one line in the twin wherever the MX source separates them only by indentation. See `fixtures/README.md`.
 
-`@mx/parser` is wired into the harness (`packages/oracle` depends on it and `report.ts` passes its `parse` as `mxParser`), so fixtures compile for real. Statuses: `pass`, `fail` and `divergent` mean the parser ran; `skipped` means no parser was available (now a real failure, not "not implemented"); `pending` means the fixture carries a `PENDING` marker naming constructs the parser cannot lower yet. Neither `skipped` nor `pending` is a pass, and `--strict` fails the run on either — see `fixtures/README.md` for the `PENDING` contract.
+`@markox/parser` is wired into the harness (`packages/oracle` depends on it and `report.ts` passes its `parse` as `mxParser`), so fixtures compile for real. Statuses: `pass`, `fail` and `divergent` mean the parser ran; `skipped` means no parser was available (now a real failure, not "not implemented"); `pending` means the fixture carries a `PENDING` marker naming constructs the parser cannot lower yet. Neither `skipped` nor `pending` is a pass, and `--strict` fails the run on either — see `fixtures/README.md` for the `PENDING` contract.
 
 Current state: `counter`, `todos`, `attrs` and `lists` all pass on both backends and both variants (16 rows). `bun run oracle` and `bun run oracle -- --strict` are both expected to exit 0 — `--strict` green is the standing bar, not an aspiration.
 
@@ -96,7 +96,7 @@ Golden snapshots (`fixtures/<name>/__golden__/twin.<backend>.<variant>.js`) pin 
 
 ## Vite plugin
 
-`packages/mx-vite-plugin` (`@mx/vite-plugin`) is the primary integration
+`packages/mx-vite-plugin` (`@markox/vite-plugin`) is the primary integration
 (spec section 7.1): an `enforce: "pre"` Vite transform that prints
 `.solid.mx` to JSX source text with `print()` ahead of
 `@solidjs/vite-plugin`. Both plugins are `enforce: "pre"`, so their relative
@@ -139,7 +139,7 @@ filename: `transform` prints against the stripped path, and parse errors are
 re-raised with a Vite-shaped `loc` (`{ file, line, column }`) so the overlay
 points at the MX line.
 
-`@mx/parser`'s `main` is `dist/index.js`, not `src/index.ts`. Vite's config
+`@markox/parser`'s `main` is `dist/index.js`, not `src/index.ts`. Vite's config
 loader externalizes bare imports, so a consumer that pulls the parser's TS
 source makes Node load the vendored Babel tree, whose `const enum`s the
 strip-only TypeScript loader rejects. `types` still points at
@@ -149,8 +149,8 @@ builds before it tests.
 ## Examples
 
 `examples/counter-app` is a Solid 2 app whose components are `.solid.mx`.
-Root `package.json` `workspaces` includes `examples/*`, so `@mx/vite-plugin`
-and `@mx/parser` resolve as workspace deps, and root `typecheck` covers
+Root `package.json` `workspaces` includes `examples/*`, so `@markox/vite-plugin`
+and `@markox/parser` resolve as workspace deps, and root `typecheck` covers
 `examples/*/` as well as `packages/*/`.
 
 ```
@@ -180,5 +180,5 @@ disagree; do not "fix" one to match the other.
 
 Type-checking `.solid.mx` imports from `.tsx` relies on the ambient
 `src/mx.d.ts` declaration in the example. It types every MX export as a Solid
-component; real per-export types arrive with `@mx/typescript-plugin`'s
+component; real per-export types arrive with `@markox/typescript-plugin`'s
 virtual-`.tsx` projection (spec section 7.2).

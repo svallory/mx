@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse as mxParser } from "@mx/parser";
+import { parse as mxParser } from "@markox/parser";
 import { compare } from "./compare";
 import { discoverFixtures } from "./fixtures";
 

@@ -1,6 +1,6 @@
 # fixtures
 
-Golden/oracle fixtures for `@mx/oracle` (`packages/oracle`). Exit criterion
+Golden/oracle fixtures for `@markox/oracle` (`packages/oracle`). Exit criterion
 this harness checks: byte-parity (whitespace normalized) between compiled
 `dom-expressions` output of a `.solid.mx` file and its hand-written `.tsx`
 twin, across **both Solid 2 compiler backends** and both generate variants —
@@ -28,7 +28,7 @@ Two native-compiler facts the spec did not predict, both worked around in
 - The compiler picks its parser dialect from the **filename extension** and
   rejects `.solid.mx` outright (`Unknown file extension`). The oracle appends
   `.tsx` to MX filenames for that backend, the same trick
-  `@mx/vite-plugin` uses on its virtual id.
+  `@markox/vite-plugin` uses on its virtual id.
 
 ## Layout
 
@@ -160,7 +160,7 @@ carries a `PENDING` marker. Neither is a pass. `bun run oracle` prints a loud
 `ALL SKIPPED` banner whenever every row is skipped as a reminder, and
 `--strict` fails the run on either status.
 
-`@mx/parser` is wired in now, so a `skipped` row means the parser genuinely
+`@markox/parser` is wired in now, so a `skipped` row means the parser genuinely
 failed to load — treat it as a failure, not as "not implemented yet".
 
 ## `bun run oracle` flags

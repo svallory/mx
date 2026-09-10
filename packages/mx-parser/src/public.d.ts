@@ -1,12 +1,12 @@
 /**
- * Public types for `@mx/parser` as seen by other packages.
+ * Public types for `@markox/parser` as seen by other packages.
  *
  * Consumers typecheck against this rather than against `src/index.ts`, because
  * the vendored `@babel/parser` source under `src/babel/` needs relaxations
  * (`allowImportingTsExtensions`, looser index/variance checks) that should not
  * leak into every package that merely calls `parse`.
  */
-declare module "@mx/parser" {
+declare module "@markox/parser" {
   import type { Expression, File } from "@babel/types";
 
   export interface MxParseOptions {

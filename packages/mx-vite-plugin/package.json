@@ -1,5 +1,5 @@
 {
-  "name": "@mx/vite-plugin",
+  "name": "@markox/vite-plugin",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,6 +10,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@mx/parser": "workspace:*"
+    "@markox/parser": "workspace:*"
   }
 }

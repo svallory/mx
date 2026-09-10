@@ -1,4 +1,4 @@
-import mx from "@mx/vite-plugin";
+import mx from "@markox/vite-plugin";
 import solid from "@solidjs/vite-plugin";
 import { defineConfig } from "vite";
 

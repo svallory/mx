@@ -5,7 +5,7 @@
     "rootDir": "src",
     "types": ["node"],
     "paths": {
-      "@mx/parser": ["../mx-parser/src/public.d.ts"]
+      "@markox/parser": ["../mx-parser/src/public.d.ts"]
     }
   },
   "include": ["src"]

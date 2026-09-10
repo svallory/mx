@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { print } from "@mx/parser";
+import { print } from "@markox/parser";
 import type { Plugin } from "vite";
 
 export interface MxPluginOptions {

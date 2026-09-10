@@ -6,15 +6,15 @@ MX: Marko's syntax with pluggable host-language expressions. SolidMX (codename "
 
 | Package | npm name | Purpose |
 |---|---|---|
-| `packages/mx-parser` | `@mx/parser` | `@babel/parser` fork: MX in expression position -> lowered JSX AST (the language) |
-| `packages/babel-plugin-mx` | `@mx/babel-plugin` | `parserOverride` -> mx-parser |
-| `packages/mx-typescript-plugin` | `@mx/typescript-plugin` | `@volar/typescript` plugin; virtual `.tsx` via `@babel/generator` source maps |
-| `packages/mx-tsc` | `@mx/tsc` | `tsc` wrapper (`runTsc`) so CI type-checks `.solid.mx` |
-| `packages/mx-vscode` | `@mx/vscode` | TextMate grammar + `typescriptServerPlugins` manifest |
-| `packages/eslint-plugin-mx` | `@mx/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
-| `packages/mx-vite-plugin` | `@mx/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
+| `packages/mx-parser` | `@markox/parser` | `@babel/parser` fork: MX in expression position -> lowered JSX AST (the language) |
+| `packages/babel-plugin-mx` | `@markox/babel-plugin` | `parserOverride` -> mx-parser |
+| `packages/mx-typescript-plugin` | `@markox/typescript-plugin` | `@volar/typescript` plugin; virtual `.tsx` via `@babel/generator` source maps |
+| `packages/mx-tsc` | `@markox/tsc` | `tsc` wrapper (`runTsc`) so CI type-checks `.solid.mx` |
+| `packages/mx-vscode` | `@markox/vscode` | TextMate grammar + `typescriptServerPlugins` manifest |
+| `packages/eslint-plugin-mx` | `@markox/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
+| `packages/mx-vite-plugin` | `@markox/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
 
-**Naming TODO**: the `@mx/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
+**Naming TODO**: the `@markox/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
 
 ## Pinned versions
 
