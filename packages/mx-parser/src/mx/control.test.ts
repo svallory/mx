@@ -2,7 +2,7 @@ import type { PluginObj, TransformOptions } from "@babel/core";
 import { transformSync } from "@babel/core";
 import generate from "@babel/generator";
 import type { Expression } from "@babel/types";
-import solidPreset from "babel-preset-solid";
+import solidBabelPlugin from "@solidjs/babel-plugin";
 import { describe, expect, it } from "vitest";
 import { parse } from "../index.ts";
 
@@ -19,27 +19,39 @@ function printFirstExpression(source: string): string {
 }
 
 /**
- * Compiles a `.solid.mx` source all the way through `babel-preset-solid`, the
- * same `parserOverride` mechanism `packages/oracle/src/compile.ts` uses. A
- * lowering bug that produces a structurally-valid-looking but semantically
+ * Compiles a `.solid.mx` source all the way through `@solidjs/babel-plugin`,
+ * the same `parserOverride` mechanism `packages/oracle/src/compile.ts` uses.
+ * A lowering bug that produces a structurally-valid-looking but semantically
  * wrong AST (e.g. a bare `JSXText` where an expression is required) often
  * only surfaces here — `@babel/generator` prints such nodes without
  * complaint, but the Solid transform throws or silently miscompiles them.
  */
 function compilesThroughSolid(source: string): string {
+  // Two passes, mirroring `packages/oracle/src/compile.ts`: `parserOverride`
+  // replaces the *parse* step, so the MX AST has to be printed back to JSX
+  // text in its own pass before the Solid plugin re-parses it. Running the
+  // override and the Solid plugin in one pass fails — the override returns an
+  // AST the Solid plugin's own JSX syntax handling never sees.
   const overridePlugin = {
     name: "mx-control-test-parser-override",
     parserOverride(code: string) {
       return parse(code, "test.solid.mx");
     },
   } as unknown as PluginObj;
-  const presets: TransformOptions["presets"] = [
-    [solidPreset, { generate: "dom", hydratable: false }],
-  ];
-  const result = transformSync(source, {
+  const parsed = transformSync(source, {
     filename: "test.solid.mx",
-    presets,
     plugins: [overridePlugin],
+    babelrc: false,
+    configFile: false,
+  });
+  if (!parsed?.code) throw new Error("Babel produced no JSX source");
+
+  const plugins: TransformOptions["plugins"] = [
+    [solidBabelPlugin, { generate: "dom", hydratable: false }],
+  ];
+  const result = transformSync(parsed.code, {
+    filename: "test.solid.mx",
+    plugins,
     babelrc: false,
     configFile: false,
   });
@@ -205,7 +217,7 @@ describe("if / else if / else", () => {
   });
 
   describe("round 2: bodies used in expression position (review)", () => {
-    it("compiles if/else with plain-text bodies through babel-preset-solid without throwing", () => {
+    it("compiles if/else with plain-text bodies through the Solid compiler without throwing", () => {
       expect(() =>
         compilesThroughSolid(
           `const el = <div><if=c()>hi</if><else>bye</else></div>;`,
@@ -213,10 +225,10 @@ describe("if / else if / else", () => {
       ).not.toThrow();
     });
 
-    it("compiles a for-body if/else with a placeholder else through babel-preset-solid without throwing", () => {
+    it("compiles a for-body if/else with a placeholder else without throwing", () => {
       expect(() =>
         compilesThroughSolid(
-          `const el = <for|t| of=ts()><if=t.done>x</if><else>\${t.text}</else></for>;`,
+          `const el = <for|t| of=ts()><if=t().done>x</if><else>\${t().text}</else></for>;`,
         ),
       ).not.toThrow();
     });
@@ -230,142 +242,110 @@ describe("if / else if / else", () => {
   });
 });
 
-describe("for", () => {
-  it("lowers <for|it,i| of=xs()> to <Index>", () => {
-    const file = parseMx(`const el = <for|it, i| of=xs()><li>x</li></for>;`);
-    const indexEls = collect(file, "JSXElement") as {
-      openingElement: {
+/** The `each`/`keyed`/`count`/`from` attribute of the first lowered element. */
+function listAttrs(source: string) {
+  const file = parseMx(source);
+  const els = collect(file, "JSXElement") as {
+    openingElement: {
+      name: { name: string };
+      attributes: {
         name: { name: string };
-        attributes: { name: { name: string } }[];
-      };
-      children: { expression?: { params: unknown[] } }[];
-    }[];
-    const index = indexEls[0] as (typeof indexEls)[number];
-    expect(index.openingElement.name.name).toBe("Index");
-    expect(index.openingElement.attributes.map((a) => a.name.name)).toEqual([
-      "each",
-    ]);
-    expect(index.children[0]?.expression?.params).toHaveLength(2);
+        value: { expression: Record<string, unknown> };
+      }[];
+    };
+    children: { expression?: { params: { type: string }[] } }[];
+    extra?: { mx?: Record<string, unknown> };
+  }[];
+  const el = els[0] as (typeof els)[number];
+  return {
+    name: el.openingElement.name.name,
+    attrNames: el.openingElement.attributes.map((a) => a.name.name),
+    attr: (n: string) =>
+      el.openingElement.attributes.find((a) => a.name.name === n)?.value
+        .expression,
+    params: el.children[0]?.expression?.params,
+    extra: el.extra,
+  };
+}
+
+describe("for: Solid 2 list rows", () => {
+  it("lowers <for|it,i| of=xs()> to <For each keyed={false}>", () => {
+    const list = listAttrs(`const el = <for|it, i| of=xs()><li>x</li></for>;`);
+    expect(list.name).toBe("For");
+    expect(list.attrNames).toEqual(["each", "keyed"]);
+    expect(list.attr("keyed")?.type).toBe("BooleanLiteral");
+    expect(list.attr("keyed")?.value).toBe(false);
+    expect(list.params).toHaveLength(2);
   });
 
-  it("lowers by=identity to native <For>, no import", () => {
-    const file = parseMx(
+  it("lowers by=identity to <For> with no keyed prop (identity is the default)", () => {
+    const list = listAttrs(
       `const el = <for|it, i| of=xs() by=identity><li>x</li></for>;`,
     );
-    const els = collect(file, "JSXElement") as {
-      openingElement: { name: { name: string } };
-      extra?: { mx?: { needsImport?: string[] } };
-    }[];
-    const forEl = els[0] as (typeof els)[number];
-    expect(forEl.openingElement.name.name).toBe("For");
-    expect(forEl.extra?.mx?.needsImport).toBeUndefined();
+    expect(list.name).toBe("For");
+    expect(list.attrNames).toEqual(["each"]);
   });
 
-  it('lowers by="id" to <Key> with needsImport', () => {
-    const file = parseMx(
+  it('lowers by="id" to keyed={(x) => x.id}', () => {
+    const list = listAttrs(
       `const el = <for|it, i| of=xs() by="id"><li>x</li></for>;`,
     );
-    const els = collect(file, "JSXElement") as {
-      openingElement: {
-        name: { name: string };
-        attributes: {
-          name: { name: string };
-          value: { expression: { type: string; value: unknown } };
-        }[];
-      };
-      extra?: { mx?: { needsImport?: string[] } };
-    }[];
-    const keyEl = els[0] as (typeof els)[number];
-    expect(keyEl.openingElement.name.name).toBe("Key");
-    const by = keyEl.openingElement.attributes.find(
-      (a) => a.name.name === "by",
-    );
-    expect(by?.value.expression.type).toBe("StringLiteral");
-    expect(by?.value.expression.value).toBe("id");
-    expect(keyEl.extra?.mx?.needsImport).toEqual(["Key"]);
+    expect(list.name).toBe("For");
+    expect(list.attrNames).toEqual(["each", "keyed"]);
+    const keyed = list.attr("keyed") as {
+      type: string;
+      body: { property: { name: string } };
+    };
+    expect(keyed.type).toBe("ArrowFunctionExpression");
+    expect(keyed.body.property.name).toBe("id");
   });
 
-  it("lowers by=(x => x.id) to <Key> with a function by", () => {
-    const file = parseMx(
+  it("lowers by=(fn) to keyed={fn}", () => {
+    const list = listAttrs(
       `const el = <for|it, i| of=xs() by=(x => x.id)><li>x</li></for>;`,
     );
-    const els = collect(file, "JSXElement") as {
-      openingElement: {
-        name: { name: string };
-        attributes: {
-          name: { name: string };
-          value: { expression: { type: string } };
-        }[];
-      };
-    }[];
-    const keyEl = els[0] as (typeof els)[number];
-    expect(keyEl.openingElement.name.name).toBe("Key");
-    const by = keyEl.openingElement.attributes.find(
-      (a) => a.name.name === "by",
-    );
-    expect(by?.value.expression.type).toBe("ArrowFunctionExpression");
+    expect(list.name).toBe("For");
+    expect(list.attr("keyed")?.type).toBe("ArrowFunctionExpression");
   });
 
-  it("lowers from/to to Index with mxRange, needsImport", () => {
-    const file = parseMx(`const el = <for|i| from=0 to=n()><li>x</li></for>;`);
-    const els = collect(file, "JSXElement") as {
-      openingElement: {
-        name: { name: string };
-        attributes: {
-          name: { name: string };
-          value: {
-            expression: {
-              type: string;
-              callee?: { name: string };
-              arguments?: unknown[];
-            };
-          };
-        }[];
-      };
-      extra?: { mx?: { needsImport?: string[] } };
-    }[];
-    const indexEl = els[0] as (typeof els)[number];
-    expect(indexEl.openingElement.name.name).toBe("Index");
-    const each = indexEl.openingElement.attributes.find(
-      (a) => a.name.name === "each",
-    );
-    expect(each?.value.expression.type).toBe("CallExpression");
-    expect(each?.value.expression.callee?.name).toBe("mxRange");
-    expect(each?.value.expression.arguments).toHaveLength(4);
-    expect(indexEl.extra?.mx?.needsImport).toEqual(["mxRange"]);
+  it("lowers in=obj() to <For each={Object.entries(obj())} keyed={(e) => e[0]}>", () => {
+    const list = listAttrs(`const el = <for|k, v| in=obj()><li>x</li></for>;`);
+    expect(list.name).toBe("For");
+    const each = list.attr("each") as {
+      type: string;
+      callee: { object: { name: string }; property: { name: string } };
+    };
+    expect(each.type).toBe("CallExpression");
+    expect(each.callee.object.name).toBe("Object");
+    expect(each.callee.property.name).toBe("entries");
+    expect(list.attr("keyed")?.type).toBe("ArrowFunctionExpression");
+    expect(list.params?.[0]?.type).toBe("ArrayPattern");
   });
 
-  it("lowers in=obj() to Key over Object.entries, needsImport", () => {
-    const file = parseMx(`const el = <for|k, v| in=obj()><li>x</li></for>;`);
-    const els = collect(file, "JSXElement") as {
-      openingElement: {
-        name: { name: string };
-        attributes: {
-          name: { name: string };
-          value: {
-            expression: {
-              type: string;
-              callee?: {
-                object?: { name: string };
-                property?: { name: string };
-              };
-            };
-          };
-        }[];
-      };
-      children: { expression?: { params: { type: string }[] } }[];
-      extra?: { mx?: { needsImport?: string[] } };
-    }[];
-    const keyEl = els[0] as (typeof els)[number];
-    expect(keyEl.openingElement.name.name).toBe("Key");
-    const each = keyEl.openingElement.attributes.find(
-      (a) => a.name.name === "each",
-    );
-    expect(each?.value.expression.type).toBe("CallExpression");
-    expect(each?.value.expression.callee?.object?.name).toBe("Object");
-    expect(each?.value.expression.callee?.property?.name).toBe("entries");
-    expect(keyEl.children[0]?.expression?.params[0]?.type).toBe("ArrayPattern");
-    expect(keyEl.extra?.mx?.needsImport).toEqual(["Key"]);
+  it("carries no needsImport: both Solid 2 compilers auto-import builtIns", () => {
+    for (const source of [
+      `const el = <for|it, i| of=xs()><li>x</li></for>;`,
+      `const el = <for|it, i| of=xs() by="id"><li>x</li></for>;`,
+      `const el = <for|k, v| in=obj()><li>x</li></for>;`,
+      `const el = <for|i| from=0 to=n()><li>x</li></for>;`,
+    ]) {
+      const list = listAttrs(source);
+      expect(list.extra?.mx?.needsImport).toBeUndefined();
+    }
+  });
+
+  it("never emits Index, Key or mxRange", () => {
+    for (const source of [
+      `const el = <for|it, i| of=xs()><li>x</li></for>;`,
+      `const el = <for|it, i| of=xs() by="id"><li>x</li></for>;`,
+      `const el = <for|k, v| in=obj()><li>x</li></for>;`,
+      `const el = <for|i| from=0 to=n()><li>x</li></for>;`,
+    ]) {
+      const code = printFirstExpression(source);
+      expect(code).not.toContain("Index");
+      expect(code).not.toContain("Key");
+      expect(code).not.toContain("mxRange");
+    }
   });
 
   it("wraps a multi-child for body in a fragment", () => {
@@ -393,46 +373,154 @@ describe("for", () => {
     );
     expect(err.message).toContain("<for>");
   });
+});
 
-  describe("round 2: from/to/until (review)", () => {
-    it("rejects both to= and until= together instead of silently dropping until=", () => {
-      const err = parseError(
-        `const el = <for|i| from=0 to=5 until=9><li>x</li></for>;`,
-      );
-      expect(err.message).toContain("to=");
-      expect(err.message).toContain("until=");
-    });
+describe("for: ranges lower to <Repeat>", () => {
+  it("lowers from/to to <Repeat count={(to) - (from) + 1} from={from}>", () => {
+    const list = listAttrs(
+      `const el = <for|i| from=1 to=n()><li>x</li></for>;`,
+    );
+    expect(list.name).toBe("Repeat");
+    expect(list.attrNames).toEqual(["count", "from"]);
+    const count = list.attr("count") as {
+      type: string;
+      operator: string;
+      left: { type: string; operator: string };
+      right: { value: number };
+    };
+    // `(n() - 1) + 1`: a BinaryExpression, not a folded literal, because the
+    // upper bound is only known at runtime.
+    expect(count.type).toBe("BinaryExpression");
+    expect(count.operator).toBe("+");
+    expect(count.left.type).toBe("BinaryExpression");
+    expect(count.left.operator).toBe("-");
+    expect(count.right.value).toBe(1);
+  });
 
-    it("defaults from= to 0 for until= just as it does for to=", () => {
-      const file = parseMx(`const el = <for|i| until=5><li>x</li></for>;`);
-      const els = collect(file, "JSXElement") as {
-        openingElement: {
-          attributes: {
-            name: { name: string };
-            value: {
-              expression: { type: string; arguments?: { value?: number }[] };
-            };
-          }[];
-        };
-      }[];
-      const each = els[0]?.openingElement.attributes.find(
-        (a) => a.name.name === "each",
-      );
-      expect(each?.value.expression.type).toBe("CallExpression");
-      expect(each?.value.expression.arguments?.[0]?.value).toBe(0);
-    });
+  it("lowers until= to count={until - from}, one term shorter", () => {
+    const list = listAttrs(
+      `const el = <for|i| from=2 until=n()><li>x</li></for>;`,
+    );
+    expect(list.name).toBe("Repeat");
+    const count = list.attr("count") as { type: string; operator: string };
+    expect(count.type).toBe("BinaryExpression");
+    expect(count.operator).toBe("-");
+  });
 
-    it("accepts <for|i| to=5> without from=, defaulting it to 0", () => {
-      expect(() =>
-        parseMx(`const el = <for|i| to=5><li>x</li></for>;`),
-      ).not.toThrow();
-    });
+  it("folds the count when both bounds are numeric literals", () => {
+    const inclusive = listAttrs(
+      `const el = <for|i| from=1 to=5><li>x</li></for>;`,
+    );
+    expect(inclusive.attr("count")?.type).toBe("NumericLiteral");
+    expect(inclusive.attr("count")?.value).toBe(5);
 
-    it("rejects <for> with neither to= nor until=", () => {
-      const err = parseError(`const el = <for|i| from=0><li>x</li></for>;`);
-      expect(err.message).toContain("to=");
-      expect(err.message).toContain("until=");
-    });
+    const exclusive = listAttrs(
+      `const el = <for|i| from=1 until=5><li>x</li></for>;`,
+    );
+    expect(exclusive.attr("count")?.value).toBe(4);
+  });
+
+  it("omits `from` when the author did not write it (Repeat defaults it to 0)", () => {
+    const list = listAttrs(`const el = <for|i| until=4><li>x</li></for>;`);
+    expect(list.name).toBe("Repeat");
+    expect(list.attrNames).toEqual(["count"]);
+    expect(list.attr("count")?.value).toBe(4);
+  });
+
+  it("gives the range callback one plain-number param", () => {
+    const list = listAttrs(`const el = <for|i| to=3><li>x</li></for>;`);
+    expect(list.params).toHaveLength(1);
+  });
+
+  it("rejects step= with a fix-it to a computed array", () => {
+    const err = parseError(
+      `const el = <for|i| from=0 to=9 step=2><li>x</li></for>;`,
+    );
+    expect(err.message).toContain("step is not supported");
+    expect(err.message).toContain("computed array");
+  });
+
+  it("rejects both to= and until= together instead of silently dropping until=", () => {
+    const err = parseError(
+      `const el = <for|i| from=0 to=5 until=9><li>x</li></for>;`,
+    );
+    expect(err.message).toContain("to=");
+    expect(err.message).toContain("until=");
+  });
+
+  it("rejects <for> with neither to= nor until=", () => {
+    const err = parseError(`const el = <for|i| from=0><li>x</li></for>;`);
+    expect(err.message).toContain("to=");
+    expect(err.message).toContain("until=");
+  });
+
+  it("compiles every list row through the Solid compiler without throwing", () => {
+    for (const source of [
+      `const el = <for|it, i| of=xs()><li>x</li></for>;`,
+      `const el = <for|it, i| of=xs() by=identity><li>x</li></for>;`,
+      `const el = <for|it, i| of=xs() by="id"><li>x</li></for>;`,
+      `const el = <for|k, v| in=obj()><li>x</li></for>;`,
+      `const el = <for|i| from=1 to=n()><li>x</li></for>;`,
+      `const el = <for|i| until=4><li>x</li></for>;`,
+    ]) {
+      expect(() => compilesThroughSolid(source)).not.toThrow();
+    }
+  });
+});
+
+describe("try: Errored / Loading boundaries", () => {
+  it("lowers <try> with @catch to <Errored fallback><Loading></Errored>", () => {
+    const code = printFirstExpression(
+      `const el = <try><p>body</p><@catch|e|><p>failed</p></@catch></try>;`,
+    );
+    expect(code).toContain("<Errored fallback={");
+    expect(code).toContain("<Loading>");
+    expect(code).not.toContain("ErrorBoundary");
+    expect(code).not.toContain("Suspense");
+  });
+
+  it("accepts <@catch|e, reset|>, exposing Errored's second fallback param", () => {
+    const file = parseMx(
+      `const el = <try><p>b</p><@catch|e, reset|><button onClick=reset>retry</button></@catch></try>;`,
+    );
+    const els = collect(file, "JSXElement") as {
+      openingElement: {
+        name: { name: string };
+        attributes: {
+          name: { name: string };
+          value: { expression: { params: unknown[] } };
+        }[];
+      };
+    }[];
+    const errored = els.find((e) => e.openingElement.name.name === "Errored");
+    expect(errored).toBeTruthy();
+    const fallback = errored?.openingElement.attributes.find(
+      (a) => a.name.name === "fallback",
+    );
+    expect(fallback?.value.expression.params).toHaveLength(2);
+  });
+
+  it("lowers <@placeholder> to the Loading fallback", () => {
+    const code = printFirstExpression(
+      `const el = <try><@placeholder><p>loading</p></@placeholder><p>body</p><@catch|e|><p>err</p></@catch></try>;`,
+    );
+    expect(code).toContain("<Loading fallback={<p>loading</p>}>");
+  });
+
+  it("omits the Errored boundary when there is no @catch", () => {
+    const code = printFirstExpression(
+      `const el = <try><@placeholder><p>l</p></@placeholder><p>body</p></try>;`,
+    );
+    expect(code).toContain("<Loading");
+    expect(code).not.toContain("Errored");
+  });
+
+  it("compiles a full <try> through the Solid compiler without throwing", () => {
+    expect(() =>
+      compilesThroughSolid(
+        `const el = <try><@placeholder><p>l</p></@placeholder><p>b</p><@catch|e, reset|><p>e</p></@catch></try>;`,
+      ),
+    ).not.toThrow();
   });
 });
 

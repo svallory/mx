@@ -12,7 +12,7 @@ import {
 import type { MxAttr, MxChild, MxElement, MxRange } from "./walk.ts";
 
 /** Tags this module handles; `lower.ts` dispatches to it by these names. */
-export const CONTROL_TAGS = new Set(["if", "else", "for", "fragment"]);
+export const CONTROL_TAGS = new Set(["if", "else", "for", "fragment", "try"]);
 
 function attrByName(el: MxElement, name: string): MxAttr | undefined {
   return el.attrs.find((a) => "name" in a && a.name === name);
@@ -156,56 +156,43 @@ function tagParams(ctx: LowerContext, params: MxRange): unknown[] {
   }
 }
 
-function showElement(
+/** A `name={expression}` JSX attribute. */
+function exprAttribute(
   ctx: LowerContext,
-  when: Node,
-  body: Node,
-  fallback: Node | null,
-  params: unknown[] | null,
+  name: string,
+  expression: Node,
   range: MxRange,
 ): Node {
-  const attributes: Node[] = [
-    at(
-      {
-        type: "JSXAttribute",
-        name: jsxIdentifier(ctx, "when", range),
-        value: at(
-          { type: "JSXExpressionContainer", expression: when },
-          ctx.source,
-          range,
-        ),
-      },
-      ctx.source,
-      range,
-    ),
-  ];
-  if (fallback) {
-    attributes.push(
-      at(
-        {
-          type: "JSXAttribute",
-          name: jsxIdentifier(ctx, "fallback", range),
-          value: at(
-            { type: "JSXExpressionContainer", expression: fallback },
-            ctx.source,
-            range,
-          ),
-        },
+  return at(
+    {
+      type: "JSXAttribute",
+      name: jsxIdentifier(ctx, name, range),
+      value: at(
+        { type: "JSXExpressionContainer", expression },
         ctx.source,
         range,
       ),
-    );
-  }
+    },
+    ctx.source,
+    range,
+  );
+}
 
-  const children = params ? [callbackChild(ctx, params, body, range)] : [body];
-
+/** A JSX element with the given name, attributes and children. */
+function jsxElement(
+  ctx: LowerContext,
+  name: string,
+  attributes: Node[],
+  children: Node[],
+  range: MxRange,
+): Node {
   return at(
     {
       type: "JSXElement",
       openingElement: at(
         {
           type: "JSXOpeningElement",
-          name: jsxIdentifier(ctx, "Show", range),
+          name: jsxIdentifier(ctx, name, range),
           attributes,
           selfClosing: false,
           typeArguments: null,
@@ -214,7 +201,7 @@ function showElement(
         range,
       ),
       closingElement: at(
-        { type: "JSXClosingElement", name: jsxIdentifier(ctx, "Show", range) },
+        { type: "JSXClosingElement", name: jsxIdentifier(ctx, name, range) },
         ctx.source,
         range,
       ),
@@ -224,6 +211,40 @@ function showElement(
     ctx.source,
     range,
   );
+}
+
+function numericLiteral(
+  ctx: LowerContext,
+  value: number,
+  range: MxRange,
+): Node {
+  return at(
+    {
+      type: "NumericLiteral",
+      value,
+      extra: { raw: String(value), rawValue: value },
+    },
+    ctx.source,
+    range,
+  );
+}
+
+function showElement(
+  ctx: LowerContext,
+  when: Node,
+  body: Node,
+  fallback: Node | null,
+  params: unknown[] | null,
+  range: MxRange,
+): Node {
+  const attributes: Node[] = [exprAttribute(ctx, "when", when, range)];
+  if (fallback) {
+    attributes.push(exprAttribute(ctx, "fallback", fallback, range));
+  }
+
+  const children = params ? [callbackChild(ctx, params, body, range)] : [body];
+
+  return jsxElement(ctx, "Show", attributes, children, range);
 }
 
 interface IfBranch {
@@ -389,207 +410,164 @@ function switchElement(
 ): Node {
   const attributes: Node[] = [];
   if (fallback) {
-    attributes.push(
-      at(
-        {
-          type: "JSXAttribute",
-          name: jsxIdentifier(ctx, "fallback", range),
-          value: at(
-            { type: "JSXExpressionContainer", expression: fallback },
-            ctx.source,
-            range,
-          ),
-        },
-        ctx.source,
-        range,
-      ),
-    );
+    attributes.push(exprAttribute(ctx, "fallback", fallback, range));
   }
 
   const matches = branches.map((branch) => {
-    const matchAttrs = [
-      at(
-        {
-          type: "JSXAttribute",
-          name: jsxIdentifier(ctx, "when", branch.range),
-          value: at(
-            { type: "JSXExpressionContainer", expression: branch.when },
-            ctx.source,
-            branch.range,
-          ),
-        },
-        ctx.source,
-        branch.range,
-      ),
-    ];
+    const matchAttrs = [exprAttribute(ctx, "when", branch.when, branch.range)];
     const matchChildren = branch.params
       ? [callbackChild(ctx, branch.params, branch.body, branch.range)]
       : [branch.body];
-    return at(
-      {
-        type: "JSXElement",
-        openingElement: at(
-          {
-            type: "JSXOpeningElement",
-            name: jsxIdentifier(ctx, "Match", branch.range),
-            attributes: matchAttrs,
-            selfClosing: false,
-            typeArguments: null,
-          },
-          ctx.source,
-          branch.range,
-        ),
-        closingElement: at(
-          {
-            type: "JSXClosingElement",
-            name: jsxIdentifier(ctx, "Match", branch.range),
-          },
-          ctx.source,
-          branch.range,
-        ),
-        children: matchChildren,
-        extra: {},
-      },
-      ctx.source,
-      branch.range,
-    );
+    return jsxElement(ctx, "Match", matchAttrs, matchChildren, branch.range);
   });
 
-  return at(
-    {
-      type: "JSXElement",
-      openingElement: at(
-        {
-          type: "JSXOpeningElement",
-          name: jsxIdentifier(ctx, "Switch", range),
-          attributes,
-          selfClosing: false,
-          typeArguments: null,
-        },
-        ctx.source,
-        range,
-      ),
-      closingElement: at(
-        {
-          type: "JSXClosingElement",
-          name: jsxIdentifier(ctx, "Switch", range),
-        },
-        ctx.source,
-        range,
-      ),
-      children: matches,
-      extra: {},
-    },
-    ctx.source,
-    range,
-  );
+  return jsxElement(ctx, "Switch", attributes, matches, range);
 }
 
-function markNeedsImport(node: Node, names: string[]): void {
-  const extra = (node.extra as Record<string, unknown> | undefined) ?? {};
-  const mx = (extra.mx as Record<string, unknown> | undefined) ?? {};
-  mx.needsImport = names;
-  extra.mx = mx;
-  node.extra = extra;
-}
-
+/**
+ * `<For each={...}>` with an optional `keyed` prop, and `<Repeat>`.
+ *
+ * Solid 2 unified 1.x's `Index`/`For`/`Key` into a single `For` selected by
+ * `keyed`, so every list row lands on the same component: `keyed={false}`
+ * replaces `<Index>` (item accessor, index number), the default identity mode
+ * replaces plain `<For>`, and `keyed={fn}` replaces the vendored `<Key>`
+ * (both accessors). Nothing needs importing — both Solid 2 compilers
+ * auto-import the builtIns list, which is why `needsImport` is gone.
+ */
 function listElement(
   ctx: LowerContext,
-  componentName: "Index" | "For" | "Key",
   each: Node,
-  by: Node | null,
+  keyed: Node | null,
   params: unknown[],
   body: Node,
   range: MxRange,
 ): Node {
-  const attributes: Node[] = [
-    at(
-      {
-        type: "JSXAttribute",
-        name: jsxIdentifier(ctx, "each", range),
-        value: at(
-          { type: "JSXExpressionContainer", expression: each },
-          ctx.source,
-          range,
-        ),
-      },
-      ctx.source,
-      range,
-    ),
-  ];
-  if (by) {
-    attributes.push(
-      at(
-        {
-          type: "JSXAttribute",
-          name: jsxIdentifier(ctx, "by", range),
-          value: at(
-            { type: "JSXExpressionContainer", expression: by },
-            ctx.source,
-            range,
-          ),
-        },
-        ctx.source,
-        range,
-      ),
-    );
+  const attributes: Node[] = [exprAttribute(ctx, "each", each, range)];
+  if (keyed) {
+    attributes.push(exprAttribute(ctx, "keyed", keyed, range));
+  }
+  return jsxElement(
+    ctx,
+    "For",
+    attributes,
+    [callbackChild(ctx, params, body, range)],
+    range,
+  );
+}
+
+/**
+ * `<Repeat count={...} from={...}>` for `<for from= to=>` / `<for until=>`.
+ *
+ * `from` is emitted only when the author wrote it: `Repeat`'s own `from`
+ * defaults to 0, so passing an explicit `from={0}` would be noise that no
+ * hand-written twin would contain.
+ */
+function repeatElement(
+  ctx: LowerContext,
+  count: Node,
+  from: Node | null,
+  params: unknown[],
+  body: Node,
+  range: MxRange,
+): Node {
+  const attributes: Node[] = [exprAttribute(ctx, "count", count, range)];
+  if (from) {
+    attributes.push(exprAttribute(ctx, "from", from, range));
+  }
+  return jsxElement(
+    ctx,
+    "Repeat",
+    attributes,
+    [callbackChild(ctx, params, body, range)],
+    range,
+  );
+}
+
+/** Numeric value of a node that is literally a number, else null. */
+function numericValueOf(node: Node): number | null {
+  if (node.type === "NumericLiteral" && typeof node.value === "number") {
+    return node.value;
+  }
+  return null;
+}
+
+/**
+ * The iteration count for a range `<for>`: `to - from + 1` (inclusive) or
+ * `until - from` (exclusive), as a `BinaryExpression` over the author's own
+ * expressions.
+ *
+ * Folded to a single literal only when both bounds are numeric literals, so
+ * `from=0 to=5` emits `count={6}` while `to=n()` emits the arithmetic. Any
+ * non-literal bound has to stay an expression: its value is not known until
+ * runtime, and `Repeat`'s `count` is a plain number it reads each time.
+ */
+function countExpression(
+  ctx: LowerContext,
+  from: Node,
+  bound: Node,
+  inclusive: boolean,
+  range: MxRange,
+): Node {
+  const fromValue = numericValueOf(from);
+  const boundValue = numericValueOf(bound);
+  if (fromValue !== null && boundValue !== null) {
+    const folded = inclusive
+      ? boundValue - fromValue + 1
+      : boundValue - fromValue;
+    return numericLiteral(ctx, folded, range);
   }
 
-  const node = at(
+  // `bound - from`, then `+ 1` for the inclusive form.
+  const difference = at(
     {
-      type: "JSXElement",
-      openingElement: at(
-        {
-          type: "JSXOpeningElement",
-          name: jsxIdentifier(ctx, componentName, range),
-          attributes,
-          selfClosing: false,
-          typeArguments: null,
-        },
-        ctx.source,
-        range,
-      ),
-      closingElement: at(
-        {
-          type: "JSXClosingElement",
-          name: jsxIdentifier(ctx, componentName, range),
-        },
-        ctx.source,
-        range,
-      ),
-      children: [callbackChild(ctx, params, body, range)],
-      extra: {},
+      type: "BinaryExpression",
+      operator: "-",
+      left: bound,
+      right: from,
     },
     ctx.source,
     range,
   );
-  return node;
+  if (!inclusive) return difference;
+
+  return at(
+    {
+      type: "BinaryExpression",
+      operator: "+",
+      left: difference,
+      right: numericLiteral(ctx, 1, range),
+    },
+    ctx.source,
+    range,
+  );
 }
 
-/** `mxRange(from, to, step, inclusive)` call, for `<for from= to= until= step=>`. */
-function mxRangeCall(
-  ctx: LowerContext,
-  from: Node,
-  to: Node,
-  step: Node,
-  inclusive: boolean,
-  range: MxRange,
-): Node {
-  const inclusiveLiteral = at(
-    { type: "BooleanLiteral", value: inclusive },
+/** `(x) => x.<field>`, the lowering of `by="field"`. */
+function fieldKeyArrow(ctx: LowerContext, field: string, range: MxRange): Node {
+  const param = at({ type: "Identifier", name: "x" }, ctx.source, range);
+  const body = at(
+    {
+      type: "MemberExpression",
+      object: at({ type: "Identifier", name: "x" }, ctx.source, range),
+      property: at({ type: "Identifier", name: field }, ctx.source, range),
+      computed: false,
+      optional: false,
+    },
     ctx.source,
     range,
   );
   return at(
     {
-      type: "CallExpression",
-      callee: jsxIdentifier(ctx, "mxRange", range) as unknown as Node,
-      arguments: [from, to, step, inclusiveLiteral],
-      optional: false,
+      type: "ArrowFunctionExpression",
+      id: null,
+      generator: false,
+      async: false,
+      params: [param],
+      body,
     },
     ctx.source,
     range,
-  ) as unknown as Node;
+  );
 }
 
 export function lowerFor(ctx: LowerContext, el: MxElement): Node {
@@ -610,6 +588,15 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
     );
   }
 
+  // `Repeat`'s index is a plain incrementing number with no stride concept, so
+  // there is nothing to lower `step=` onto; a computed array is the workaround.
+  if (step) {
+    fail(
+      "`<for step=...>`: step is not supported; use a computed array",
+      el.name,
+    );
+  }
+
   const body = lowerBody(ctx, el);
 
   if (of) {
@@ -619,41 +606,34 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
     const eachExpr = subParseNode(ctx, of.value, "for `of` expression");
     const params = tagParams(ctx, el.params);
 
+    // No `by=`: Marko keys by position, which is 2.0's `keyed={false}` —
+    // item accessor, stable index number.
     if (!by) {
-      return listElement(ctx, "Index", eachExpr, null, params, body, el.range);
+      const keyedFalse = at(
+        { type: "BooleanLiteral", value: false },
+        ctx.source,
+        el.range,
+      );
+      return listElement(ctx, eachExpr, keyedFalse, params, body, el.range);
     }
 
     if (by.kind !== "dynamic" && by.kind !== "static") {
       fail("`<for by=...>` requires an expression value", el.name);
     }
     const byText = ctx.source.slice(by.value.start, by.value.end);
+
+    // `by=identity` is identity keying, which is `For`'s default: emit no
+    // `keyed` prop at all rather than an explicit `keyed={true}`.
     if (by.kind === "dynamic" && byText.trim() === "identity") {
-      return listElement(ctx, "For", eachExpr, null, params, body, el.range);
+      return listElement(ctx, eachExpr, null, params, body, el.range);
     }
 
-    const byExpr =
+    // `by="id"` names a field; `by=(fn)` is the key function itself.
+    const keyedExpr =
       by.kind === "static"
-        ? at(
-            {
-              type: "StringLiteral",
-              value: byText.slice(1, -1),
-              extra: { raw: byText, rawValue: byText.slice(1, -1) },
-            },
-            ctx.source,
-            by.value,
-          )
+        ? fieldKeyArrow(ctx, byText.slice(1, -1), by.value)
         : subParseNode(ctx, by.value, "for `by` expression");
-    const node = listElement(
-      ctx,
-      "Key",
-      eachExpr,
-      byExpr,
-      params,
-      body,
-      el.range,
-    );
-    markNeedsImport(node, ["Key"]);
-    return node;
+    return listElement(ctx, eachExpr, keyedExpr, params, body, el.range);
   }
 
   if (inAttr) {
@@ -692,8 +672,10 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
       el.range,
     );
 
+    // Entries are keyed by their key, `e => e[0]`, so re-ordering an object's
+    // keys moves rows instead of rebuilding them.
     const eParam = at({ type: "Identifier", name: "e" }, ctx.source, el.range);
-    const byArrow = at(
+    const keyedArrow = at(
       {
         type: "ArrowFunctionExpression",
         id: null,
@@ -704,15 +686,7 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
           {
             type: "MemberExpression",
             object: at({ type: "Identifier", name: "e" }, ctx.source, el.range),
-            property: at(
-              {
-                type: "NumericLiteral",
-                value: 0,
-                extra: { raw: "0", rawValue: 0 },
-              },
-              ctx.source,
-              el.range,
-            ),
+            property: numericLiteral(ctx, 0, el.range),
             computed: true,
             optional: false,
           },
@@ -732,17 +706,14 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
       el.params as MxRange,
     );
 
-    const node = listElement(
+    return listElement(
       ctx,
-      "Key",
       objectEntries,
-      byArrow,
+      keyedArrow,
       [arrayPattern],
       body,
       el.range,
     );
-    markNeedsImport(node, ["Key"]);
-    return node;
   }
 
   if (from || to || until) {
@@ -753,20 +724,10 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
       fail("`<for>` requires `to=` or `until=`", el.name);
     }
     const params = tagParams(ctx, el.params);
-    const zero = at(
-      { type: "NumericLiteral", value: 0, extra: { raw: "0", rawValue: 0 } },
-      ctx.source,
-      el.range,
-    );
-    const one = at(
-      { type: "NumericLiteral", value: 1, extra: { raw: "1", rawValue: 1 } },
-      ctx.source,
-      el.range,
-    );
-    const fromExpr =
-      from && (from.kind === "dynamic" || from.kind === "static")
-        ? subParseNode(ctx, from.value, "for `from` expression")
-        : zero;
+    const hasFrom = from && (from.kind === "dynamic" || from.kind === "static");
+    const fromExpr = hasFrom
+      ? subParseNode(ctx, from.value, "for `from` expression")
+      : numericLiteral(ctx, 0, el.range);
     const boundAttr = to ?? until;
     if (
       !boundAttr ||
@@ -779,33 +740,117 @@ export function lowerFor(ctx: LowerContext, el: MxElement): Node {
       boundAttr.value,
       "for bound expression",
     );
-    const stepExpr =
-      step && (step.kind === "dynamic" || step.kind === "static")
-        ? subParseNode(ctx, step.value, "for `step` expression")
-        : one;
-    const inclusive = to !== undefined;
-    const eachExpr = mxRangeCall(
+    const count = countExpression(
       ctx,
       fromExpr,
       boundExpr,
-      stepExpr,
-      inclusive,
+      to !== undefined,
       el.range,
     );
-    const node = listElement(
+    // Only pass `from` when the author wrote it; `Repeat`'s default is 0.
+    return repeatElement(
       ctx,
-      "Index",
-      eachExpr,
-      null,
+      count,
+      hasFrom ? fromExpr : null,
       params,
       body,
       el.range,
     );
-    markNeedsImport(node, ["mxRange"]);
-    return node;
   }
 
   fail("`<for>` requires `of=`, `in=`, or `from=`/`to=`/`until=`", el.name);
+}
+
+/**
+ * `<try>` -> `<Errored fallback={(e, reset) => ...}><Loading fallback={...}>
+ * ...</Loading></Errored>` (spec section 5.3).
+ *
+ * `<@catch|e|>` and `<@catch|e, reset|>` are both accepted: `Errored`'s
+ * fallback signature exposes `reset` as a second parameter, and declaring it
+ * is the author's choice. `<@placeholder>` is optional; without it the
+ * `<Loading>` boundary still wraps the body, since a body that suspends
+ * should show nothing rather than fall through to the error branch.
+ */
+export function lowerTry(ctx: LowerContext, el: MxElement): Node {
+  if (el.params) fail("tag params (`|a, b|`) on `<try>`", el.params);
+
+  let catchBody: Node | null = null;
+  let catchParams: unknown[] | null = null;
+  let catchRange: MxRange | null = null;
+  let placeholderBody: Node | null = null;
+  let placeholderRange: MxRange | null = null;
+  const rest: MxChild[] = [];
+
+  for (const child of el.children) {
+    if (child.kind !== "element") {
+      rest.push(child);
+      continue;
+    }
+    const name = child.element.staticName;
+    if (name === "@catch") {
+      if (catchBody !== null) fail("duplicate `<@catch>`", child.element.name);
+      catchParams = child.element.params
+        ? tagParams(ctx, child.element.params)
+        : null;
+      catchBody = lowerBody(ctx, child.element);
+      catchRange = child.element.range;
+      continue;
+    }
+    if (name === "@placeholder") {
+      if (placeholderBody !== null) {
+        fail("duplicate `<@placeholder>`", child.element.name);
+      }
+      placeholderBody = lowerBody(ctx, child.element);
+      placeholderRange = child.element.range;
+      continue;
+    }
+    rest.push(child);
+  }
+
+  const bodyChildren = lowerChildrenNodes(ctx, rest);
+
+  const loadingAttrs: Node[] = [];
+  if (placeholderBody) {
+    loadingAttrs.push(
+      exprAttribute(
+        ctx,
+        "fallback",
+        placeholderBody,
+        placeholderRange ?? el.range,
+      ),
+    );
+  }
+  const loading = jsxElement(
+    ctx,
+    "Loading",
+    loadingAttrs,
+    bodyChildren,
+    el.range,
+  );
+
+  if (!catchBody) {
+    // No `<@catch>` means there is no error branch to build an `Errored`
+    // boundary from; the `<Loading>` boundary alone is the whole lowering.
+    return loading;
+  }
+
+  const erroredAttrs: Node[] = [
+    exprAttribute(
+      ctx,
+      "fallback",
+      (
+        callbackChild(
+          ctx,
+          catchParams ?? [],
+          catchBody,
+          catchRange ?? el.range,
+        ) as { expression: Node }
+      ).expression,
+      catchRange ?? el.range,
+    ),
+  ];
+
+  return jsxElement(ctx, "Errored", erroredAttrs, [loading], el.range);
 }
 
 export function lowerFragment(ctx: LowerContext, el: MxElement): Node {

@@ -266,10 +266,11 @@ describe("error reporting (review #2, #3)", () => {
     // with errorRecovery on, so throwing matches it.
     for (const source of [
       `const a = <button>oops;`,
-      // `<try>` is still unsupported (no round has lowered it), so this keeps
-      // exercising the LowerError-to-SyntaxError conversion path distinct
-      // from the htmljs-parser walk-error path the first case covers.
-      `const b = <try>x</try>;`,
+      // A standalone attribute tag (`<@header>` outside `<try>`) is still
+      // unsupported, so this keeps exercising the LowerError-to-SyntaxError
+      // conversion path distinct from the htmljs-parser walk-error path the
+      // first case covers. `<try>` no longer serves: it lowers now.
+      `const b = <Layout><@header>x</@header></Layout>;`,
     ]) {
       let error: unknown;
       try {

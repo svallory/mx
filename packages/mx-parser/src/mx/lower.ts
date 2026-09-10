@@ -8,12 +8,14 @@ import {
   lowerShorthandId,
   lowerSpreadAttr,
   attrNameNode as sharedAttrNameNode,
+  shorthandClassText,
 } from "./attrs.ts";
 import {
   lowerFor,
   lowerFragment,
   lowerIfChain,
   lowerStandaloneIf,
+  lowerTry,
 } from "./control.ts";
 import type {
   MxAttr,
@@ -192,6 +194,7 @@ function lowerAttr(
   ctx: LowerContext,
   attr: MxAttr,
   hasShorthandClass: boolean,
+  shorthandClassValue: string | null,
 ): Node {
   switch (attr.kind) {
     case "static": {
@@ -220,7 +223,12 @@ function lowerAttr(
     }
 
     case "dynamic":
-      return lowerDynamicAttr(attrsContext(ctx), attr, hasShorthandClass);
+      return lowerDynamicAttr(
+        attrsContext(ctx),
+        attr,
+        hasShorthandClass,
+        shorthandClassValue,
+      );
 
     case "boolean": {
       const literal = at(
@@ -469,11 +477,6 @@ function lowerChildAt(
   }
 }
 
-/** Tags whose lowering this task does not cover. */
-const UNSUPPORTED_TAGS: Record<string, string> = {
-  try: "`<try>`",
-};
-
 export function lowerElement(ctx: LowerContext, el: MxElement): Node {
   if (el.staticName === null) {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: naming MX syntax in an error message
@@ -486,6 +489,7 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
   }
 
   if (name === "for") return lowerFor(ctx, el);
+  if (name === "try") return lowerTry(ctx, el);
   if (name === "fragment") return lowerFragment(ctx, el);
   // `lowerChildren` recognises `<if>` among an element's children and consumes
   // any `<else if>`/`<else>` chain itself; reaching `if` here instead means it
@@ -493,9 +497,6 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
   // `const el = <if=cond>x</if>;`, which still lowers, just without a fallback.
   if (name === "if") return lowerStandaloneIf(ctx, el);
   if (name === "else") fail("`<else>` without a preceding `<if>`", el.name);
-
-  const unsupported = UNSUPPORTED_TAGS[name];
-  if (unsupported) fail(unsupported, el.name);
 
   if (el.params) fail("tag params (`|a, b|`)", el.params);
   if (el.tagArgs) fail("tag arguments", el.tagArgs);
@@ -531,8 +532,15 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
   // class to merge with does the shorthand have no position of its own to
   // take — it is synthesised from the tag name, not an attribute in the
   // list — so it is pushed to the front in that case only.
+  // A dynamic object `class={...}` absorbs the shorthand itself, merging it
+  // into Solid 2's array form (`class={["card big", {...}]}`) at that
+  // attribute's own position. Front-pushing a separate shorthand `class` here
+  // as well would emit the attribute twice, and the second one wins.
+  const explicitObjectClass = el.attrs.some(
+    (a) => a.kind === "dynamic" && a.name === "class",
+  );
   const attributes: Node[] = [];
-  if (hasShorthandClass && !explicitStaticClass) {
+  if (hasShorthandClass && !explicitStaticClass && !explicitObjectClass) {
     attributes.push(lowerShorthandClass(attrsContext(ctx), el, null));
   }
   if (hasShorthandId) {
@@ -545,7 +553,14 @@ export function lowerElement(ctx: LowerContext, el: MxElement): Node {
       attributes.push(lowerShorthandClass(attrsContext(ctx), el, attr));
       continue;
     }
-    attributes.push(lowerAttr(ctx, attr, hasShorthandClass));
+    attributes.push(
+      lowerAttr(
+        ctx,
+        attr,
+        hasShorthandClass,
+        hasShorthandClass ? shorthandClassText(attrsContext(ctx), el) : null,
+      ),
+    );
   }
 
   // `$!{html}` as the sole child becomes an `innerHTML` attribute instead of a

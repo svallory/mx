@@ -1,4 +1,4 @@
-// `babel-preset-solid` has no pinned `@types/*` entry in this repo (see
+// `@solidjs/babel-plugin` has no pinned `@types/*` entry in this repo (see
 // packages/oracle/src/ambient.d.ts for the same situation with it and
 // `@babel/preset-typescript`); it is used only from control.test.ts, so the
 // shape only needs to cover that usage.
@@ -9,12 +9,12 @@
 // file in this package — including `print.ts`, which needs the full
 // `generate(ast, opts)` signature and the `map` it returns.
 
-declare module "babel-preset-solid" {
+declare module "@solidjs/babel-plugin" {
   import type { PluginItem } from "@babel/core";
 
-  const preset: (
+  const plugin: (
     api: unknown,
     options?: Record<string, unknown>,
   ) => { plugins?: PluginItem[]; presets?: PluginItem[] };
-  export default preset;
+  export default plugin;
 }
