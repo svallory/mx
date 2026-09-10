@@ -66,3 +66,5 @@ Current state: `counter` and `attrs` pass both variants; `todos` is `pending` (c
 `packages/oracle/src/compile.ts` runs `@babel/preset-typescript` after parsing `.solid.mx` too, not only `.tsx`: `mxParser`'s `parserOverride` only replaces the *parse* step, so TS type nodes (typed props, `let x: T`) are still in the AST afterward and need the same stripping pass a `.tsx` file gets, or they leak into the compiled output as syntax errors downstream tools won't accept.
 
 Golden snapshots (`fixtures/<name>/__golden__/twin.<variant>.js`) pin `twin.tsx`'s own compiled output, independent of MX, to catch a `babel-preset-solid`/`solid-js` pin bump changing generated code. Regenerate them deliberately with `bun run oracle -- --update` and call it out in the PR — never let a pin bump change them as a silent side effect.
+
+`packages/mx-parser/src/mx/perf.test.ts`'s 500ms wall-clock budget only fails the test when `MX_PERF_STRICT` is set; otherwise it just `console.warn`s past the budget, since a plain `bun run verify` under machine contention (several agents/verifiers at once) can blow well past 500ms with no actual parser regression.
