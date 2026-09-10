@@ -124,6 +124,11 @@ export interface Policy {
   /** Lowers a `:=` bound attribute; true when it consumed it. */
   emitBoundAttr?(ctx: Ctx, attr: Node): boolean;
   /**
+   * Reorders an element's attributes before they are emitted, for a dialect
+   * whose target emits them in an order other than the author's.
+   */
+  orderAttrs?(tagName: string, attrs: Node[]): Node[];
+  /**
    * Whether an HTML comment reaches the output. Stock Marko drops every
    * comment; MX keeps `<!-- -->` and treats `//` as author-only.
    */
@@ -343,7 +348,13 @@ export function attrByName(node: Node, name: string): Node | undefined {
  * (decision 42). A spread emits a runtime loop that validates each key.
  */
 export function emitAttrs(ctx: Ctx, node: Node): void {
-  for (const attr of node.attributes ?? []) {
+  const attributes = ctx.policy.orderAttrs
+    ? ctx.policy.orderAttrs(
+        String(node.name?.value ?? ""),
+        node.attributes ?? [],
+      )
+    : (node.attributes ?? []);
+  for (const attr of attributes) {
     if (attr.type === "MarkoSpreadAttribute") {
       const value = expr(ctx, attr.value);
       push(ctx, `for (const [key, value] of Object.entries(${value})) {`);

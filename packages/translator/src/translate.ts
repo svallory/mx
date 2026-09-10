@@ -420,6 +420,28 @@ function emitBoundAttr(ctx: Ctx, attr: Node): boolean {
   return true;
 }
 
+/**
+ * `<input value=…>` emits `value` before every other attribute, as Marko does.
+ *
+ * Not cosmetic and not Marko being arbitrary: a browser parsing
+ * `<input type="checkbox" value="x">` applies `type` first, and for some
+ * types that resets or reinterprets a `value` seen afterwards. Marko hoists
+ * `value` so the parsed result matches the author's intent, and matching
+ * Marko byte-for-byte is this package's whole claim, so the same hoist
+ * happens here. Verified against Marko's own render:
+ * `<input type="text" value=input.v disabled>` emits
+ * `<input value=hello type=text disabled>`.
+ */
+function orderAttrs(tagName: string, attrs: Node[]): Node[] {
+  if (tagName !== "input") return attrs;
+  const index = attrs.findIndex(
+    (a: Node) => a.type === "MarkoAttribute" && a.name === "value",
+  );
+  if (index <= 0) return attrs;
+  const value = attrs[index] as Node;
+  return [value, ...attrs.slice(0, index), ...attrs.slice(index + 1)];
+}
+
 export const policy: Policy = {
   tags: TAGS,
   isElement,
@@ -427,6 +449,7 @@ export const policy: Policy = {
   emitComponent,
   attrValue,
   emitBoundAttr,
+  orderAttrs,
   escapeFrom: "@markox/translator",
   emitSpecial,
 };
