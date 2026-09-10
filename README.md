@@ -37,6 +37,16 @@ All dependencies below are pinned to an exact version (no `^`/`~`) at the root `
 | `@babel/preset-typescript` | 7.29.7 |
 | `@types/node` | 26.5.1 |
 | `@types/babel__core` | 7.20.5 |
+| `charcodes` | 0.2.0 |
+| `@babel/helper-validator-identifier` | 7.28.5 |
+| `@babel/helper-string-parser` | 7.27.1 |
+| `@types/charcodes` | 0.2.2 |
+| `@types/babel__helper-validator-identifier` | 7.15.2 |
+
+The last five entries are build-only dependencies of `packages/mx-parser`'s
+vendored `@babel/parser` source (`@babel/parser`'s own runtime deps, which
+npm's published bundle doesn't need to declare since Babel's build inlines
+them) — see `packages/mx-parser/README.md` and `UPSTREAM.md`.
 
 Note: Babel 8 (8.0.x) and TypeScript 7 (7.0.x) were released but are new majors; the spec's parser fork targets Babel 7's `parserOverride`/JSX-plugin shape and TS's current plugin API, so this scaffold pins the latest stable Babel 7 / TypeScript 5 line instead.
 
@@ -48,4 +58,5 @@ Runnable via `bun run <name>` or `moon run :<name>`:
 - `test` — `vitest run`
 - `lint` — `biome check .`
 - `verify` — typecheck, then lint, then test; stops on first failure
+- `build` — builds `packages/mx-parser`'s vendored parser to `dist/index.js`; not part of `verify`
 - `oracle` — runs only the oracle/golden harness (`packages/oracle`) and prints a fixture/variant/status summary
