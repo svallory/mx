@@ -35,19 +35,31 @@ describe("reactive constructs are rejected by name", () => {
 });
 
 describe("<for> rejections", () => {
-  it("rejects by= naming the reason", () => {
+  // Decision 65 reclassified `by=`: it is reconciler input, naming which item
+  // a DOM node belongs to across re-renders. A one-shot string render performs
+  // no reconciliation, so it changes no emitted byte — verified against
+  // Marko's own server render, which produces identical HTML with and without
+  // it. "This target ignores it" is a fact about the target, so it is accepted
+  // rather than rejected; the old rejection was an implementation limit
+  // dressed as a rule. An invalid `by=` expression still dies at Marko's parse
+  // stage for free.
+  it("accepts by= with no effect on the output", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
-    const body = '<for|it| of=input.items by="id">${it}</for>';
-    expect(() => compile(src(body), "by.mx")).toThrow(
-      /by= is not supported in a standalone template/,
+    const withBy = '<for|it| of=input.items by="id">${it}</for>';
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+    const without = "<for|it| of=input.items>${it}</for>";
+    expect(compile(src(withBy), "by.mx").code).toBe(
+      compile(src(without), "by.mx").code,
     );
   });
 
-  it("rejects by= regardless of its value", () => {
+  it("accepts by= as an expression, with no effect on the output", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
-    const body = "<for|it| of=input.items by=anything>${it}</for>";
-    expect(() => compile(src(body), "by2.mx")).toThrow(
-      /by= is not supported in a standalone template/,
+    const withBy = "<for|it| of=input.items by=(it) => it.id>${it}</for>";
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+    const without = "<for|it| of=input.items>${it}</for>";
+    expect(compile(src(withBy), "by2.mx").code).toBe(
+      compile(src(without), "by2.mx").code,
     );
   });
 

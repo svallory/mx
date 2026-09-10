@@ -189,23 +189,29 @@ describe("whitespace", () => {
   });
 });
 
-describe("by= is rejected", () => {
-  // A one-shot string render has no reconciler to key against, so accepting
-  // `by=` and silently discarding it (as the emitter used to) reads as
-  // support from the outside when there is none — decision 10.
-  it("rejects a for-of loop with by=", () => {
+describe("by= is inert", () => {
+  // Decision 65 reclassified `by=`. It is reconciler input — which item a DOM
+  // node belongs to across re-renders — so it configures behaviour *after* the
+  // first render rather than contributing output bytes. A one-shot string
+  // render performs no reconciliation, so it changes nothing, which is
+  // verifiable rather than asserted: Marko's own server render emits identical
+  // HTML with and without it. The previous rejection (decision 10's reading)
+  // was an implementation limit stated as a rule about the target.
+  it("accepts a for-of loop with by=, emitting the same code", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: `${it}` is MX placeholder syntax in template source, not a JS template literal
     const source = '<for|it, i| of=input.items by="id">${it}</for>\n';
-    expect(() => compile(source, "by.mx")).toThrow(
-      /by= is not supported in a standalone template/,
-    );
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: `${it}` is MX placeholder syntax in template source, not a JS template literal
+    const without = "<for|it, i| of=input.items>${it}</for>\n";
+    expect(compile(source, "by.mx").code).toBe(compile(without, "by.mx").code);
   });
 
-  it("rejects by= regardless of its value", () => {
+  it("accepts by= whatever its value", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: `${it}` is MX placeholder syntax in template source, not a JS template literal
     const source = "<for|it, i| of=input.items by=totalGarbage>${it}</for>\n";
-    expect(() => compile(source, "by2.mx")).toThrow(
-      /by= is not supported in a standalone template/,
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: `${it}` is MX placeholder syntax in template source, not a JS template literal
+    const without = "<for|it, i| of=input.items>${it}</for>\n";
+    expect(compile(source, "by2.mx").code).toBe(
+      compile(without, "by2.mx").code,
     );
   });
 });
