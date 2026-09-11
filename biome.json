@@ -11,7 +11,6 @@
       "**",
       "!**/fixtures/**/__golden__",
       "!**/fixtures/**/*.solid.mx",
-      "!**/fixtures-mx",
       "!**/fixtures-marko",
       "!**/.probe*",
       "!packages/mx-parser/src/babel",

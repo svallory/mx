@@ -173,14 +173,17 @@ failed to load — treat it as a failure, not as "not implemented yet".
 
 Flags pass through `bun run`, e.g. `bun run oracle -- --strict --update`.
 
-## `oracle:marko`: Marko parity for the standalone `fixtures-mx` set
+## `oracle:marko`: Marko parity for the stock `.marko` fixture set
 
 Decision 51: the parity target for Marko syntax is Marko itself, not Solid.
-`bun run oracle:marko` (`packages/oracle/src/report-marko.ts`) renders every
-fixture under `packages/mx-html/fixtures-mx/<name>/` two ways — through the
-real Marko 6 toolchain (`@marko/compiler` + `marko/translator`, `.mx` files
-copied to `.marko` with imports rewritten, since Marko has no `.mx`
-extension) and through `@markox/html`'s own `compile()` — and compares both
+Decision 68 retired the `.mx` dialect and `@markox/html`, so there is one
+dialect (stock Marko) and one table. `bun run oracle:marko`
+(`packages/oracle/src/report-marko.ts`, delegating to
+`report-marko-stock.ts`) renders every fixture under
+`packages/translator/fixtures-marko/<name>/` (`input.marko`, `input.json`,
+`expected.html`, plus any sibling component or `tags/` directory) two ways —
+through the real Marko 6 toolchain (`@marko/compiler` + `marko/translator`)
+and through `@markox/translator`'s own `compile()` — and compares both
 against that fixture's `expected.html` for **semantic** equality —
 `htmlEquals()` (`packages/oracle/src/normalize-html.ts`) parses both sides
 with `parse5` and compares decoded tag names, attribute names/values, text
@@ -191,61 +194,32 @@ confirm whether an unescaped character was a genuine escaping gap or a safe
 alternate spelling); parsing decodes both the same way a browser would, so a
 match there means the same rendered output. Before comparison, a trailing
 Marko resume/hydration marker (`<!--M_$…--><script>…</script>`) is stripped —
-hydration plumbing with no `@markox/html` equivalent, not template content,
-and its id/script body is randomly generated per compile so it could never
-byte-match regardless. Not compared: attribute quote character, entity
+hydration plumbing with no `@markox/translator` equivalent, not template
+content, and its id/script body is randomly generated per compile so it could
+never byte-match regardless. Not compared: attribute quote character, entity
 spelling, void self-closing spelling, or inter-tag whitespace (all collapsed
 before parsing). Attribute *order* is compared — a real reordering still
 shows as a mismatch.
 
-Prints a `fixture | marko | mx-html | verdict` table plus a `processed: N
-fixtures (minimum required: 30)` footer. `bun run oracle:marko -- --strict`
-accepts the same `--strict` flag as `oracle` for CLI symmetry, but the two do
-not mean the same thing: `oracle --strict` fails on any `skipped`/`pending`
-row, while `oracle:marko --strict` does **not** fail on a recorded, reasoned
-skip or divergence — that classification *is* the settled state here, not an
-unfinished one. Both commands fail (in either mode) if the fixture glob
-expands to nothing, if any fixture directory is missing `input.mx`,
-`input.json` or `expected.html`, or if fewer than 30 fixtures were actually
-processed — a broken glob must never read as a silent pass (decision 55).
+Prints a `fixture | marko | translator | verdict` table plus a `processed: N
+stock fixtures (minimum required: N)` footer. `bun run oracle:marko --
+--strict` accepts the same `--strict` flag as `oracle` for CLI symmetry, but
+the two do not mean the same thing: `oracle --strict` fails on any
+`skipped`/`pending` row, while `oracle:marko --strict` does **not** fail on a
+recorded, reasoned skip or divergence — that classification *is* the settled
+state here, not an unfinished one. The run fails (in either mode) if the
+fixture glob expands to nothing, if any fixture directory is missing
+`input.marko`, `input.json` or `expected.html`, or if fewer than the required
+minimum were actually processed — a broken glob must never read as a silent
+pass (decision 55).
 
-The `bun run` invocation uses `--tsconfig-override=tsconfig.base.json`
-(needed because `packages/oracle` importing `@markox/html` otherwise resolves
-`@markox/parser` through *`mx-html`'s own* tsconfig `paths`, the same Bun
-quirk `AGENTS.md`'s "Standalone MX" section documents for `mx-site`). This
-makes Bun print `Internal error: directory mismatch for directory
-".../tsconfig.base.json", fd 3. You don't need to do anything, but this
-indicates a bug.` on every run, to stderr, after the table — a Bun-internal
-warning triggered by the flag itself, not anything `report-marko.ts` emits.
-It does not affect the exit code; expected and harmless.
-
-Current state (the script's own footer — the authoritative count, not a
-retyped one): `processed: 30 fixtures (minimum required: 30) — 18 pass, 12
-skipped(reason), 0 mx bug`. The 12 skips each carry a `meta.json` citing
-either a settled decision (S3 "Output module shape", S11/decision 47
-"lowercase tags resolve to in-scope bindings", or a parser limitation
-recorded in `notes/team-standalone-mx.md`) or a genuinely irreconcilable
-toolchain difference (Marko drops HTML comments; Marko leaves an
-element-less template's sole placeholder completely unescaped, unlike a
-placeholder inside any element, which it escapes correctly).
-
-### The second table: stock `.marko` fixtures (`@markox/translator`)
-
-`bun run oracle:marko` prints a second table below the first, for
-`packages/translator/fixtures-marko/<name>/` (`input.marko`, `input.json`,
-`expected.html`, plus any sibling component or `tags/` directory). Decision
-66: the same parity question, asked of *stock* Marko templates through
-`@markox/translator` rather than of `.mx` through `@markox/html`.
-
-The two tables differ in what a passing run looks like, and the difference is
-the point. The `.mx` table carries twelve recorded divergences because MX's
-dialect and Marko deliberately disagree about component calling conventions
-and tag dispatch. The stock table asks a narrower, stricter question — for a
-template an ordinary Marko user would write, does the expressions-only
-translator emit what Marko's own server render emits? — so **every fixture is
-expected to pass**, and a skip needs a decision-65 reason: *this target
-cannot*, never *my code cannot*. Current state: 28 fixtures, 28 pass, 0
-skipped, 0 translator bug.
+This asks a narrow, strict question: for a template an ordinary Marko user
+would write, does the expressions-only translator emit what Marko's own
+server render emits? **Every fixture is expected to pass**, and a skip needs a
+decision-65 reason — *this target cannot*, never *my code cannot*. See
+`packages/translator/README.md`'s policy table (decision 65) for what "this
+target cannot" means in practice, and the script's own footer for the current
+pass/skip/bug count — the authoritative number, not one retyped here.
 
 Same comparison (`htmlEquals`, parse5, decoded content, resume markers
 stripped) and the same decision-55 floor: the run fails if the glob expands
@@ -260,7 +234,7 @@ that two of our own opinions agree.
 ### `meta.json`: the Marko column's skip/divergence marker
 
 An optional `meta.json` in a fixture directory classifies why that fixture's
-Marko rendering does not match `@markox/html`'s:
+real-Marko rendering does not match `@markox/translator`'s:
 
 ```json
 { "marko": "skip", "reason": "why this fixture is never compiled by Marko" }

@@ -18,8 +18,8 @@ declare module "@markox/parser" {
   /**
    * Parses a `.solid.mx` file into a Babel `File` of standard node types.
    *
-   * Whole-file `.mx` templates are not parsed here: `@markox/html` drives
-   * `@marko/compiler` with its own translator instead (ADR 0001).
+   * Whole-file `.marko` templates are not parsed here: `@markox/translator`
+   * drives `@marko/compiler` with its own translator instead (ADR 0001).
    */
   export function parse(
     source: string,

@@ -13,8 +13,7 @@ MX: Marko's syntax with pluggable host-language expressions. SolidMX (codename "
 | `packages/mx-vscode` | `@markox/vscode` | TextMate grammar + `typescriptServerPlugins` manifest |
 | `packages/eslint-plugin-mx` | `@markox/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
 | `packages/mx-vite-plugin` | `@markox/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
-| `packages/mx-html` | `@markox/html` | Standalone string-emitting target: whole-file `.mx` templates compile to a pure `(input) => string` function, no runtime beyond an `escape` helper |
-| `packages/translator` | `@markox/translator` | The same string target for **stock `.marko`** files, as a `config.translator` for `@marko/compiler`: a working expressions-only mode for Marko, no fork |
+| `packages/translator` | `@markox/translator` | Stock **`.marko`** files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`: a working expressions-only mode for Marko, no fork. There is no `.mx` dialect (decision 68) — this is Marko syntax, unmodified. |
 
 **Naming TODO**: the `@markox/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
 
@@ -106,13 +105,13 @@ chromium` once). The e2e suite is not part of the root `bun run test` — it
 needs a browser — so it stays behind the example's own script.
 
 `examples/mx-site` is a different kind of example: a Hono-on-Bun server
-rendering `.mx` templates to HTML strings with `@markox/html`, no client
-runtime, no Solid. It imports `.mx` files directly via `@markox/html/bun`
-(no prebuild step). See `examples/mx-site/README.md`.
+rendering stock `.marko` templates to HTML strings with `@markox/translator`,
+no client runtime, no Solid. It imports `.marko` files directly via
+`@markox/translator/bun` (no prebuild step). See `examples/mx-site/README.md`.
 
-`examples/mx-vite` is a minimal static-site build: two `.mx` pages compiled
-by `@markox/vite-plugin`'s `.mx` handling, bundled by `vite build` to an SSR
-entry, then run once to write `dist/*.html`.
+`examples/mx-vite` is a minimal static-site build: two `.marko` pages
+compiled by `@markox/vite-plugin`'s `.marko` handling, bundled by `vite build`
+to an SSR entry, then run once to write `dist/*.html`.
 
 `@markox/translator` needs no app at all — it renders a fixture to stdout,
 showing the stock `.marko` template, the compiled runtime-free module, and

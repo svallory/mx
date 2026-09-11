@@ -55,7 +55,7 @@ Or use the convenience wrappers, which drive the compiler for you:
 - `compile(source, filename)` → `{ code, map }`
 - `compileFile(filename)` → `{ code, map }`
 - `build(filenames)` → `Map<filename, { code, map }>`, a CLI-free build step
-- `escape(value)` — the entire runtime, re-exported from `@markox/html`
+- `escape(value)` — the entire runtime
 - `TranslateError` — thrown for a construct with no lowering, carrying
   `line`/`column`
 
@@ -65,6 +65,76 @@ Try it:
 bun run example                  # renders the `class-object` fixture
 bun run example nested-layout    # or any other fixture name
 ```
+
+## There is no `.mx` dialect
+
+Decision 68: `.mx` (the standalone MX dialect, formerly `@markox/html`) is
+retired. This package is the only string-emitting host, and `.marko` is the
+only extension it compiles — stock Marko syntax, unmodified, as described
+above. `packages/mx-html` no longer exists; its lowering core (`core.ts`) and
+its `escape` runtime moved here.
+
+## Loaders
+
+Two loaders make `import page from "./page.marko"` resolve, one per runtime:
+
+- **Bun**: `@markox/translator/bun` is a `BunPlugin` that intercepts `.marko`
+  imports and compiles them on the fly. Register it once via `bunfig.toml`:
+
+  ```toml
+  preload = ["@markox/translator/bun"]
+  ```
+
+  or at runtime with `Bun.plugin`:
+
+  ```ts
+  import markoPlugin from "@markox/translator/bun";
+  Bun.plugin(markoPlugin);
+  ```
+
+  See `examples/mx-site` for a full app built this way.
+
+- **Vite**: `@markox/vite-plugin`'s `mx()` plugin handles `.marko` alongside
+  `.solid.mx` — add it to `plugins` and import `.marko` files as usual. See
+  `examples/mx-vite`.
+
+`import page from "./x.marko"` typechecks against the ambient declaration in
+`types/marko.d.ts` (`declare module "*.marko"`, typed `(input: any) => string`
+— per-file `Input` typing needs a virtual-file projection, the phase-3
+language server's job, not something this ambient declaration can derive).
+Reference it from a consumer's `tsconfig.json` `include` (both loaders'
+example apps do this).
+
+## The `strict` policy
+
+Decision 68's policy fold: `.mx`'s reactive-constructs-are-errors stance is
+folded in as an opt-in `strict` policy, rather than the default. The default
+`policy` renders what Marko's own server render would emit (`<let>`'s initial
+value, `<effect>`/`<lifecycle>`/`<script>`/`client`/`<id>` as inert) — see the
+policy table below. `strictPolicy` instead rejects those same constructs by
+name, for an author who wants "this needs a reactive runtime" to be a compile
+error rather than silently accepted:
+
+```ts
+import { compile } from "@markox/translator";
+
+const { code } = compile(source, "greeting.marko", { strict: true });
+```
+
+`compileFile` and `build` take the same `{ strict?: boolean }` option.
+
+Kept from `.mx`'s dialect: the reactive-tags-as-errors stance above, and the
+`input`-shadowing check (`checkBinding`) — already the default in both
+policies, not `strict`-only, since a `<let>`/`<const>` binding named `input`
+silently breaking the template's own input is a bug in either policy, not a
+stricter preference. Dropped, per decision 65 (these were conventions of the
+old `.mx` walk, not capabilities the target lacks, so they do not survive as
+a policy — stock Marko's own conventions replace them unconditionally, not
+just outside `strict`): the explicit-import requirement (Marko's taglib +
+`tags/` discovery works in both policies), the `export interface Input`
+requirement (already optional — Marko allows arbitrary TS), `<fragment>`
+(Marko templates and bodies are multi-root already), and lowercase-by-scope
+tag resolution (replaced by Marko's own registry).
 
 ## What this proves
 
@@ -81,10 +151,9 @@ the compiler. The seam is `config.translator`: a translator that supplies only
 runtime surface is one `escape` import (plus, only when a template calls for
 it, an inlined `classValue`/`styleValue`/`renderDynamic` helper).
 
-The evidence is `bun run oracle:marko`'s second table: 30 stock `.marko`
-fixtures rendered both through the real Marko 6 toolchain and through this
-translator, compared for semantic HTML equality. **30 of 30 pass, with no
-skips and no recorded divergences.**
+The evidence is `bun run oracle:marko`'s table: every stock `.marko` fixture
+under `fixtures-marko/` rendered both through the real Marko 6 toolchain and
+through this translator, compared for semantic HTML equality.
 
 ### Proposal draft
 
@@ -190,20 +259,23 @@ absence from the table above is not mistaken for silent tolerance:
   same error surfaces through `compile()` as a Marko `CompileError` rather
   than a `TranslateError`.
 
-## Attribute tags differ from `@markox/html`
+## Attribute tags follow Marko's own convention
 
-Both packages compile Marko syntax to a string function, and they disagree here
-on purpose. `@markox/html` implements MX's own `.mx` dialect (decision S3);
-this package implements Marko's conventions.
+`<@header>x</@header>` becomes a **renderable** — `input.header`, rendered
+with `<${input.header}/>` — and a *repeated* `<@item>` becomes an **array**
+of renderables, matching Marko's own server render (verified against Marko
+5.42.5, not assumed). Ordinary children become `input.content`. Component
+resolution goes through Marko's taglib lookup: an `import`, a `<define>`, or
+a `tags/`-discovered `.marko` file. An unknown lowercase tag resolves through
+Marko's own HTML/SVG/MathML registry, and a plain `<!-- -->` comment is
+stripped, because Marko strips it.
 
-| | `@markox/translator` (Marko) | `@markox/html` (MX's `.mx`) |
-|---|---|---|
-| `<@header>x</@header>` | a **renderable**, rendered `<${input.header}/>` | a callable prop, `input.header()` |
-| repeated `<@item>` | an **array** of renderables | last one wins |
-| ordinary children | `input.content` | `input.children` |
-| component resolution | taglib + `tags/` discovery + imports | explicit `import` or `<define>` only |
-| unknown lowercase tag | resolved by Marko's registry | error unless hyphenated |
-| `<!-- -->` comment | stripped | preserved |
+The retired `.mx` dialect (decision 68) made different choices here —
+callable function props instead of renderables, `input.children` instead of
+`input.content`, explicit imports only, no `tags/` discovery, an error for an
+unhyphenated unknown tag, and preserved `<!-- -->` comments. Those were
+recorded conventions of MX's own walk, not capabilities Marko's target
+lacks (decision 65), so they did not survive the fold into this package.
 
 ## Why third-party translators are hard to write correctly
 
@@ -212,9 +284,9 @@ the fields it fills in are *not* in `body.body`. A translator that walks only
 the body renders none of them — and reports nothing, because from the walker's
 point of view there was nothing there.
 
-That is not hypothetical. The `@markox/html` audit found eight such fields,
-each silently dropped by a translator that looked correct and passed its
-fixtures:
+That is not hypothetical. An early audit of this problem found eight such
+fields, each silently dropped by a translator that looked correct and passed
+its fixtures:
 
 | Field | What a naive walk does | What it should do |
 |---|---|---|
@@ -232,11 +304,11 @@ and it looks fine. The `by=` case is how the whole class was found — a fixture
 cited `by=`, passed, and proved nothing, because the emitter read four
 attributes and discarded the fifth.
 
-Both packages therefore run one shared guard (`rejectUnsupportedFields` in
-`@markox/html/core`) rather than a check per emission path. Every caller
-**declares** the fields it genuinely lowers; anything else present on the node
-is an error naming it. Seven scattered copies would drift, and the next field
-Marko adds would be dropped by whichever copy was forgotten.
+Every emission path therefore runs one shared guard (`rejectUnsupportedFields`
+in `core.ts`) rather than a check per path. Every caller **declares** the
+fields it genuinely lowers; anything else present on the node is an error
+naming it. Seven scattered copies would drift, and the next field Marko adds
+would be dropped by whichever copy was forgotten.
 
 Inert constructs are declared to the same guard rather than skipped, so
 "accepted with no output" and "silently swallowed" cannot be confused. Each

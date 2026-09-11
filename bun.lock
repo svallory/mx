@@ -50,7 +50,7 @@
       "name": "@markox/example-mx-site",
       "version": "0.0.0",
       "dependencies": {
-        "@markox/html": "workspace:*",
+        "@markox/translator": "workspace:*",
         "hono": "4.6.20",
       },
       "devDependencies": {
@@ -65,7 +65,7 @@
       "name": "@markox/example-mx-vite",
       "version": "0.0.0",
       "dependencies": {
-        "@markox/html": "workspace:*",
+        "@markox/translator": "workspace:*",
       },
       "devDependencies": {
         "@markox/vite-plugin": "workspace:*",
@@ -102,17 +102,6 @@
       "name": "@markox/eslint-plugin",
       "version": "0.0.0",
     },
-    "packages/mx-html": {
-      "name": "@markox/html",
-      "version": "0.0.0",
-      "dependencies": {
-        "@marko/compiler": "5.42.5",
-        "@markox/parser": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/bun": "1.4.2",
-      },
-    },
     "packages/mx-parser": {
       "name": "@markox/parser",
       "version": "0.0.0",
@@ -129,8 +118,8 @@
       "name": "@markox/vite-plugin",
       "version": "0.0.0",
       "dependencies": {
-        "@markox/html": "workspace:*",
         "@markox/parser": "workspace:*",
+        "@markox/translator": "workspace:*",
       },
     },
     "packages/mx-vscode": {
@@ -141,7 +130,6 @@
       "name": "@markox/oracle",
       "version": "0.0.0",
       "dependencies": {
-        "@markox/html": "workspace:*",
         "@markox/parser": "workspace:*",
         "@markox/translator": "workspace:*",
       },
@@ -157,7 +145,10 @@
       "version": "0.0.0",
       "dependencies": {
         "@marko/compiler": "5.42.5",
-        "@markox/html": "workspace:*",
+        "@markox/parser": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.2",
       },
     },
     "packages/tree-sitter-solidmx": {
@@ -335,8 +326,6 @@
     "@markox/example-mx-vite": ["@markox/example-mx-vite@workspace:examples/mx-vite"],
 
     "@markox/example-todomvc": ["@markox/example-todomvc@workspace:examples/todomvc"],
-
-    "@markox/html": ["@markox/html@workspace:packages/mx-html"],
 
     "@markox/oracle": ["@markox/oracle@workspace:packages/oracle"],
 
