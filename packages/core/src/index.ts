@@ -49,7 +49,23 @@ export {
   TranslateError,
   VOID_TAGS,
 } from "./core.ts";
+export type { HostDeclarations } from "./declarations.ts";
+export { drive, type Emitter, emit } from "./emit.ts";
 export { escape } from "./escape.ts";
+export type {
+  Attr,
+  AttributeTag,
+  Block,
+  Branch,
+  ComponentTarget,
+  Expr,
+  ForSource,
+  HostTag,
+  Ir,
+  IrNode,
+  Position,
+} from "./ir.ts";
+export { resolve, resolveChildren } from "./resolve.ts";
 export {
   type FragmentBase,
   type FragmentResult,

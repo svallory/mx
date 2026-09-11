@@ -42,6 +42,7 @@
  */
 
 import { createRequire } from "node:module";
+import type { HostDeclarations } from "./declarations.ts";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the compiler calls the same helper the emitted module imports, so a static value and a runtime one are escaped by one implementation
 import { escape } from "./escape.ts";
 
@@ -159,15 +160,34 @@ export type Disposition =
     }
   | { kind: "error"; reason: string };
 
-export interface Policy {
-  /** Tag names this dialect accepts with no output, or rejects, by name. */
-  tags: Record<string, Disposition>;
-  /** Whether a lowercase, unbound tag name is a real element. */
-  isElement(name: string, ctx: Ctx): boolean;
+/**
+ * A host's object as the **emitting** walk consumes it: its declarations, plus
+ * the callbacks that push text into a buffer.
+ *
+ * Deliberately defined as `HostDeclarations &` the emitting half rather than
+ * as a second, parallel interface (decision 79). The two halves answer
+ * different questions — `isComponent` asks *what a tag is*, `emitComponent`
+ * decides *what bytes it becomes* — and only the first half is meaningful to
+ * `resolve()`, which has no buffer to emit into. Writing `Policy` as an
+ * intersection means the declaration members exist in exactly one place: a
+ * host that satisfies `Policy` automatically satisfies `HostDeclarations`,
+ * `Ctx.declarations` can hold the same object the emitting walk holds as
+ * `Ctx.policy`, and a change to a declaration cannot be made to one of them
+ * and forgotten in the other.
+ *
+ * The name stays `Policy` because hosts export their object by value —
+ * `@mxlang/translator`'s `policy`/`strictPolicy`, which `@mxlang/language-server`
+ * imports and hands to `compileSource` — so renaming the type would break
+ * those call sites for no behavioural gain. New code that only needs the
+ * queries should name `HostDeclarations`, which is the accurate half.
+ *
+ * The emitting members below are what a host's `Emitter` replaces; they remain
+ * here while `emitProgram`'s string walk does, and a host ported to the IR
+ * stops implementing them.
+ */
+export type Policy = HostDeclarations & {
   /** Emits a call to a component (an import, a `<define>`, or a discovered tag). */
   emitComponent(ctx: Ctx, node: Node, name: string): void;
-  /** Whether `name` resolves to a component in this dialect. */
-  isComponent(name: string, ctx: Ctx): boolean;
   /** Handles `class:foo="x"`-style attribute modifiers, or rejects them. */
   emitModifier?(ctx: Ctx, attr: Node): boolean;
   /**
@@ -183,28 +203,9 @@ export interface Policy {
    * whose target emits them in an order other than the author's.
    */
   orderAttrs?(tagName: string, attrs: Node[]): Node[];
-  /**
-   * Inspects a variable a construct is about to declare at *render* scope —
-   * a `<let>` or `<const>` name. A dialect uses this to reject a name that
-   * would collide with something the emitted module already binds.
-   *
-   * Deliberately not called for tag params (`<for|x|>`, `<define/R|x|>`):
-   * those introduce a nested scope — a `for (const x of …)` head, an arrow
-   * function's parameter list — where an ordinary JS shadow is correct and
-   * harmless. Marko draws the same line, accepting `<for|input|>` while
-   * rejecting `<let/input>` as a duplicate declaration.
-   */
-  checkBinding?(target: Node, what: string): void;
-  /**
-   * Whether an HTML comment reaches the output. Stock Marko drops every
-   * comment; MX keeps `<!-- -->` and treats `//` as author-only.
-   */
-  keepComments?: boolean;
-  /** The `import` specifier the emitted module's `escape` comes from. */
-  escapeFrom: string;
   /** Lowers a tag this dialect handles specially; true when it consumed it. */
   emitSpecial?(ctx: Ctx, node: Node, name: string): boolean;
-}
+};
 
 /**
  * A host's rewrite for references to one registered binding (decision 70).
@@ -264,6 +265,16 @@ export interface Ctx {
   indent: number;
   generate: (node: Node) => string;
   policy: Policy;
+  /**
+   * What the host *declares*, as `resolve()` consults it (decision 79).
+   *
+   * The same object as `policy` today — `Policy` is an alias of
+   * `HostDeclarations`, and a host passes one object that satisfies both — but
+   * named for the half the resolver uses, so a query the resolver asks reads
+   * as a declaration rather than as "the policy, which also emits". The
+   * emitting members are the host's `Emitter`, not this.
+   */
+  declarations: HostDeclarations;
   /** Set by a dialect that resolves tags through Marko's taglib lookup. */
   lookup?: { getTag(name: string): { taglibId?: string } | undefined };
 }
@@ -369,7 +380,7 @@ export function declName(ctx: Ctx, node: Node): string {
  * param shadows for its block and is restored after, which is what the undo is
  * for.
  */
-function shadowBindings(ctx: Ctx, names: string[]): () => void {
+export function shadowBindings(ctx: Ctx, names: string[]): () => void {
   const saved: Array<[string, BindingRewrite]> = [];
   for (const name of names) {
     const rewrite = ctx.bindings.get(name);
@@ -585,7 +596,7 @@ export function rejectUnsupportedFields(
  * support the `foo` attribute", and `<lifecycle>`/`<id>`/`<log>`/`<debug>` are
  * `openTagOnly` so a body is a parse error before any translator sees it.
  */
-function rejectInertShape(
+export function rejectInertShape(
   ctx: Ctx,
   node: Node,
   name: string,
@@ -883,7 +894,7 @@ export function emitConst(ctx: Ctx, node: Node): void {
  * Destructuring included, since `<const/{a, b}=…>` declares both and each
  * shadows the host's binding of that name.
  */
-function bindingIdentifiers(pattern: Node): string[] {
+export function bindingIdentifiers(pattern: Node): string[] {
   if (!pattern || typeof pattern !== "object") return [];
   switch (pattern.type) {
     case "Identifier":
@@ -1220,6 +1231,10 @@ export function newCtx(
     indent: 1,
     generate,
     policy,
+    // One object, two views: the emitting walk reads `policy`, `resolve()`
+    // reads `declarations`. Splitting the *type* is what lets the resolver
+    // state that it only ever asks questions.
+    declarations: policy,
     lookup,
   };
   return ctx;
