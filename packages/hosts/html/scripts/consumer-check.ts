@@ -104,7 +104,7 @@ console.log(`[consumer-check] packed: ${tarballPath}`);
 // tarball 404s resolving it. Packing and installing it too proves this
 // package is *installable* today without requiring `@mxlang/core` to
 // actually be published yet.
-const coreDir = join(pkgDir, "..", "core");
+const coreDir = join(pkgDir, "..", "..", "core");
 console.log(
   "[consumer-check] packing @mxlang/core (unpublished dependency)...",
 );
