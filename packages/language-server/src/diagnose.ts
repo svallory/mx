@@ -6,8 +6,8 @@
  * tested directly, as the brief requires, without spawning a process.
  */
 
-import { compileSource, TranslateError } from "@mxlang/core";
-import { policy, strictPolicy } from "@mxlang/translator";
+import { TranslateError } from "@mxlang/core";
+import { compile } from "@mxlang/translator";
 import {
   type Diagnostic,
   DiagnosticSeverity,
@@ -19,25 +19,26 @@ export interface HostPolicy {
 }
 
 /**
- * Resolves a `HostPolicy` to the `@mxlang/core` `Policy` object that compiles
- * it. Only `"translator"` is wired to a real host today (`@mxlang/astro` and
- * a future SolidMX host both build on `@mxlang/core` but do not yet export a
- * `Policy` a caller outside their own package can import — see the "host"
- * union above and README "Adding a host" for the extension point).
+ * Resolves a `HostPolicy` to the `strict` flag the translator compiles under.
+ *
+ * Only `"translator"` is wired to a real host today (`@mxlang/astro` and a
+ * future SolidMX host both build on `@mxlang/core` but do not yet export a
+ * host a caller outside their own package can drive — see the "host" union
+ * above and README "Adding a host" for the extension point).
  */
-function resolvePolicyObject(hostPolicy: HostPolicy) {
+function resolveStrict(hostPolicy: HostPolicy): boolean {
   switch (hostPolicy.host) {
     case "astro":
-      // `@mxlang/astro` always compiles under the translator's strictPolicy
-      // (decision 71: astro-static ships no stateful tags).
-      return strictPolicy;
+      // `@mxlang/astro` always compiles under the strict policy (decision 71:
+      // astro-static ships no stateful tags), whatever the field says.
+      return true;
     case "solid":
-      // SolidMX is paused (decision 58) and has no core-based Policy yet;
-      // fall back to the translator's policy rather than throwing, so a
-      // mixed workspace still gets diagnostics for its non-Solid files.
-      return hostPolicy.strict ? strictPolicy : policy;
+      // SolidMX is paused (decision 58) and has no core-based host yet; fall
+      // back to the translator's own default rather than throwing, so a mixed
+      // workspace still gets diagnostics for its non-Solid files.
+      return hostPolicy.strict ?? false;
     default:
-      return hostPolicy.strict ? strictPolicy : policy;
+      return hostPolicy.strict ?? false;
   }
 }
 
@@ -55,10 +56,16 @@ export function diagnoseDocument(
   hostPolicy: HostPolicy,
   onUnexpectedError?: (error: unknown) => void,
 ): Diagnostic[] {
-  const policyObject = resolvePolicyObject(hostPolicy);
-
+  // Through `@mxlang/translator`'s own front door, not `compileSource`
+  // directly: `compile()` registers the host's taglib and compiles via the
+  // IR (`HostOptions.emitIr`), which is what makes `<let>` and the other
+  // tags this host claims resolve at all. Driving `compileSource` with an
+  // empty host took the core's legacy string walk instead, where those tags
+  // are not handled — the diagnostics would then report a construct as an
+  // unknown tag purely because the language server compiled it differently
+  // from the way the host actually does.
   try {
-    compileSource(text, uri, policyObject, {});
+    compile(text, uri, { strict: resolveStrict(hostPolicy) });
     return [];
   } catch (error) {
     if (error instanceof TranslateError) {

@@ -97,14 +97,18 @@ export function drive<Out>(emitter: Emitter<Out>, nodes: IrNode[]): void {
         emitter.comment(node);
         break;
       // The module-level kinds, lifted into `Ir`'s fields by `resolve()`. A
-      // host reads them from there; reaching one here would mean the IR was
-      // hand-built rather than resolved, so it is ignored rather than
-      // mis-emitted into the body.
+      // host reads them from there, so reaching one here means the IR was
+      // hand-built rather than resolved. Throwing rather than ignoring: a
+      // silent `break` would drop a real `import` or `export` from a
+      // successful compile, which is the S8 class this codebase's guards
+      // exist to close.
       case "Import":
       case "Static":
       case "Export":
       case "InputInterface":
-        break;
+        throw new Error(
+          `@mxlang/core: unexpected module-level node kind "${node.kind}" in the body walk; resolve() lifts these into Ir's own fields`,
+        );
     }
   }
 }

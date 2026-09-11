@@ -259,11 +259,50 @@ function isComponent(name: string, ctx: Ctx): boolean {
  * core falls back to `@mxlang/html`'s wording ("not supported in a standalone
  * template"), which is `.mx`'s vocabulary leaking into a Marko-parity target.
  */
-function emitModifier(_ctx: Ctx, attr: Node): boolean {
+function rejectModifier(attr: Node): void {
   fail(
     `\`${attr.name}:${attr.modifier}\` is not a valid attribute; Marko rejects this form too — write \`${attr.name}={ ${attr.modifier}: condition }\``,
     attr,
   );
+}
+
+/**
+ * Marko's own rule: a lowercase tag name is never resolved through a local
+ * variable.
+ *
+ * `import layout from "./layout.marko"` then `<layout>` is refused outright
+ * ("Local variables must be in a dynamic tag unless they are PascalCase…",
+ * verified against `@marko/compiler` 5.42.5 / `marko@6.3.51`; fixture
+ * `lowercase-component`), because a lowercase tag is only ever resolved
+ * through taglib/`tags/` discovery — that ambiguity is what the dynamic-tag
+ * syntax exists to remove. A taglib-discovered tag is unaffected whatever its
+ * case, since it is never a local variable.
+ *
+ * This runs at *resolve* time. Before the IR, it lived in `emitComponent`,
+ * "the first place downstream that has a node"; with the emitter no longer
+ * seeing Marko nodes, resolve is that place.
+ */
+function rejectComponentTag(name: string, node: Node, ctx: Ctx): void {
+  if (!(ctx.defines.has(name) || ctx.imports.has(name))) return;
+  if (/^[A-Z]/.test(name)) return;
+  fail(
+    `Local variables must be in a dynamic tag unless they are PascalCase. Use \`<\${${name}}/>\` or rename to \`${name[0]?.toUpperCase()}${name.slice(1)}\`.`,
+    node,
+  );
+}
+
+/**
+ * Marko's own failure for a tag name nothing resolves.
+ *
+ * A hyphenated name with no taglib entry is Marko's failed custom-element
+ * lookup ("Unable to find entry point for custom tag `<my-widget>`", verified
+ * against `@marko/compiler` 5.42.5 / `marko@6.3.51`; fixture
+ * `unknown-element`), not literal HTML. Reported in Marko's words rather than
+ * the core's generic "unknown tag", which is a dialect's vocabulary leaking
+ * into a parity target.
+ */
+function rejectUnknownTag(name: string, node: Node): void {
+  fail(`Unable to find entry point for custom tag \`<${name}>\`.`, node);
 }
 
 /**
@@ -404,11 +443,13 @@ export const policy: Policy = {
   escapeFrom: "@mxlang/translator",
   claimsTag,
   resolveHostTag,
-  // The resolver offers the host first refusal on a modifier so the
-  // diagnostic quotes Marko's own fix-it rather than the core's
-  // "standalone template" wording, which is `.mx` dialect vocabulary leaking
-  // into a Marko-parity target.
-  rejectModifier: (attr: Node) => emitModifier(undefined as never, attr),
+  // The resolver offers the host first refusal on each of these so the
+  // diagnostic quotes Marko's own wording rather than the core's generic
+  // fallback, which is `.mx` dialect vocabulary leaking into a Marko-parity
+  // target.
+  rejectModifier,
+  rejectComponentTag,
+  rejectUnknownTag,
 };
 
 /**

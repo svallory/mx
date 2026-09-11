@@ -427,6 +427,12 @@ function resolveComponent(
   node: Node,
   target: ComponentTarget,
 ): IrNode {
+  // The host gets first refusal, before any `Component` node exists: a call it
+  // will not route must fail here rather than reach an emitter, which no
+  // longer has the Marko node to judge it by.
+  if (target.kind === "name") {
+    ctx.declarations.rejectComponentTag?.(target.name, node, ctx);
+  }
   rejectUnsupportedFields(ctx, node, `\`<${targetName(target)}>\``, {
     attributeTags: true,
     args: true,
@@ -530,6 +536,10 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
   // the silent-failure mode ADR 0001 names: a core tag the host has no
   // lowering for must be an error, never a literal element.
   if (!ctx.declarations.isElement(name, ctx)) {
+    // The host's own wording first: a Marko-parity target reports Marko's
+    // failure for an unresolved custom tag, which is what its users see and
+    // what the fixtures assert. The message below is the fallback.
+    ctx.declarations.rejectUnknownTag?.(name, node, ctx);
     fail(
       `unknown tag \`<${name}>\`: not an HTML element, and no matching import or \`<define>\` is in scope`,
       node,

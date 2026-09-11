@@ -78,6 +78,26 @@ export interface HostDeclarations {
    */
   rejectModifier?(attr: Node): void;
   /**
+   * Rejects a component call this host will not route, in its own words.
+   *
+   * Called from `resolveComponent` *before* the `Component` node is built, so
+   * a construct the host refuses never reaches an emitter at all. The vanilla
+   * HTML host uses it for Marko's own rule that a lowercase tag name is never
+   * resolved through a local variable (`import layout …` then `<layout>`),
+   * which Marko rejects outright — a check that has to happen at resolve time
+   * now that the emitter no longer sees the Marko node.
+   */
+  rejectComponentTag?(name: string, node: Node, ctx: Ctx): void;
+  /**
+   * Rejects an unresolved tag name in this host's own words.
+   *
+   * Called before the core's generic "unknown tag" message. A Marko-parity
+   * target quotes Marko's own failure ("Unable to find entry point for custom
+   * tag …"), which is what its users see and what the fixtures assert; the
+   * core's wording is only the fallback for a host that supplies none.
+   */
+  rejectUnknownTag?(name: string, node: Node, ctx: Ctx): void;
+  /**
    * Inspects a name a construct is about to bind at *render* scope — a
    * `<let>` or `<const>` name. A host rejects a name that would collide with
    * something the emitted module already binds.

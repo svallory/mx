@@ -66,7 +66,6 @@ function resolveSource(source: string, policy = fakeDeclarations()): Ir {
     taglibs: [] as Array<[string, unknown]>,
     tagDiscoveryDirs: [] as string[],
     translate: {
-      // biome-ignore lint/style/useNamingConvention: a Marko translate visitor key is a node type
       Program: {
         exit(path: { node: { body: Node[] } }) {
           const ctx: Ctx = newCtx(source, printExpression, policy);
@@ -156,7 +155,6 @@ describe("one fixture per IR kind", () => {
       expr: { code: "input.a" },
     });
 
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: Marko placeholder syntax in template source
     const raw = resolveSource("<p>$!{input.a}</p>\n");
     expect(find(raw.body, "Interpolation").escaped).toBe(false);
   });
