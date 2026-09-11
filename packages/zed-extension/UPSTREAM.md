@@ -1,29 +1,42 @@
 # Upstream provenance
 
-`packages/zed-extension` ships one language for Zed:
+`packages/zed-extension` ships two languages for Zed:
 
+- `MX` (`.mx`, decision 72's official extension; `.marko` is an accepted
+  alias with identical treatment), backed by the **unmodified**
+  `marko-js/tree-sitter` grammar. Restored after decision 68's retirement:
+  decision 72 re-establishes `.mx` as MX's own identity (a strict subset of
+  Marko syntax, not the retired dialect), which is what lets it alias onto
+  Marko's grammar and queries with zero changes.
 - `SolidMX`, backed by this monorepo's own `packages/tree-sitter-solidmx` — a
   patched `tree-sitter-typescript` (tsx dialect) with an `mx_element`
   external token in expression position. That package's own `UPSTREAM.md`
   owns its `tree-sitter-typescript` pin and patch; this file only records how
   its output is wired into the extension.
 
-The `MX` language (`.mx`, backed by the unmodified `marko-js/tree-sitter`
-grammar) was retired per decision 68 in `notes/decisions-2026-09-10.md` — the
-`.mx` dialect does not exist any more, and plain `.marko` files are covered
-by Zed's official `marko-js/zed` extension. See "SolidMX injection
-prerequisite" below for the one place that removal touches this package's
-own behavior.
-
 ## Pins
 
 | Source | Repo | Rev | What's taken |
 |---|---|---|---|
+| MX grammar | `marko-js/tree-sitter` | `7fb20382b9b0c97c8bdbceee0e0641bea11dd00f` (`@marko/tree-sitter` v0.2.0) — same rev the official `marko-js/zed` extension's own `extension.toml` pins, fetched via `gh api repos/marko-js/zed/contents/extension.toml` on 2026-09-11 | `[grammars.marko]` in `extension.toml`. Zed clones this repo at that rev and compiles the grammar itself; no local vendoring needed. |
+| MX queries | `marko-js/zed` (`languages/marko/*.scm`) | snapshot `dd854edec1fab86d23eb24af9691505dfe3856a6` (repo `main` HEAD at fetch time, via `gh api repos/marko-js/zed/contents/languages/marko/<file>`) | `languages/mx/{highlights,injections,brackets,outline}.scm`, copied **verbatim** with a 3-line header comment naming source + rev — no overlay, no edits (decision 72: MX 1.0 is a strict subset, so Marko's own queries apply as-is). `languages/mx/config.toml` is hand-written (not copied): `name = "MX"`, `path_suffixes = ["mx"]`, same `brackets`/comment conventions as the official file. |
 | SolidMX grammar | `packages/tree-sitter-solidmx` (in this monorepo) | working-tree HEAD, referenced by `extension.toml`'s `[grammars.solidmx]` `rev` as a **committed sha** (dev form: `file://` + `path`) | Zed clones this monorepo at that sha and compiles `packages/tree-sitter-solidmx/src/{parser.c,scanner_mx.c,scanner.c}`. Also the source of `queries/highlights.scm`, copied (not fetched over the network — it's a local sibling package) by `scripts/vendor.sh` into `languages/solidmx/highlights.scm`. |
 
 `extension.toml`'s `name` and `description` are hand-written; `id = "markox"`
-is unchanged from when the extension also shipped `MX`, since the extension
-id is a publishing identity, not a language name.
+is unchanged, since the extension id is a publishing identity, not a
+language name.
+
+There is no `scripts/vendor.sh` step for `languages/mx/*.scm` — unlike
+`languages/solidmx/*.scm` (generated from a local sibling package plus a
+base+overlay split), MX's queries are a straight verbatim copy from a
+network source with no local base or overlay to merge, so a copy-once
+fetch (recorded above) plus a manual re-fetch on drift is the whole
+procedure. `.github/workflows/upstream-check.yml`'s `vendored-files-match`
+job does not cover `languages/mx/*.scm` for the same reason decision 55
+gives for skipping a "check" mode with nothing to regenerate against
+in-repo — see "No `vendor.sh --check`" below, which is about
+`languages/solidmx/*.scm` specifically; MX's files are checked by manual
+diff against the upstream repo on a deliberate bump, not by CI.
 
 SolidMX has no equivalent of `marko-js/zed` to source `injections.scm`,
 `brackets.scm` and `outline.scm` from — no reference Zed extension for this
@@ -46,24 +59,28 @@ empty: the base content already covers every node the grammar emits.
 (MX and SolidMX share syntax) so the otherwise-opaque region highlights
 instead of remaining plain text.
 
-### SolidMX injection prerequisite (post-68)
+### SolidMX injection prerequisite
 
 `base/solidmx/injections.scm` sets `injection.language "marko"`. Zed resolves
-an injected language by matching that string against an **installed**
-language's own name (case-insensitively) — it is not a reference to a
-grammar this extension declares. Since `MX` (this package's own `marko`-named
-language) was dropped, the only language that can satisfy this injection is
-Zed's official `marko-js/zed` extension, whose `languages/marko/config.toml`
-declares `name = "Marko"` (confirmed by reading that file at its published
-rev). "Marko" lowercases to "marko", so the match holds — **but only when
-that extension is installed**. Without it, `mx_element` regions in a
-`.solid.mx` file fall back to unhighlighted plain text; this is a missing
-prerequisite, not a bug in this package. `extension.toml` deliberately keeps
-no `[grammars.marko]` pin of its own for this — the injection needs a
-language name to resolve against, not a grammar this package compiles, and
-duplicating `marko-js/zed`'s grammar here would fetch and compile the same
-tree-sitter grammar twice for no benefit. See `README.md` for the
-user-facing prerequisite note.
+an injected language by matching that string against an **installed
+language's own `name`** (case-insensitively) — it is not a reference to a
+grammar this extension declares, and not a reference to this package's own
+`MX` language either: `languages/mx/config.toml` declares `name = "MX"`, not
+`"Marko"`, so it cannot satisfy this injection despite compiling the same
+grammar. The only language that can satisfy it is Zed's official
+`marko-js/zed` extension, whose `languages/marko/config.toml` declares
+`name = "Marko"` (confirmed by reading that file at its published rev).
+"Marko" lowercases to "marko", so the match holds — **but only when that
+extension is installed**. Without it, `mx_element` regions in a `.solid.mx`
+file fall back to unhighlighted plain text; this is a missing prerequisite,
+not a bug in this package. See `README.md` for the user-facing prerequisite
+note.
+
+This package's own `[grammars.marko]` (added for `MX`, see the Pins table
+above) is unrelated to this injection — it exists so Zed can compile the
+grammar for files matching `MX`'s `path_suffixes`, not to provide an
+injectable language named `marko`/`Marko` (the injection matches on
+language *name*, and `MX` ≠ `Marko`).
 
 `extension.toml` deliberately omits `[language_servers.marko]`, `src/lib.rs`
 and `Cargo.toml` — a grammar-only extension needs no Rust build (Zed's

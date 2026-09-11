@@ -1,15 +1,51 @@
 # `markox` — Zed extension
 
-Ships `SolidMX` (`.solid.mx`) for Zed, backed by
-`packages/tree-sitter-solidmx` (a patched `tree-sitter-typescript` tsx
-dialect with an `mx_element` external token in expression position).
-Grammar-only extension: no `Cargo.toml`, no `src/lib.rs`, no language server
-(see `UPSTREAM.md` for why).
+Ships two languages:
 
-The `MX` language (`.mx`) previously shipped here was retired (decision 68):
-the `.mx` dialect does not exist any more, and plain `.marko` files are
-covered by Zed's official [`marko-js/zed`](https://github.com/marko-js/zed)
-extension.
+- `MX` (`.mx`, the official extension — decision 72) on Marko's own
+  unmodified tree-sitter grammar, `[grammars.marko]` pinned to the same rev
+  the official `marko-js/zed` extension pins (`7fb20382b9b0c97c8bdbceee0e0641bea11dd00f`,
+  `@marko/tree-sitter` v0.2.0). `languages/mx/*.scm` are the official
+  extension's `languages/marko/*.scm` copied **verbatim** (no overlay, no
+  edits) — MX 1.0 is a strict subset of Marko syntax (decision 72), so
+  Marko's own queries apply unmodified. `.marko` is an accepted alias with
+  identical treatment; `.marko` files are covered by installing the official
+  [`marko-js/zed`](https://github.com/marko-js/zed) extension directly.
+- `SolidMX` (`.solid.mx`), backed by `packages/tree-sitter-solidmx` (a
+  patched `tree-sitter-typescript` tsx dialect with an `mx_element` external
+  token in expression position).
+
+Grammar-only extension: no `Cargo.toml`, no `src/lib.rs`, no language server
+of our own (see `UPSTREAM.md` for why; "What you get in Zed today" below for
+what that means in practice).
+
+## Zed suffix precedence: `.mx` vs `.solid.mx`
+
+Zed's suffix matcher takes the text after a file's **last** dot as the
+extension, then picks the language whose `path_suffixes` entry is the
+**longest match**. `MX` declares `path_suffixes = ["mx"]`; `SolidMX` declares
+`path_suffixes = ["solid.mx"]`. Both match `Counter.solid.mx` (its last-dot
+suffix is `mx`, and `solid.mx` matches too via Zed's own multi-segment suffix
+check), so `SolidMX`'s longer, more specific entry wins and the file
+resolves to `SolidMX`, not `MX`. Verified by inspection of the existing
+`languages/solidmx/config.toml` (already `path_suffixes = ["solid.mx"]` from
+when it was the only language shipped here) — no change was needed to keep
+this precedence correct when `MX` was added back.
+
+## What you get in Zed today
+
+- `MX` (`.mx`/`.marko`): syntax highlighting, brackets, outline — all from
+  Marko's own grammar and queries. **No language server**: Marko's own LS,
+  which the official `marko-js/zed` extension registers for its `Marko`
+  language, does not attach to files Zed resolves as `MX` — Zed's
+  `language_servers` binding is per-language-name, and `[language_servers.*]`
+  is declared by the extension that owns the LS binary, not by ours. Installing
+  the official Marko extension gives you the LS on `.marko` files (a separate
+  extension's language); it does not extend to `.mx`. A future MX diagnostics
+  language server (decision 71/72) is a phase-3 item, not part of this task.
+- `SolidMX` (`.solid.mx`): syntax highlighting, brackets, outline, and syntax
+  highlighting inside `mx_element` regions via the official Marko extension's
+  injection (see "Prerequisite" below). No language server either.
 
 ## Prerequisite: install the official Marko extension too
 

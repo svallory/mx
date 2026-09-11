@@ -1,10 +1,18 @@
 id = "markox"
-name = "SolidMX"
-description = "SolidMX (Marko-syntax templates with Solid host-language expressions) language support for Zed."
+name = "MX"
+description = "MX (.mx, Marko syntax) and SolidMX (.solid.mx, Marko syntax with Solid host-language expressions) language support for Zed."
 version = "0.1.0"
 schema_version = 1
 authors = ["Saulo Vallory <me@saulo.engineer>"]
 repository = "https://github.com/svallory/mx"
+
+# MX (`.mx`, decision 72) rides Marko's own unmodified tree-sitter grammar —
+# no fork, no MX-specific parser. Rev matches the official marko-js/zed
+# extension's own pin (its extension.toml, fetched 2026-09-11): both track
+# @marko/tree-sitter v0.2.0.
+[grammars.marko]
+repository = "https://github.com/marko-js/tree-sitter"
+rev = "7fb20382b9b0c97c8bdbceee0e0641bea11dd00f"
 
 [grammars.solidmx]
 # DEV FORM. Zed still requires a committed `rev` even for a `file://`
