@@ -105,6 +105,10 @@ describe("vendored @babel/parser equivalence", () => {
 describe("built dist/index.js equivalence", () => {
   const distExists = existsSync(distEntry);
 
+  // This test parses every fixture file with both parsers (~1 s idle, >5 s
+  // under machine load). 4x the idle time = 4 s, still short of the 5000 ms
+  // default, but peak load pushes it over; 4x the worst measured time (5 s)
+  // is 20 s. Scoped to this test rather than raised globally.
   it.skipIf(!distExists)(
     distExists
       ? "produces an identical AST to node_modules/@babel/parser for every case"
@@ -120,5 +124,6 @@ describe("built dist/index.js equivalence", () => {
         expect(distAst).toEqual(npmAst);
       }
     },
+    20_000,
   );
 });
