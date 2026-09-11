@@ -29,14 +29,18 @@ const simulateMissingDist = process.argv.includes("--simulate-missing-dist");
 /**
  * Every external step runs under a hard wall-clock timeout (decision 61: a
  * script must be able to fail, and a hang is a silent, unbounded pass).
- * `bun pm pack` inside `packages/mx-parser` has been observed to hang
- * indefinitely (reproduced twice) rather than error — likely its
- * `files`/`.npmignore` traversal walking the 800KB+ vendored Babel tree or
- * `node_modules`; see the report, not this script's problem to fix. Wrapped
- * in the POSIX `timeout` command rather than `AbortSignal.timeout` so a
- * killed child's descendants are actually reaped (`execFileSync` has no
- * portable way to kill a process *tree*, and `bun pm pack` may spawn its
- * own children).
+ * `bun pm pack` inside `packages/mx-parser` was observed hanging
+ * indefinitely (reproduced twice, before `core-extract` removed the
+ * translator's dependency on that package) rather than erroring — a real
+ * `mx-parser` packaging defect (likely its `files`/`.npmignore` traversal
+ * walking the 800KB+ vendored Babel tree or `node_modules`), not this
+ * script's problem to fix, and no longer on this script's path at all now
+ * that the translator depends on `@markox/core` instead. The timeout stays
+ * as a standing guard against the same class of hang recurring on any
+ * future dependency. Wrapped in the POSIX `timeout` command rather than
+ * `AbortSignal.timeout` so a killed child's descendants are actually reaped
+ * (`execFileSync` has no portable way to kill a process *tree*, and a
+ * package-manager subcommand may spawn its own children).
  */
 const STEP_TIMEOUT_SECONDS = 120;
 
@@ -52,7 +56,7 @@ function run(cmd: string[], cwd: string): string {
     const status = (err as { status?: number }).status;
     if (status === 124) {
       fail(
-        `\`${cmd.join(" ")}\` (cwd: ${cwd}) did not finish within ${STEP_TIMEOUT_SECONDS}s and was killed — a hang, not a pass. See the report's mx-parser packing finding if this is that step.`,
+        `\`${cmd.join(" ")}\` (cwd: ${cwd}) did not finish within ${STEP_TIMEOUT_SECONDS}s and was killed — a hang, not a pass.`,
       );
     }
     throw err;
@@ -94,30 +98,30 @@ console.log("[consumer-check] packing tarball...");
 const tarballPath = packTarball(pkgDir);
 console.log(`[consumer-check] packed: ${tarballPath}`);
 
-// `@markox/parser` (core.ts's hoisted-statement reparse) is a real runtime
-// dependency, not a devDependency, but it is `private: true` and not on the
-// npm registry — a plain `bun add` of the translator tarball 404s resolving
-// it. Packing and installing it too proves this package is *installable*
-// today without requiring `@markox/parser` to actually be published yet;
-// see the report for the open question of whether/when it should be.
-const parserDir = join(pkgDir, "..", "mx-parser");
+// `@markox/core` (the Marko-node consumer, `translate.ts`'s import source)
+// is a real runtime dependency, not a devDependency, but it is `private:
+// true` and not on the npm registry — a plain `bun add` of the translator
+// tarball 404s resolving it. Packing and installing it too proves this
+// package is *installable* today without requiring `@markox/core` to
+// actually be published yet.
+const coreDir = join(pkgDir, "..", "core");
 console.log(
-  "[consumer-check] packing @markox/parser (unpublished dependency)...",
+  "[consumer-check] packing @markox/core (unpublished dependency)...",
 );
-const parserTarballPath = packTarball(parserDir);
-console.log(`[consumer-check] packed: ${parserTarballPath}`);
+const coreTarballPath = packTarball(coreDir);
+console.log(`[consumer-check] packed: ${coreTarballPath}`);
 
 const scratchDir = mkdtempSync(join(tmpdir(), "consumer-check-"));
 console.log(`[consumer-check] scratch project: ${scratchDir}`);
 
 try {
-  // `@markox/parser` is a transitive dependency (declared by the translator
+  // `@markox/core` is a transitive dependency (declared by the translator
   // tarball's own `package.json`, rewritten from `workspace:*` to its literal
   // version at pack time), so a plain `bun add <tarball>` still resolves it
-  // against the registry, 404s, and fails — passing the parser tarball as a
+  // against the registry, 404s, and fails — passing the core tarball as a
   // second top-level `add` argument does not change how the *transitive*
   // reference resolves. `overrides` pins it to the local tarball by file:
-  // path instead, standing in for `@markox/parser` actually being published.
+  // path instead, standing in for `@markox/core` actually being published.
   writeFileSync(
     join(scratchDir, "package.json"),
     JSON.stringify(
@@ -126,7 +130,7 @@ try {
         private: true,
         type: "module",
         overrides: {
-          "@markox/parser": `file:${parserTarballPath}`,
+          "@markox/core": `file:${coreTarballPath}`,
         },
       },
       null,
@@ -187,12 +191,21 @@ try {
           moduleResolution: "bundler",
           target: "ES2022",
           noEmit: true,
-          // Checked against the published `@markox/translator`/`@markox/parser`
-          // `.d.ts` only; a dependency's own `.d.ts` internals (e.g. a
+          // Checked against the published `@markox/translator` `.d.ts`
+          // only; a dependency's own `.d.ts`/`.ts` internals (e.g. a
           // `bun-types`/`typescript` version skew unrelated to either
           // package) are not what this step exists to catch.
           skipLibCheck: true,
           types: ["node"],
+          // `@markox/translator`'s `.d.ts` re-exports types from
+          // `@markox/core`, which — unlike the translator itself — has no
+          // `dist/` yet (`main`/`types` point straight at `src/index.ts`),
+          // so tsc has to parse that raw `.ts` source to resolve the
+          // imported types. Any TS consumer of an unbuilt `@markox/*`
+          // package needs this flag today (see the Vite-plugin section of
+          // the repo's own AGENTS.md for the same requirement elsewhere);
+          // it is not something this consumer's own code needs.
+          allowImportingTsExtensions: true,
         },
         include: ["via-api.ts"],
       },
@@ -208,8 +221,8 @@ try {
 } finally {
   rmSync(scratchDir, { recursive: true, force: true });
   rmSync(tarballPath, { force: true });
-  rmSync(parserTarballPath, { force: true });
+  rmSync(coreTarballPath, { force: true });
   console.log(
-    `[consumer-check] cleaned up ${scratchDir}, ${tarballPath}, ${parserTarballPath}`,
+    `[consumer-check] cleaned up ${scratchDir}, ${tarballPath}, ${coreTarballPath}`,
   );
 }

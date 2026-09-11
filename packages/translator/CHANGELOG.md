@@ -22,7 +22,7 @@ and the always-quoted form is safer and more readable.
   now errors with Marko's own message ("Unable to find entry point for
   custom tag...") instead of rendering as literal HTML.
 - **build:** publishable from `dist/` (ESM + `.d.ts`); `exports` map for
-  `.`, `./bun` and `./core`.
+  `.` and `./bun`.
 
 Scope note (decision 74): the org is renaming `@markox` to `@mxlang`. This
 package will publish as `@mxlang/translator` once that rename lands across
