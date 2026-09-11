@@ -6,5 +6,10 @@ projects:
   - "packages/*"
 
 vcs:
-  defaultBranch: "main"
+  # "origin/main", not "main": actions/checkout@v4 checks out a detached
+  # commit (PR head or push SHA) and never creates a local "main" branch —
+  # only the remote-tracking "origin/main" ref exists after a fetch, even
+  # with fetch-depth: 0. moon's own changed-files/merge-base resolution
+  # needs a ref it can actually find in CI.
+  defaultBranch: "origin/main"
   provider: "github"

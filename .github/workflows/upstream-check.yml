@@ -39,6 +39,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
         working-directory: .
+      # `--check` diffs a freshly-vendored temp tree against vendor/ — it
+      # does not create vendor/ itself, and vendor/ is gitignored (a build
+      # input, not committed), so populate it first.
+      - name: vendor.sh
+        run: ./scripts/vendor.sh
       - name: vendor.sh --check
         run: ./scripts/vendor.sh --check
 
