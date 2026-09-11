@@ -1,0 +1,4 @@
+{
+  "marko": "divergence",
+  "reason": "translator-bug: real Marko treats an unresolved hyphenated tag as a failed custom-element lookup (\"Unable to find entry point for custom tag `<my-widget>`\") and refuses to compile -- verified against @marko/compiler 5.42.5 / marko@6.3.51. @markox/translator's isElement (translate.ts) instead treats any hyphenated name as literal HTML unconditionally, so it compiles and renders the tag as-is. Decision 67 says the translator should follow Marko, so this divergence should be closed by making isElement attempt component resolution for a hyphenated name before falling back to a literal element, matching Marko's own custom-element lookup."
+}
