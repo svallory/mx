@@ -1,0 +1,70 @@
+---
+title: "Structural tags"
+description: "The if/else and for forms that work identically on every host."
+---
+
+# Structural tags
+
+MX's structural core is a small set of tags that render exactly the way Marko renders them, on every host. A host may forbid one of these tags outright, but it may never change what one means.
+
+## `<if>` / `<else if>` / `<else>`
+
+```html
+<if=user.loggedIn>
+  <p>Welcome back, ${user.name}.</p>
+</if>
+<else if=user.isGuest>
+  <p>Browsing as a guest.</p>
+</else>
+<else>
+  <p>Please sign in.</p>
+</else>
+```
+
+The HTML host lowers this to a plain JS `if`/`else if`/`else` chain around the corresponding output. SolidMX lowers the same tag to Solid's `<Show>`/ternary form, matching what a hand-written Solid component would use for a branch.
+
+## `<for>`
+
+`<for>` covers four distinct iteration shapes, chosen by which attribute you write.
+
+### `of=` — iterate a list
+
+```html
+<for|item, i| of=items>
+  <li>${i}: ${item.name}</li>
+</for>
+```
+
+Add `by=` to key each row for reconciliation:
+
+```html
+<for|item| of=items by="id">
+  <li>${item.name}</li>
+</for>
+```
+
+On the HTML host this is a plain `for`/`.map` loop. On SolidMX, `of=` lowers to Solid's `<For each={...} keyed={...}>`, and `by="id"` becomes the `keyed` key function.
+
+### `in=` — iterate an object's entries
+
+```html
+<for|key, value| in=config>
+  <dt>${key}</dt><dd>${value}</dd>
+</for>
+```
+
+Lowers over `Object.entries(...)`.
+
+### `from=` / `to=` / `until=` / `step=` — iterate a numeric range
+
+```html
+<for|i| from=0 to=9>
+  <span>${i}</span>
+</for>
+```
+
+`to=` is inclusive, `until=` is exclusive; add `step=` for a stride other than 1. On SolidMX this lowers to Solid's `<Repeat>` rather than `<For>`, since there is no list to key against — only a count. When `from`/`to`/`step` are all literals the row count is folded at compile time; when any is dynamic, the count is computed at render time and clamped to zero rather than ever producing an infinite range (a `step=0` you write directly is a parse error; a `step` that evaluates to `0` at runtime clamps to zero rows).
+
+## What's next
+
+Tag params and attribute tags apply to `<for>`'s own `|item, i|` binding too — see [Attribute tags and tag params](/language/attribute-tags-and-params/).
