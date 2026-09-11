@@ -95,7 +95,7 @@ jobs:
           ZED_COMPILE_CHECK_WASM_BUILD_ARGS: "--docker"
         run: ./scripts/zed-compile-check.sh
 
-  zed-compile-check:
+  zed-extension-compile-check:
     # Reproduces Zed's own Rust extension build (cargo build --release
     # --target wasm32-wasip1) against a clean clone of HEAD (see
     # packages/editors/zed/scripts/zed-compile-check.sh). Its own
