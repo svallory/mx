@@ -1,0 +1,6 @@
+{
+  "name": "single-dependency-fixture",
+  "dependencies": {
+    "@mxlang/translator": "0.1.0"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "space-in-name-fixture",
+  "mxlang": {
+    "host": "astro",
+    "strict": true
+  }
+}

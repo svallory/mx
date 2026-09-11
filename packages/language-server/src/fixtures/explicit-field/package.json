@@ -1,0 +1,7 @@
+{
+  "name": "explicit-field-fixture",
+  "mxlang": {
+    "host": "astro",
+    "strict": true
+  }
+}
