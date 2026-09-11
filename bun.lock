@@ -164,16 +164,13 @@
       "name": "@markox/tree-sitter-solidmx",
       "version": "0.0.0",
       "devDependencies": {
-        "tree-sitter-cli": "0.24.7",
+        "tree-sitter-cli": "0.26.9",
         "tree-sitter-javascript": "0.23.1",
       },
     },
     "packages/zed-extension": {
       "name": "@markox/zed-extension",
       "version": "0.0.0",
-      "devDependencies": {
-        "tree-sitter-cli": "0.26.9",
-      },
     },
   },
   "packages": {
@@ -699,7 +696,7 @@
 
     "todomvc-common": ["todomvc-common@1.0.5", "", {}, "sha512-D8kEJmxVMQIWwztEdH+WeiAfXRbbSCpgXq4NkYi+gduJ2tr8CNq7sYLfJvjpQ10KD9QxJwig57rvMbV2QAESwQ=="],
 
-    "tree-sitter-cli": ["tree-sitter-cli@0.24.7", "", { "bin": { "tree-sitter": "cli.js" } }, "sha512-o4gnE82pVmMMhJbWwD6+I9yr4lXii5Ci5qEQ2pFpUbVy1YiD8cizTJaqdcznA0qEbo7l2OneI1GocChPrI4YGQ=="],
+    "tree-sitter-cli": ["tree-sitter-cli@0.26.9", "", { "bin": { "tree-sitter": "cli.js" } }, "sha512-7l+U1RmazPVe+yA/JiX80GFOILnL/j24GbawamIzNQC8UlINrcyECbaWGaG1wuq4j/m0DQTx7Uu4r0iW9Ao1BQ=="],
 
     "tree-sitter-javascript": ["tree-sitter-javascript@0.23.1", "", { "dependencies": { "node-addon-api": "^8.2.2", "node-gyp-build": "^4.8.2" }, "peerDependencies": { "tree-sitter": "^0.21.1" }, "optionalPeers": ["tree-sitter"] }, "sha512-/bnhbrTD9frUYHQTiYnPcxyHORIw157ERBa6dqzaKxvR/x3PC4Yzd+D1pZIMS6zNg2v3a8BZ0oK7jHqsQo9fWA=="],
 
@@ -732,8 +729,6 @@
     "@babel/helper-module-transforms/@babel/helper-validator-identifier": ["@babel/helper-validator-identifier@7.29.7", "", {}, "sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg=="],
 
     "@babel/types/@babel/helper-validator-identifier": ["@babel/helper-validator-identifier@7.29.7", "", {}, "sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg=="],
-
-    "@markox/zed-extension/tree-sitter-cli": ["tree-sitter-cli@0.26.9", "", { "bin": { "tree-sitter": "cli.js" } }, "sha512-7l+U1RmazPVe+yA/JiX80GFOILnL/j24GbawamIzNQC8UlINrcyECbaWGaG1wuq4j/m0DQTx7Uu4r0iW9Ao1BQ=="],
 
     "strip-literal/js-tokens": ["js-tokens@9.0.1", "", {}, "sha512-mxa9E9ITFOt0ban3j6L5MpjwegGz6lBQmM1IJkWeBZGcMxto50+eWdjC/52xDbS2vy0k7vIMK0Fe2wfL9OQSpQ=="],
 
