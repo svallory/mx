@@ -730,6 +730,61 @@ Four facts worth knowing before editing it:
   component). `examples/astro-static/e2e/build-errors.spec.ts` asserts the
   failing build.
 
+### `.amx`: AstroMX templates (decisions 76c, 78)
+
+An `.amx` file is an **Astro component whose template is MX** — a different
+file kind from `.mx`, not a variant of it. A `.mx` component compiles to a
+runtime-free `(input) => string` and is called *through* this package's
+renderer; an `.amx` component **becomes** an Astro component: the `---` fence
+passes through byte for byte with Astro's own semantics (`Astro.props`,
+imports, `getStaticPaths`), the MX template after it is lowered to Astro
+template syntax, and the whole file goes to Astro's compiler. Components,
+layouts and pages, all from one extension (`addPageExtension(".amx")`).
+
+Four facts worth knowing before editing `src/astro-template.ts` or
+`src/vite-templates.ts`:
+
+- **The extension is single-dot because of Astro's router, not taste.**
+  `.astro.mx` was the first spelling and works for components, but Astro's
+  route collection keys on `path.extname(basename)`, which returns only the
+  **last** extension segment (`create-manifest.js`; `parse-route.js` does the
+  same through `@astrojs/internal-helpers`' `fileExtension`, which is
+  `path.split(".").pop()`). Measured against astro@7.3.2: a `page.astro.mx`
+  under `src/pages` is `continue`d as an unsupported file type, and once `.mx`
+  is also registered it is routed to `/page.astro/` — a literal `.astro` in
+  the URL. Note `dist/core/util.js`'s `endsWithPageExt` *does* use `endsWith`,
+  so `isPage()` accepts what route collection rejects: two code paths in one
+  version disagree. `.amx` sidesteps all of it.
+- **This is an emitter, not a `Policy`.** `@mxlang/core`'s emit layer is the
+  string-emit model — `emitLiteral` pushes `out += "..."`, `emitFor` pushes
+  `for (const x of xs) {`, and `emitChildren` claims `<if>` before any policy
+  dispatch — all statement-shaped JS, while Astro's template syntax is
+  expression-shaped (`{c ? (…) : (…)}`, `{xs.map(…)}`). No arrangement of
+  policy members produces it. `packages/core/README.md` states the rule: a JSX
+  host replaces the emit layer instead. So `.amx` uses the core's *other*
+  front door, `parseFragment`, whose base-offset shifting is exactly what a
+  template sitting after a fence needs, and supplies its own emit layer. The
+  node walk and the emit callbacks are kept separate so SolidMX's phase-4 JSX
+  host can lift the walk rather than write a third one.
+- **The Vite mechanism is forced.** Astro's `astro:build` `transform` filters
+  `include: [/\.astro$/, /\.astro\?/]` **and** re-checks
+  `if (!parsedId.filename.endsWith(".astro")) return;`, so an `enforce: "pre"`
+  transform on the real `.amx` id can never reach Astro's compiler. The module
+  id itself must end in `.astro`: `resolveId` appends that suffix to whatever
+  Vite's own resolver returns, `load` returns the lowered source. Same shape
+  `@mxlang/vite-plugin` already uses for `.solid.mx`.
+- **An attribute method is a `FunctionExpression` value, not `attr.arguments`.**
+  `<button onClick() { … }>` arrives with `arguments` falsy and the method body
+  as the attribute's *value* (measured against `@marko/compiler` 5.42.5).
+  Testing only `attr.arguments` — the core's own check — let it fall through to
+  the source-slicing path and fail with a parser-internal message instead of
+  the unsupported-construct error. Both shapes are tested.
+
+The lowering table and the full error list live in
+`packages/astro/README.md` "AstroMX templates (`.amx`)". Nothing silently
+degrades: every construct this target cannot express is a build error naming
+the construct, the reason and the `.amx` line.
+
 `packages/astro/types/mx.d.ts` declares `*.mx`/`*.marko` as
 `(input: any) => string`, referenced by a consumer from its own `env.d.ts`
 (`/// <reference types="@mxlang/astro/types" />`). `any` for the same reason
