@@ -1,0 +1,25 @@
+export const getStaticPaths = () => {
+  return [
+    { params: { slug: "first" }, props: { title: "First post" } },
+    { params: { slug: "second" }, props: { title: "Second post" } },
+  ];
+};
+
+export const prerender = true;
+
+export interface Input {
+  title: string;
+  params: { slug: string };
+}
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${input.title} — astro-static</title>
+  </head>
+  <body>
+    <h1>${input.title}</h1>
+    <p>Route param <code>slug</code>: ${input.params.slug}</p>
+    <p><a href="/">Home</a></p>
+  </body>
+</html>

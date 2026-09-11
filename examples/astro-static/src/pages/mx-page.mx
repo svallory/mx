@@ -1,0 +1,18 @@
+export const layout = "../layouts/Base.astro";
+export const title = "MX page";
+
+static const items = ["one", "two", "three"];
+static const showNote = true;
+
+<h1>${title}</h1>
+<p>This page is an MX file directly under <code>src/pages</code>, not a component imported by a <code>.astro</code> page.</p>
+
+<if=showNote>
+  <p class="note">Rendered through a layout, from a page-level static block.</p>
+</if>
+
+<ul>
+  <for|item, i| of=items>
+    <li>${i}: ${item}</li>
+  </for>
+</ul>

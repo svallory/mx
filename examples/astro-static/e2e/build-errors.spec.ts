@@ -79,4 +79,20 @@ describe("builds that are supposed to fail", () => {
     // component rather than at the page that imported it.
     expect(output).toContain("stateful.mx");
   });
+
+  it("rejects <let> in a page-mode .mx file under src/pages, not only in an imported component", async () => {
+    // Round-2 gap: the test above only exercises the component path (a
+    // `.astro` page importing a stateful `.mx` component). This one is a
+    // `.mx` file placed directly under `src/pages` — page mode, going
+    // through `@mxlang/astro`'s `mxPages` Vite plugin. The strict policy is
+    // enforced at `@mxlang/vite-plugin`'s compile step, before `mxPages`'s
+    // `enforce: "post"` transform ever runs, so this fails the same way for
+    // the same reason — but that was previously unverified for the page case.
+    staged = stagePage("strict-error-page.mx");
+    const { code, output } = await build();
+
+    expect(code).not.toBe(0);
+    expect(output).toContain("`<let>` is reactive state");
+    expect(output).toContain("strict-error-page.mx");
+  });
 });

@@ -1,0 +1,20 @@
+---
+export interface Props {
+  frontmatter: Record<string, unknown>;
+  url: URL;
+  params: Record<string, string | undefined>;
+}
+
+const { frontmatter } = Astro.props as Props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{String(frontmatter.title ?? "astro-static")} — astro-static</title>
+  </head>
+  <body>
+    <p class="layout-marker">Rendered through Base.astro</p>
+    <slot />
+  </body>
+</html>

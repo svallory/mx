@@ -1,0 +1,13 @@
+static const heading = "No layout";
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>No layout — astro-static</title>
+  </head>
+  <body>
+    <h1>${heading}</h1>
+    <p>This page has no <code>layout</code> export: it writes its own full document.</p>
+    <p><a href="/">Home</a></p>
+  </body>
+</html>

@@ -121,11 +121,74 @@ describe("astro-static", () => {
     expect(html).toContain('<span class="badge">composed</span>');
   });
 
+  it("/mx-page is an MX file directly under src/pages, rendered through a layout", async () => {
+    // Decision 76b: `.mx` files under `src/pages` are pages, not components.
+    // `mx-page.mx` declares `export const layout`, a `static` block for its
+    // props, and uses `<if>`/`<for>` — this asserts the whole page-mode
+    // pipeline: layout wrapping, static-block props, and control flow.
+    const response = await page.goto(`${baseUrl}/mx-page`, {
+      waitUntil: "networkidle",
+    });
+    expect(response?.status()).toBe(200);
+    const html = (await response?.text()) ?? "";
+
+    // The layout ran and wrapped the page's HTML.
+    expect(html).toContain("Rendered through Base.astro");
+    expect(html).toContain("<title>MX page — astro-static</title>");
+    // `<if=showNote>` rendered its branch.
+    expect(html).toContain(
+      "Rendered through a layout, from a page-level static block.",
+    );
+    // `<for|item, i| of=items>` rendered every entry.
+    expect(html).toContain("<li>0: one</li>");
+    expect(html).toContain("<li>1: two</li>");
+    expect(html).toContain("<li>2: three</li>");
+  });
+
+  it("/no-layout renders a full document with no layout export", async () => {
+    const response = await page.goto(`${baseUrl}/no-layout`, {
+      waitUntil: "networkidle",
+    });
+    expect(response?.status()).toBe(200);
+    const html = (await response?.text()) ?? "";
+
+    expect(html).toContain("<title>No layout — astro-static</title>");
+    expect(html).toContain("<h1>No layout</h1>");
+    // No layout wrapper ran: the page's own `<html>` is the only one.
+    expect(html).not.toContain("Rendered through Base.astro");
+  });
+
+  it("/posts/[slug] is a dynamic MX page with getStaticPaths, both entries built", async () => {
+    for (const [slug, title] of [
+      ["first", "First post"],
+      ["second", "Second post"],
+    ] as const) {
+      const response = await page.goto(`${baseUrl}/posts/${slug}`, {
+        waitUntil: "networkidle",
+      });
+      expect(response?.status()).toBe(200);
+      const html = (await response?.text()) ?? "";
+
+      expect(html).toContain(`<h1>${title}</h1>`);
+      // `input.params.slug` reached the page: the merged `params` from
+      // `Astro.params`, not only the page's own `props`.
+      expect(html).toContain(`Route param <code>slug</code>: ${slug}`);
+    }
+  });
+
   it("ships no renderer script: the pages are static markup", async () => {
     // The whole claim of this host. An MX component has no runtime, the
     // renderer registers no client entrypoint, and `output: "static"`
     // prerenders everything — so no `<script>` should appear in the output.
-    for (const route of ["/", "/named-slot", "/composed"]) {
+    for (const route of [
+      "/",
+      "/named-slot",
+      "/composed",
+      "/mx-page",
+      "/no-layout",
+      "/posts/first",
+      "/posts/second",
+    ]) {
       const response = await page.goto(`${baseUrl}${route}`, {
         waitUntil: "networkidle",
       });
