@@ -480,7 +480,51 @@ strip-only TypeScript loader rejects. `types` still points at
 `src/public.d.ts`, so typechecking never needs a build; `bun run verify`
 builds before it tests.
 
-## `@markox/translator`: stock `.marko` to a pure function
+## `@markox/core`: the Marko-node consumer
+
+`packages/core` (`@markox/core`, decisions 70 to 72) is the half every MX host
+shares: it consumes Marko's AST through `@marko/compiler`, applies the
+structural lowerings (`<if>`/`<else>`, every `<for>` form, `<define>`,
+`<const>`, statement tags, the field and inert-shape guards) and asks a
+`Policy` for everything host-specific. `@markox/translator` is the first host;
+SolidMX and Astro follow. `packages/core/README.md` documents the Policy
+members one line each, the hooks and the front doors — read it before adding
+either.
+
+Four facts worth knowing before editing it:
+
+- **It depends on `@marko/compiler` and nothing else.** `core.ts` used to parse
+  an `import` line with `@markox/parser` — the *SolidMX parser* package — for a
+  single `parse` call. It now asks `@marko/compiler/internal/babel`
+  (`parse`/`parseExpression`/`traverse`/`types`, all present), which is also
+  the instance Marko's own nodes belong to. Do not reintroduce a second Babel.
+- **The emit layer here is the core's default string-emit model**, not a
+  policy: `out +=` buffering, `blockFunction`, `VOID_TAGS`, `DYNAMIC_TAG`, the
+  emitted module shape. A string host reuses it as is (which is what makes a
+  second string host cheap); a JSX host (SolidMX, phase 4) replaces the emit
+  layer instead. Pushing `VOID_TAGS` behind a policy member would cost every
+  string host an indirection and buy the JSX host nothing.
+- **Three stateful-tag hooks** (decision 70), real and unit-tested against a
+  fake policy in `src/hooks.test.ts`, used by no host yet: `policy.emitSpecial`
+  (the tag handler), `ctx.hoist(code)` (lift a statement to the enclosing
+  function's head — the render function, or the nearest `blockFunction`), and
+  `ctx.bindings.register(name, rewrite)` (rewrite identifier *references*, so a
+  host whose state is a getter emits `count()` for `${count}`). Reference
+  positions only, and shadowing is deliberately untracked.
+- **`parseFragment` is spike 1's stopgap, with measured limits.** Marko's own
+  nodes carry no numeric `start`/`end` at all (only `loc.{line,column}`); the
+  Babel expression nodes nested inside them carry their offset at
+  `loc.*.index`; **position objects are shared between nodes**, so the walk
+  dedupes them or a second visit lands at `base + base` (measured: raw index 16
+  with `baseOffset: 42` came out at 100 instead of 58); a thrown parse error's
+  position is on the exception, not in the tree, and is shifted separately.
+  `parseFragment` also passes a **parse-only translator stub** (empty
+  `translate`), because `@marko/compiler` otherwise resolves its default
+  `marko/translator` before parsing and fails — the `marko` package is not a
+  dependency here. SolidMX's own bridge
+  (`packages/mx-parser/src/mx/bridge.ts`) is untouched until phase 4.
+
+## `@markox/translator`: the vanilla HTML host on `@markox/core`
 
 `packages/translator` (`@markox/translator`, decisions 66, 68) compiles an
 **ordinary Marko template** to a runtime-free `(input) => string` module. Not
@@ -489,15 +533,17 @@ HTML/SVG/MathML element registry, Marko's attribute-tag and component
 conventions. The seam is `config.translator` — package-name discovery is a
 dead end, since 5.42.5 scans only `@marko/runtime-*`.
 
-`packages/translator/src/core.ts` owns everything that is a property of the
-string target itself: buffering, block functions, the `<for>`/`<if>`
-lowerings, statement hoisting, the eight-field guard, the emitted module
-shape. This used to be shared with `@markox/html/core`, a second package for
-the now-retired `.mx` dialect — decision 68 deleted that package and moved
-`core.ts` and `escape.ts` here, since there is only one dialect left to have a
-`Policy` for. `translate.ts`'s exported `policy` is that one dialect's
-policy; `strictPolicy` (see "The `strict` policy" below) is a stricter
-variant of the same table, not a second dialect.
+The generic half now lives in `packages/core` (`@markox/core`) — see
+"`@markox/core`: the Marko-node consumer" below. `packages/translator` keeps
+`translate.ts` (the policy rows, `strictPolicy`), `bun.ts`, `types/`,
+`example.ts`, the taglib and the fixtures; its `index.ts` is a thin wrapper
+over the core's `compileSource`, and its own `emitProgram` is now a
+`postEmit(code: string) => string` pass that appends the
+`classValue`/`styleValue`/`escapeComment`/`renderDynamic` helpers a template
+actually calls. `escape` moved to the core and is re-exported here, so every
+compiled template's `import { escape } from "@markox/translator"` is
+unchanged. The `./core` export is **gone** (breaking): importers take
+`@markox/core` directly.
 
 Policy table (decision 65): the target renders what Marko's server render
 emits, minus resume markers. **Inert** (accepted, no output, each verified

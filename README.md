@@ -13,7 +13,8 @@ MX (Markup eXtended) is a template language born from Marko. It takes Marko's sy
 | `packages/mx-vscode` | `@markox/vscode` | TextMate grammar + `typescriptServerPlugins` manifest |
 | `packages/eslint-plugin-mx` | `@markox/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
 | `packages/mx-vite-plugin` | `@markox/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
-| `packages/translator` | `@markox/translator` | The vanilla MX host: `.mx` (official) and `.marko` (alias) files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`. MX 1.0 is a strict subset of Marko syntax (decision 72), so this is Marko syntax, unmodified — no fork. |
+| `packages/core` | `@markox/core` | The Marko-node consumer every MX host is built on: the structural tag lowerings, the `Policy` contract, three stateful-tag hooks (tag handler, hoist, binding registry), and two front doors (`compileSource` through `@marko/compiler`'s `config.translator` seam, `parseFragment` for a substring of a larger file). Depends on `@marko/compiler` alone. |
+| `packages/translator` | `@markox/translator` | The vanilla MX host on `@markox/core`: `.mx` (official) and `.marko` (alias) files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`. MX 1.0 is a strict subset of Marko syntax (decision 72), so this is Marko syntax, unmodified — no fork. |
 
 **Naming TODO**: the `@markox/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
 

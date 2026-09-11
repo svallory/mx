@@ -7,10 +7,17 @@ aliasing alone. `.mx` is MX's official extension; `.marko` is accepted
 everywhere with identical treatment, so porting a Marko component is a
 rename or nothing.
 
-`@markox/translator` compiles an MX (`.mx`, or its `.marko` alias) template
-to a pure function: a JS/TS module whose default export is `(input) =>
-string`, with no runtime beyond an `escape` helper. No scheduler, no
-signals, no hydration, no resume markers.
+`@markox/translator` is **the vanilla host on `@markox/core`**: it compiles an
+MX (`.mx`, or its `.marko` alias) template to a pure function — a JS/TS module
+whose default export is `(input) => string`, with no runtime beyond an `escape`
+helper. No scheduler, no signals, no hydration, no resume markers.
+
+The generic half lives in [`@markox/core`](../core/README.md): the Marko-node
+consumer, the structural tag lowerings, the `config.translator` seam and the
+string-emit model. This package supplies the *policy* — which tags are inert
+and which are errors, component-versus-element resolution, Marko's structured
+`class`/`style` values and attribute order — plus its own integrations: the Bun
+loader, the `escape` runtime the emitted modules import, and the taglib.
 
 ```ts
 import { compile } from "@markox/translator";
@@ -84,8 +91,10 @@ no conventions of its own layered on top, so every `.mx` file is also a
 valid `.marko` file with the same meaning. This package is the vanilla host:
 it compiles both extensions identically, through the same `compile()`/
 `compileFile()`/`build()` entry points and the same policy table below.
-`packages/mx-html` no longer exists; its lowering core (`core.ts`) and its
-`escape` runtime live here.
+`packages/mx-html` no longer exists. Its lowering core and its `escape`
+runtime passed through this package and now live in
+[`@markox/core`](../core/README.md), which every MX host shares; this package
+is the policy plus the HTML integrations.
 
 ## Loaders
 
@@ -374,8 +383,8 @@ and it looks fine. The `by=` case is how the whole class was found — a fixture
 cited `by=`, passed, and proved nothing, because the emitter read four
 attributes and discarded the fifth.
 
-Every emission path therefore runs one shared guard (`rejectUnsupportedFields`
-in `core.ts`) rather than a check per path. Every caller **declares** the
+Every emission path therefore runs one shared guard (`rejectUnsupportedFields`,
+in `@markox/core`) rather than a check per path. Every caller **declares** the
 fields it genuinely lowers; anything else present on the node is an error
 naming it. Seven scattered copies would drift, and the next field Marko adds
 would be dropped by whichever copy was forgotten.
