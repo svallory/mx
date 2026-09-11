@@ -718,6 +718,94 @@ needs a virtual-file projection inside tsserver, which is the `astro-ts-plugin`
 task. `@astrojs/ts-plugin` is not reusable for it — it adds `.astro` imports
 *within* `.ts` files, the opposite direction.
 
+## `@mxlang/language-server`: diagnostics-only LSP server (decision 71/72)
+
+`packages/language-server` (`@mxlang/language-server`) exists to close one
+gap decisions 71/72 name explicitly: "a host is not done without its editor
+diagnostics." Marko's own language server (`marko-js/language-server`)
+compiles every `.marko`/`.mx` file with a **hardcoded** compiler config that
+carries no host policy (`Project.getCompiler(dir).compileSync(text,
+filename, compilerConfig)` in its `validate.ts`, with no `translator` key),
+so a construct a host's `strict` policy rejects — `<let>`, `<effect>`,
+`<lifecycle>`, `<script>`, `:=` — is valid Marko syntax and Marko's server
+reports nothing for it. `tsserver` cannot fill the gap either: it never opens
+`.marko`/`.mx` files at all, only `.ts`/`.tsx` files that *import* one (that
+is what `@marko/ts-plugin` and `@mxlang/typescript-plugin` type-check). Full
+research: `notes/research/host-diagnostics.md`.
+
+**Scope: diagnostics only.** `textDocumentSync` is the one capability
+advertised. No completion, hover, go-to-definition, or formatting — adding
+any of those would mean re-implementing Marko's own language server, which
+this package runs *alongside*, not in place of. Both VS Code and Zed support
+multiple language servers registered against one language id (ESLint+TS,
+Tailwind+CSS are the everyday examples); this is a supported pattern, not a
+workaround.
+
+**Mechanism.** `src/diagnose.ts`'s `diagnoseDocument(text, uri, hostPolicy,
+onUnexpectedError?)` runs `@mxlang/core`'s `compileSource` under the resolved
+policy; a thrown `TranslateError` (which carries 1-based `line` and 0-based
+`column`, `@mxlang/core`'s `fail()`/`TranslateError` shape) becomes one LSP
+`Diagnostic` (`severity: Error`, `source: "mxlang"`, message verbatim); a
+successful compile returns `[]`, which the caller publishes to clear any
+stale diagnostics; any other exception is swallowed and reported through the
+callback rather than crashing the server or publishing something wrong — both
+paths are unit-tested directly against `diagnoseDocument`, no server needed.
+`src/server.ts` wires this into a `vscode-languageserver`
+`TextDocuments`/`Connection`, debouncing 150ms per document URI (a
+superseded run's timer is cleared, never raced) on `didOpen`/`didChange`/
+`didSave`, and clears diagnostics on `didClose`.
+
+**Policy resolution** (`src/resolve-policy.ts`) answers the question an
+editor's `didOpen` cannot: which host, and whether `strict`, applies to this
+file. Three branches, in order, walking upward from the file for the nearest
+`package.json`: (1) a `"mxlang": { "host": ..., "strict"?: ... }` field, the
+authoritative source, which doubles as the routing config decision 71's
+"mixed projects" case already needs for the Vite plugin/Bun loader; (2)
+failing that, if the `package.json` depends on **exactly one** `@mxlang/*`
+host package (`@mxlang/translator`, `@mxlang/astro`), that host at its
+default policy; (3) otherwise, the translator's default (non-strict) policy.
+`@mxlang/astro` always compiles under `strictPolicy` (decision 71: it ships
+no stateful tags) — `resolvePolicyObject` in `diagnose.ts` special-cases
+`host: "astro"` to `strictPolicy` regardless of the field's own `strict`
+value, since that host has no other mode. `host: "solid"` is a documented
+placeholder: SolidMX is paused (decision 58) and exports no `@mxlang/core`
+`Policy` object yet, so it falls back to the translator's policy rather than
+throwing, keeping the rest of a mixed workspace diagnosed.
+
+**Zed finding** (brief item 4): there is **no zero-Rust path** to register a
+second `[language_servers.*]` entry in Zed's `extension.toml`. Reading
+`marko-js/zed`'s own `extension.toml` and `src/lib.rs` (via `gh api
+repos/marko-js/zed/contents/...`, no local checkout) confirms
+`[language_servers.marko]` binds `languages = ["Marko"]` to that extension's
+own `zed::Extension::language_server_command` implementation — a
+`Cargo.toml`-backed Rust extension is what makes the entry work, not the TOML
+table alone. `packages/zed-extension` is grammar-only today (no
+`Cargo.toml`, see "No Rust" in the Zed extension section above) *because* it
+registers no language server; adding this server's registration is therefore
+new scope (a Rust crate) for that package, tracked as follow-up rather than
+done in this task (time budget). `extension.toml` gained a comment
+documenting this finding at `[grammars.marko]`. Both VS Code
+(`LanguageClient` targeting `language: "marko"`, a second registration
+alongside Marko's own) and Zed (`[language_servers.<key>]`, once the Rust
+scaffold exists) support the second-server pattern once wired; see the
+package's own `README.md` "Editors" for the concrete snippets, including the
+generic-LSP-client `settings.json` shape for VS Code (which ships no
+dedicated extension from this task, per brief scope).
+
+**Tests**: `src/diagnose.test.ts` (direct, no server: `<let>` under strict,
+a valid file, `<let>`'s initial value under the non-strict policy, the
+unexpected-exception path), `src/resolve-policy.test.ts` (all three
+resolution branches against fixture directories under `src/fixtures/`), and
+`src/server.test.ts` (the one stdio end-to-end test the brief asks for:
+spawns the real built `dist/bin.js` with `bun run ... --stdio`, exchanges
+`initialize`/`didOpen` via `vscode-jsonrpc`'s `createMessageConnection`, and
+asserts the resulting `publishDiagnostics` notification; the child process is
+killed in `afterEach`, honoring the load rule's "kill what you start").
+Requires `bun run build` to have produced `dist/bin.js` first — the same
+fresh-worktree caveat as `@mxlang/parser`'s `dist/index.js` (see "Running
+tests in a fresh worktree" above): `bun run verify` builds before it tests,
+so this only bites a standalone `vitest run` of this package.
+
 ## Bun loader
 
 `packages/translator/src/bun.ts` (`@mxlang/translator/bun`) is the Bun-side
