@@ -23,6 +23,7 @@ export {
   type Ctx,
   type Disposition,
   DYNAMIC_TAG,
+  declName,
   emitAttrs,
   emitChildren,
   emitConst,

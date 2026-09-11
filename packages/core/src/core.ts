@@ -317,24 +317,69 @@ export function emitExpression(
  * Precision limits, all deliberate and all tested:
  *
  * - Only *reference* positions are rewritten. A member's property name
- *   (`obj.count`), an object literal's non-shorthand key (`{ count: 1 }`) and
- *   a declaration's own binding identifier are left alone, because Babel's
- *   own `isReferencedIdentifier` says they are not references.
- * - Shadowing is **not** tracked, and that is a real wrong answer rather than a
- *   near miss: with `count` registered, `xs.map(count => count)` emits
- *   `xs.map(count => count())`, calling the parameter. Registered names are a
- *   host's own state bindings and an expression that shadows one is
- *   pathological, while tracking it would mean running Babel's scope analysis
- *   on every interpolation — so the limit is accepted and *pinned* by
- *   `hooks.test.ts`'s "rewrites a shadowing parameter too" case, which asserts
- *   the wrong output on purpose. Whoever fixes it will see that test fail and
- *   change the contract deliberately, instead of flipping behaviour silently.
+ *   (`obj.count`) and an object literal's non-shorthand key (`{ count: 1 }`)
+ *   are left alone, because Babel's own `isReferencedIdentifier` says they are
+ *   not references.
+ * - A **declaration's own identifier never comes here at all**: `<const>`,
+ *   `<define>` and `<for>` print their names through `declName()`, because a
+ *   bare `Identifier` handed to this function has no parent for
+ *   `isReferencedIdentifier` to judge and would be rewritten into
+ *   `const count() = …`. See `declName` for that half of the rule.
+ * - **Shadowing is respected.** An identifier is rewritten only when it is
+ *   *free* in the expression — `path.scope.getBinding(name)` finds nothing —
+ *   because a free name is what refers to the template-level binding the host
+ *   registered. A parameter, `const`/`let`, or catch-clause binding of the same
+ *   name inside the expression shadows it and is left alone, so
+ *   `xs.map(count => count)` is untouched while `xs.map(x => x + count)` is
+ *   rewritten. Both pinned in `hooks.test.ts`.
  * - The walk runs only when something is registered, so a host that uses no
  *   stateful tags pays nothing.
  */
 export function expr(ctx: Ctx, node: Node): string {
   if (ctx.bindings.size === 0) return ctx.generate(node);
   return ctx.generate(rewriteReferences(ctx, node));
+}
+
+/**
+ * The source text of an identifier or pattern in **binding position**.
+ *
+ * Never rewritten, whatever is registered. `<const/count=…>`, `<for|count|>`
+ * and `<define/Row|count|>` all print a name the emitted JS is about to
+ * *declare*, and a rewrite there produces `const count() = …` — invalid JS
+ * with no diagnostic, the S8 silent-wrong-output class this file's guards
+ * exist to close. `expr()` cannot tell the two apart on its own: a bare
+ * `Identifier` handed to it has no parent for Babel's
+ * `isReferencedIdentifier()` to judge, so the caller has to say which it
+ * meant, and every declaration site says it by calling this.
+ *
+ * A declaration also **shadows** the host's binding for the rest of its scope,
+ * exactly as a parameter inside an expression does (see `expr()`): the
+ * declaration site unregisters the name, so later references print plain. That
+ * keeps one rule — "a name bound in the emitted JS is that binding, not the
+ * host's" — instead of one rule for expressions and another for templates.
+ */
+export function declName(ctx: Ctx, node: Node): string {
+  return ctx.generate(node);
+}
+
+/**
+ * Unregisters every name a binding pattern introduces, returning an undo.
+ *
+ * A `<const>` shadows for the rest of the render scope and never undoes; a tag
+ * param shadows for its block and is restored after, which is what the undo is
+ * for.
+ */
+function shadowBindings(ctx: Ctx, names: string[]): () => void {
+  const saved: Array<[string, BindingRewrite]> = [];
+  for (const name of names) {
+    const rewrite = ctx.bindings.get(name);
+    if (!rewrite) continue;
+    saved.push([name, rewrite]);
+    ctx.bindings.unregister(name);
+  }
+  return () => {
+    for (const [name, rewrite] of saved) ctx.bindings.register(name, rewrite);
+  };
 }
 
 /**
@@ -369,6 +414,14 @@ function rewriteReferences(ctx: Ctx, node: Node): Node {
       if (!path.isReferencedIdentifier()) return;
       const rewrite = ctx.bindings.get(path.node.name);
       if (!rewrite) return;
+      // A name bound *inside* the expression is not the host's binding: an
+      // arrow's parameter, a `const`, a catch clause. `getBinding` walks the
+      // scope chain up to the Program this walk built, so a hit means the
+      // author shadowed the name here and a miss means the name is free —
+      // which is exactly when it refers to the template-level binding the host
+      // registered. Rewriting a shadow would emit `xs.map(count => count())`,
+      // calling the parameter.
+      if (path.scope.getBinding(path.node.name)) return;
       path.replaceWith(parseExpression(rewrite(path.node.name)));
       path.skip();
     },
@@ -697,7 +750,7 @@ export function emitFor(ctx: Ctx, node: Node): void {
   rejectUnsupportedFields(ctx, node, "`<for>`", { params: true });
 
   const params: string[] = (node.body?.params ?? []).map((p: Node) =>
-    expr(ctx, p),
+    declName(ctx, p),
   );
   // A `<for>` with no params names no loop variable. Defaulting it to `item`
   // would bind the body to a name the author never wrote — resolving to an
@@ -726,6 +779,26 @@ export function emitFor(ctx: Ctx, node: Node): void {
     return temp;
   };
 
+  /**
+   * Emits the loop body with the loop's own params shadowing the host's
+   * bindings.
+   *
+   * Inside the loop, `count` is the loop variable, so a host that registered
+   * `count` must not rewrite references to it here — that would emit
+   * `escape(count())`, calling the item. Restored afterwards, so a `${count}`
+   * following the loop is the host's binding again. The iterable itself is
+   * printed *before* this, since it is evaluated outside the loop and a
+   * registered name there is still the host's.
+   */
+  const emitBody = (): void => {
+    const restore = shadowBindings(
+      ctx,
+      (node.body?.params ?? []).flatMap((p: Node) => bindingIdentifiers(p)),
+    );
+    emitChildren(ctx, children);
+    restore();
+  };
+
   const of = attrByName(node, "of");
   if (of) {
     const list = bind(expr(ctx, of.value));
@@ -738,7 +811,7 @@ export function emitFor(ctx: Ctx, node: Node): void {
       push(ctx, `for (const ${first} of ${list}) {`);
     }
     ctx.indent++;
-    emitChildren(ctx, children);
+    emitBody();
     ctx.indent--;
     push(ctx, "}");
     return;
@@ -752,7 +825,7 @@ export function emitFor(ctx: Ctx, node: Node): void {
       `for (const [${first}, ${second ?? "value"}] of Object.entries(${object})) {`,
     );
     ctx.indent++;
-    emitChildren(ctx, children);
+    emitBody();
     ctx.indent--;
     push(ctx, "}");
     return;
@@ -770,7 +843,7 @@ export function emitFor(ctx: Ctx, node: Node): void {
       `for (let ${first} = ${start}; ${first} ${compare} ${bound}; ${first}++) {`,
     );
     ctx.indent++;
-    emitChildren(ctx, children);
+    emitBody();
     ctx.indent--;
     push(ctx, "}");
     return;
@@ -794,7 +867,42 @@ export function emitConst(ctx: Ctx, node: Node): void {
   ctx.policy.checkBinding?.(node.var, "`<const>`");
   const value = attrByName(node, "value") ?? node.attributes?.[0];
   if (!value?.value) fail("`<const>` without a value", node);
-  push(ctx, `const ${expr(ctx, node.var)} = ${expr(ctx, value.value)};`);
+  const name = declName(ctx, node.var);
+  // The initializer is evaluated *before* the binding exists, so a registered
+  // name on the right-hand side is still the host's: `<const/count=count + 1>`
+  // emits `const count = count() + 1`. Shadowing takes effect only afterwards,
+  // for the rest of the render scope.
+  const init = expr(ctx, value.value);
+  push(ctx, `const ${name} = ${init};`);
+  shadowBindings(ctx, bindingIdentifiers(node.var));
+}
+
+/**
+ * Every name a binding pattern declares.
+ *
+ * Destructuring included, since `<const/{a, b}=…>` declares both and each
+ * shadows the host's binding of that name.
+ */
+function bindingIdentifiers(pattern: Node): string[] {
+  if (!pattern || typeof pattern !== "object") return [];
+  switch (pattern.type) {
+    case "Identifier":
+      return [pattern.name];
+    case "ObjectPattern":
+      return (pattern.properties ?? []).flatMap((property: Node) =>
+        bindingIdentifiers(property.value ?? property.argument),
+      );
+    case "ArrayPattern":
+      return (pattern.elements ?? []).flatMap((element: Node) =>
+        bindingIdentifiers(element),
+      );
+    case "AssignmentPattern":
+      return bindingIdentifiers(pattern.left);
+    case "RestElement":
+      return bindingIdentifiers(pattern.argument);
+    default:
+      return [];
+  }
 }
 
 /** `<define/name|params|>...</define>` -> a local `(params) => string`. */
@@ -806,11 +914,19 @@ export function emitDefine(ctx: Ctx, node: Node): void {
     var: true,
     params: true,
   });
-  const name = expr(ctx, node.var);
+  const name = declName(ctx, node.var);
   const paramNames: string[] = (node.body?.params ?? []).map((p: Node) =>
-    expr(ctx, p),
+    declName(ctx, p),
+  );
+  // The params shadow the host's bindings inside the body only — the arrow's
+  // own parameter list is what those names refer to there — and are restored
+  // afterwards, so a later `${count}` outside the define is the host's again.
+  const restore = shadowBindings(
+    ctx,
+    (node.body?.params ?? []).flatMap((p: Node) => bindingIdentifiers(p)),
   );
   const fn = blockFunction(ctx, node.body?.body ?? [], paramNames.join(", "));
+  restore();
   ctx.defines.set(name, paramNames);
   push(ctx, `const ${name} = ${fn};`);
 }
