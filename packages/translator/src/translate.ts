@@ -233,6 +233,16 @@ function escapeComment(text: string): string {
  * Marko's own `<${input.content}/>` reads.
  */
 function emitComponent(ctx: Ctx, node: Node, name: string): void {
+  if (
+    (ctx.defines.has(name) || ctx.imports.has(name)) &&
+    !/^[A-Z]/.test(name)
+  ) {
+    fail(
+      `Local variables must be in a dynamic tag unless they are PascalCase. Use \`<\${${name}}/>\` or rename to \`${name[0]?.toUpperCase()}${name.slice(1)}\`.`,
+      node,
+    );
+  }
+
   rejectUnsupportedFields(ctx, node, `\`<${name}>\``, {
     attributeTags: true,
     args: true,
@@ -371,6 +381,21 @@ function emitSpecial(ctx: Ctx, node: Node, name: string): boolean {
   }
   if (emitBinding(ctx, node, name)) return true;
 
+  // A hyphenated name with no taglib entry is Marko's failed custom-element
+  // lookup ("Unable to find entry point for custom tag `<my-widget>`",
+  // verified against `@marko/compiler` 5.42.5 / `marko@6.3.51`; see fixture
+  // `unknown-element`), not literal HTML. Checked ahead of `isComponent`/
+  // `isElement` so it fires before the generic "unknown tag" message, which
+  // is this dialect's own wording rather than Marko's.
+  if (
+    name.includes("-") &&
+    !ctx.defines.has(name) &&
+    !ctx.imports.has(name) &&
+    ctx.lookup?.getTag(name) === undefined
+  ) {
+    fail(`Unable to find entry point for custom tag \`<${name}>\`.`, node);
+  }
+
   // A `server` block is server-side code, and this *is* the server render, so
   // it runs. Verified against Marko: `server const S = 41 + 1` followed by
   // `${S}` renders `42`. It hoists to module scope exactly as `static` does —
@@ -479,12 +504,18 @@ function emitSpecial(ctx: Ctx, node: Node, name: string): boolean {
  *
  * `marko-html`, `marko-svg` and `marko-math` are the taglibs Marko loads for
  * HTML, SVG and MathML elements; anything they define is an element. A
- * hyphenated name is a custom element and always legal.
+ * hyphenated name is only a *custom* element when Marko's own taglib lookup
+ * actually resolves it — real Marko errors on an unresolved one ("Unable to
+ * find entry point for custom tag `<my-widget>`", verified against
+ * `@marko/compiler` 5.42.5 / `marko@6.3.51`; see fixture `unknown-element`),
+ * it does not render it as literal HTML. Treating every hyphenated name as
+ * automatically legal (the previous behaviour here) was strictly more
+ * permissive than Marko, which is exactly the class of divergence decision
+ * 67 closes.
  */
 const ELEMENT_TAGLIBS = new Set(["marko-html", "marko-svg", "marko-math"]);
 
 function isElement(name: string, ctx: Ctx): boolean {
-  if (name.includes("-")) return true;
   const taglibId = ctx.lookup?.getTag(name)?.taglibId;
   return taglibId !== undefined && ELEMENT_TAGLIBS.has(taglibId);
 }
@@ -496,6 +527,19 @@ function isElement(name: string, ctx: Ctx): boolean {
  * tag Marko *discovered* — a `.marko` file in a `tags/` directory beside the
  * template — which is the convention this dialect exists to support and the
  * one MX's own dialect deliberately does not have.
+ *
+ * A *lowercase* local binding (`import layout from "./layout.marko"` then
+ * `<layout>`) is not called directly: real Marko rejects it ("Local
+ * variables must be in a dynamic tag unless they are PascalCase. Use
+ * `<${layout}/>` or rename to `Layout`.", verified against `@marko/compiler`
+ * 5.42.5 / `marko@6.3.51`; see fixture `lowercase-component`) because a
+ * lowercase tag name is only ever resolved through taglib/`tags/`
+ * discovery, never through a local variable — that ambiguity is what the
+ * dynamic-tag syntax exists to remove. A taglib-discovered tag has no such
+ * ambiguity (it is never a local variable), so it is unaffected by this
+ * check regardless of case. `isComponent` only decides routing (it has no
+ * `node` to report a location with); the rejection itself is raised in
+ * `emitComponent`, the first place downstream that has one.
  */
 function isComponent(name: string, ctx: Ctx): boolean {
   if (ctx.defines.has(name) || ctx.imports.has(name)) return true;

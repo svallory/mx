@@ -29,9 +29,18 @@ import { renderTranslator } from "./translator-render";
 const MIN_FIXTURES = 40;
 
 interface FixtureMeta {
-  /** "skip" is never compiled; "divergence" is compiled and expected to differ. */
-  marko?: "skip" | "divergence";
+  /**
+   * "skip" is never compiled. "divergence" is compiled and expected to
+   * differ from `expected.html`. "error" is compiled and expected to throw
+   * on *both* sides, matching `errorPattern` — this is decision 67's closed
+   * class: a construct the translator now rejects the same way Marko does,
+   * so `expected.html` plays no role and both throwing the same message is
+   * itself the pass.
+   */
+  marko?: "skip" | "divergence" | "error";
   reason?: string;
+  /** Required when `marko: "error"`: both sides' thrown message must match this. */
+  errorPattern?: string;
 }
 
 type Verdict = "pass" | "translator bug" | "skipped (reason)";
@@ -105,6 +114,56 @@ export async function runStockTable(): Promise<{
         translator: "skipped (reason)",
         verdict: "skipped (reason)",
         detail: meta.reason,
+      });
+      continue;
+    }
+
+    if (meta.marko === "error") {
+      if (!meta.reason || !meta.errorPattern) {
+        console.error(
+          `oracle:marko: stock fixture "${name}" has marko:"error" with no reason/errorPattern`,
+        );
+        malformed = true;
+        continue;
+      }
+      const pattern = new RegExp(meta.errorPattern);
+      const input = JSON.parse(readFileSync(join(dir, "input.json"), "utf8"));
+
+      let markoThrew: string | null = null;
+      try {
+        await renderStockMarko(dir, input);
+      } catch (err) {
+        markoThrew = (err as Error).message;
+      }
+      let translatorThrew: string | null = null;
+      try {
+        renderTranslator(dir, join(dir, "input.marko"), input);
+      } catch (err) {
+        translatorThrew = (err as Error).message;
+      }
+
+      const markoMatched = markoThrew !== null && pattern.test(markoThrew);
+      const translatorMatched =
+        translatorThrew !== null && pattern.test(translatorThrew);
+
+      let verdict: Verdict;
+      let detail: string | undefined;
+      if (markoMatched && translatorMatched) {
+        verdict = "pass";
+      } else {
+        verdict = "translator bug";
+        unresolved = true;
+        detail = `expected both sides to throw matching /${meta.errorPattern}/ -- marko: ${markoThrew ?? "did not throw"}; translator: ${translatorThrew ?? "did not throw"}`;
+      }
+
+      rows.push({
+        fixture: name,
+        marko: markoMatched ? "error (matched)" : (markoThrew ?? "no error"),
+        translator: translatorMatched
+          ? "error (matched)"
+          : (translatorThrew ?? "no error"),
+        verdict,
+        detail,
       });
       continue;
     }
