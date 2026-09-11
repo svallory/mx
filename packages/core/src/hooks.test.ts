@@ -17,7 +17,7 @@ import {
  * (`emitSpecial`), a way to lift a declaration to the enclosing function
  * (`ctx.hoist`), and a way to rewrite references to a binding it owns
  * (`ctx.bindings`). The fake policy here is the smallest host that exercises
- * all three; no real host uses them yet (`@markox/translator` renders a
+ * all three; no real host uses them yet (`@mxlang/translator` renders a
  * `<let>`'s initial value instead), so these tests are the only thing keeping
  * the hooks honest.
  */
@@ -31,7 +31,7 @@ function fakePolicy(overrides: Partial<Policy> = {}): Policy {
     emitComponent: () => {
       throw new Error("unused");
     },
-    escapeFrom: "@markox/core",
+    escapeFrom: "@mxlang/core",
     ...overrides,
   };
 }

@@ -175,7 +175,7 @@ export function parseFragment(
       // Without one, `@marko/compiler` resolves its *default* translator
       // (`marko/translator`, from the `marko` package) before it parses, which
       // a package that only wants the AST has no reason to depend on — and
-      // `@markox/core` does not.
+      // `@mxlang/core` does not.
       translator: PARSE_ONLY_TRANSLATOR,
       // biome-ignore lint/suspicious/noExplicitAny: the compiler's result type is untyped here
     } as any).ast;

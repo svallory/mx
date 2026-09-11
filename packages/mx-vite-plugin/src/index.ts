@@ -1,10 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
-import { print } from "@markox/parser";
+import { print } from "@mxlang/parser";
 import type { Plugin } from "vite";
 
 /**
  * Lazily imported, and only inside `transform`'s `.marko` branch:
- * `@markox/translator` pulls in `@marko/compiler`, a large dependency whose
+ * `@mxlang/translator` pulls in `@marko/compiler`, a large dependency whose
  * transitive code uses TypeScript parameter-property syntax. A static
  * top-level import here would load that dependency the moment
  * `vite.config.ts` imports this plugin — including for a `.solid.mx`-only
@@ -14,14 +14,14 @@ import type { Plugin } from "vite";
  * that syntax outright.
  *
  * A dynamic `import()`, not `require()`: `require()` on a bare specifier
- * whose `main` is TS source (`@markox/translator`'s `src/index.ts`) goes
+ * whose `main` is TS source (`@mxlang/translator`'s `src/index.ts`) goes
  * through Node's native module loader with no transform step at all under
  * Vitest's Node-native `require`, hitting the same strip-only-mode error one
  * line of source further in. Dynamic `import()` is handled by Vite's/Vitest's
  * own transform pipeline instead, which strips TypeScript fully rather than
  * in the narrow subset Node's native loader accepts.
  *
- * `@markox/translator` has no compiled entry (its `main` is `src/index.ts`),
+ * `@mxlang/translator` has no compiled entry (its `main` is `src/index.ts`),
  * so resolving its types at all — even through this dynamic `import()`, cast
  * away below — needs `allowImportingTsExtensions` wherever `tsc` walks that
  * far. Every consumer of this plugin (each example) needs the same flag in
@@ -32,7 +32,7 @@ async function compileMarko(
   source: string,
   filename: string,
 ): Promise<{ code: string }> {
-  const { compile } = (await import("@markox/translator")) as {
+  const { compile } = (await import("@mxlang/translator")) as {
     compile: (source: string, filename: string) => { code: string };
   };
   return compile(source, filename);
@@ -117,7 +117,7 @@ export function codeFrame(
 /**
  * Compiles `.solid.mx` and `.marko` ahead of the rest of the pipeline.
  *
- * `.solid.mx` prints to JSX source text (`print()`, from `@markox/parser`)
+ * `.solid.mx` prints to JSX source text (`print()`, from `@mxlang/parser`)
  * ahead of `@solidjs/vite-plugin`. Ordering: this plugin is `enforce: "pre"`,
  * matching `@solidjs/vite-plugin`'s own hard-coded `enforce: "pre"`, so
  * relative order between the two is the order they appear in the user's
@@ -127,8 +127,8 @@ export function codeFrame(
  * here.
  *
  * `.marko` compiles to a plain `(input) => string` module via `compile()`
- * from `@markox/translator` — the same whole-file translator
- * `examples/mx-site` and `@markox/translator/bun` use, so a `.marko` template
+ * from `@mxlang/translator` — the same whole-file translator
+ * `examples/mx-site` and `@mxlang/translator/bun` use, so a `.marko` template
  * behaves identically whether it is loaded by Vite or by Bun. `compile()`'s
  * returned map is presently an identity placeholder (see its own doc comment
  * — the translator builds text directly, not from a printed AST), so this

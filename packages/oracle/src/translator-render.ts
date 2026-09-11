@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the compiled templates call `escape` by this name
-import { compile, escape } from "@markox/translator";
+import { compile, escape } from "@mxlang/translator";
 
 /**
- * Renders a stock `.marko` fixture through `@markox/translator`.
+ * Renders a stock `.marko` fixture through `@mxlang/translator`.
  *
  * The emitted module is TypeScript with ESM imports, which cannot be `eval`ed
  * directly, so both are stripped and the body run with `new Function` —

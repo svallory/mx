@@ -13,7 +13,7 @@
 #   scripts/subtree-split.sh [branch-name]
 #
 # Prints the resulting branch name and its tip sha. Push that branch to the
-# target repo (e.g. markox/zed) yourself — this script does not push or touch
+# target repo (e.g. mxlang/zed) yourself — this script does not push or touch
 # any remote, so a bad split can be discarded by deleting the local branch.
 set -euo pipefail
 
@@ -49,7 +49,7 @@ echo "Verify extension.toml is at the new tree's root:"
 echo "  git show $BRANCH:extension.toml | head -1"
 echo
 echo "Push to the target repo, e.g.:"
-echo "  git push <markox/zed remote url> $BRANCH:main"
+echo "  git push <mxlang/zed remote url> $BRANCH:main"
 echo
 echo "Then, in extension.toml, swap [grammars.solidmx]'s repository from the"
 echo "file:// dev form to the split-off tree-sitter-solidmx repo's real"

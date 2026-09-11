@@ -8,7 +8,7 @@ import markoPlugin from "./bun.ts";
  * Runs under `bun test`, not vitest: it exercises `Bun.plugin` and Bun's
  * dynamic `import()` of a `.marko` module, both Bun-runtime-only.
  */
-describe("@markox/translator/bun", () => {
+describe("@mxlang/translator/bun", () => {
   test("Bun.plugin registers an onLoad for .marko that compile()s and runs", async () => {
     Bun.plugin(markoPlugin);
 
@@ -47,7 +47,7 @@ describe("@markox/translator/bun", () => {
     const source = readFileSync(join(fixtureDir, "input.marko"), "utf8");
 
     // Written alongside input.marko, not a bare tmpdir: the emitted module
-    // imports `escape` from "@markox/translator" by bare specifier, which
+    // imports `escape` from "@mxlang/translator" by bare specifier, which
     // Bun resolves via node_modules lookup from the file's own directory —
     // a tmpdir outside the package tree can't resolve it.
     const path = join(fixtureDir, "input.mx");
@@ -67,7 +67,7 @@ describe("@markox/translator/bun", () => {
     // Real SolidMX source: it would fail the string translator outright
     // (JSX like <button onClick={...}> isn't valid `.marko` syntax), so the
     // regression this guards against is real, not just theoretical.
-    const dir = mkdtempSync(join(tmpdir(), "markox-translator-bun-solid-"));
+    const dir = mkdtempSync(join(tmpdir(), "mxlang-translator-bun-solid-"));
     const path = join(dir, "Counter.solid.mx");
     writeFileSync(
       path,

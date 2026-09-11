@@ -7,10 +7,10 @@ import { renderTranslator } from "./translator-render";
 
 /**
  * `oracle:marko`'s one table (decisions 66, 68): parity between Marko's own
- * toolchain and `@markox/translator` for the stock `.marko` fixture set.
+ * toolchain and `@mxlang/translator` for the stock `.marko` fixture set.
  *
  * There is no dialect to compare it against any more (decision 68 retired
- * `.mx` and `@markox/html`), so this asks a single, narrow question: for
+ * `.mx` and `@mxlang/html`), so this asks a single, narrow question: for
  * templates an ordinary Marko user would write, does the expressions-only
  * translator emit what Marko's own server render emits? Every fixture is
  * expected to pass, and a skip needs a decision-65 reason — "this target
@@ -220,7 +220,7 @@ export async function runStockTable(): Promise<{
 
   const nameWidth = Math.max(8, ...rows.map((r) => r.fixture.length));
   console.log("");
-  console.log("=== stock .marko fixtures (@markox/translator) ===");
+  console.log("=== stock .marko fixtures (@mxlang/translator) ===");
   console.log(
     `${"fixture".padEnd(nameWidth)}  marko            translator       verdict`,
   );

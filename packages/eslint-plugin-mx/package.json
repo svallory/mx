@@ -1,5 +1,5 @@
 {
-  "name": "@markox/eslint-plugin",
+  "name": "@mxlang/eslint-plugin",
   "version": "0.0.0",
   "private": true,
   "type": "module",

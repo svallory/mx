@@ -1,8 +1,8 @@
 /**
- * `@markox/translator`'s dialect policy: stock `.marko`, expressions-only.
+ * `@mxlang/translator`'s dialect policy: stock `.marko`, expressions-only.
  *
- * Decision 66. The lowering core is shared with `@markox/html`
- * (`@markox/html`'s `core.ts`); this file supplies only what differs, and
+ * Decision 66. The lowering core is shared with `@mxlang/html`
+ * (`@mxlang/html`'s `core.ts`); this file supplies only what differs, and
  * every difference is a property of *stock Marko's conventions* rather than a
  * preference:
  *
@@ -10,7 +10,7 @@
  *   convention is that `<@header>` reaches the component as `input.header`,
  *   rendered with `<${input.header}/>`, and that a *repeated* attribute tag
  *   arrives as an array. Both verified against Marko 5.42.5's own server
- *   render, not assumed. `@markox/html` passes callable function props
+ *   render, not assumed. `@mxlang/html` passes callable function props
  *   instead (S3); a translator that confused the two would compile happily
  *   and render the wrong markup.
  * - **Components are discovered**, through Marko's taglib lookup: an
@@ -46,9 +46,9 @@ import {
   quote,
   rejectUnsupportedFields,
   sliceLoc,
-} from "@markox/core";
+} from "@mxlang/core";
 
-export { TranslateError } from "@markox/core";
+export { TranslateError } from "@mxlang/core";
 
 /**
  * The policy table of decision 65, as implemented.
@@ -523,7 +523,7 @@ function isElement(name: string, ctx: Ctx): boolean {
 /**
  * Whether a tag name resolves to a component.
  *
- * An `import` binding or a `<define>` is one, as in `@markox/html`. So is a
+ * An `import` binding or a `<define>` is one, as in `@mxlang/html`. So is a
  * tag Marko *discovered* — a `.marko` file in a `tags/` directory beside the
  * template — which is the convention this dialect exists to support and the
  * one MX's own dialect deliberately does not have.
@@ -604,7 +604,7 @@ function emitBoundAttr(ctx: Ctx, attr: Node): boolean {
  * syntax compiles through Marko, so there is nothing to compare against.
  *
  * The hook exists so the message is *this* dialect's. Without it the shared
- * core falls back to `@markox/html`'s wording ("not supported in a standalone
+ * core falls back to `@mxlang/html`'s wording ("not supported in a standalone
  * template"), which is `.mx`'s vocabulary leaking into a Marko-parity target.
  */
 function emitModifier(_ctx: Ctx, attr: Node): boolean {
@@ -646,7 +646,7 @@ export const policy: Policy = {
   emitBoundAttr,
   emitModifier,
   orderAttrs,
-  escapeFrom: "@markox/translator",
+  escapeFrom: "@mxlang/translator",
   emitSpecial,
 };
 

@@ -1,5 +1,5 @@
 {
-  "name": "@markox/oracle",
+  "name": "@mxlang/oracle",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@markox/parser": "workspace:*",
-    "@markox/translator": "workspace:*"
+    "@mxlang/parser": "workspace:*",
+    "@mxlang/translator": "workspace:*"
   },
   "devDependencies": {
     "@marko/compiler": "5.42.5",

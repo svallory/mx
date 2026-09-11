@@ -1,5 +1,5 @@
 {
-  "name": "@markox/example-mx-vite",
+  "name": "@mxlang/example-mx-vite",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,10 +9,10 @@
     "e2e": "vitest run --config e2e/vitest.config.ts"
   },
   "dependencies": {
-    "@markox/translator": "workspace:*"
+    "@mxlang/translator": "workspace:*"
   },
   "devDependencies": {
-    "@markox/vite-plugin": "workspace:*",
+    "@mxlang/vite-plugin": "workspace:*",
     "@types/node": "26.5.1",
     "playwright": "1.63.0",
     "typescript": "5.9.3",

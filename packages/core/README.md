@@ -1,4 +1,4 @@
-# `@markox/core`
+# `@mxlang/core`
 
 The Marko-node consumer every MX host is built on.
 
@@ -23,7 +23,7 @@ It depends on `@marko/compiler` and nothing else.
 | The two front doors (`compileSource`, `parseFragment`) | Stateful tags (`<let>`, `<effect>`, `:=`), through the three hooks |
 | `escape` | Its own integration: a Vite plugin, a Bun loader, a TypeScript plugin |
 
-`@markox/translator` is the first host (vanilla HTML strings); SolidMX and
+`@mxlang/translator` is the first host (vanilla HTML strings); SolidMX and
 Astro follow.
 
 ## The Policy contract
@@ -130,8 +130,8 @@ second Babel dependency:
   from the same instance anyway.
 - **The alternative is worse.** Adding `@babel/parser` + `@babel/traverse` as
   real dependencies buys a second copy of Babel, a second version to keep in
-  step, and the cross-instance problem above. `@markox/translator` used to reach
-  for `@markox/parser` (the *SolidMX parser* package, a vendored `@babel/parser`
+  step, and the cross-instance problem above. `@mxlang/translator` used to reach
+  for `@mxlang/parser` (the *SolidMX parser* package, a vendored `@babel/parser`
   fork) for exactly one `parse` call; dropping that is what leaves this package
   with a single dependency.
 
@@ -177,7 +177,7 @@ the emitted module shape (the `escape` import, the author's hoisted module
 scope, their `Input` interface, one default-exported render function).
 
 That model is not hidden behind the policy, deliberately. A host that emits
-strings (`@markox/translator` today, Astro next) reuses it as is, which is most
+strings (`@mxlang/translator` today, Astro next) reuses it as is, which is most
 of why a second string host is nearly free. A JSX host (SolidMX, phase 4)
 replaces the emit layer instead — it emits Babel nodes, not text, so pushing
 `VOID_TAGS` and `out +=` behind policy members would buy nothing and cost every
@@ -187,7 +187,7 @@ not a speculative abstraction today.
 ## Tests
 
 ```
-bunx vitest run --root ../.. --project @markox/core
+bunx vitest run --root ../.. --project @mxlang/core
 ```
 
 `src/hooks.test.ts` (the three hooks), `src/fragment.test.ts` (the fragment

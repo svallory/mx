@@ -1,9 +1,9 @@
 /**
- * `@markox/core`: the Marko-node consumer every MX host is built on.
+ * `@mxlang/core`: the Marko-node consumer every MX host is built on.
  *
  * Compiles Marko's AST to a runtime-free `(input) => string` module, with
  * everything host-specific behind `Policy`. Decisions 70 to 72: MX is the
- * language, this package is the core, and a *host* (`@markox/translator` is
+ * language, this package is the core, and a *host* (`@mxlang/translator` is
  * the vanilla one; SolidMX and Astro follow) supplies a policy plus its own
  * integration.
  *
@@ -14,9 +14,9 @@
  * behind the policy, which is why these live as core functions and not as
  * policy members. See `README.md` "The emit model".
  *
- * This file previously served two dialects — `@markox/html`'s retired `.mx`
- * dialect, alongside `@markox/translator`'s stock `.marko` — until decision
- * 68 retired `.mx` and deleted `@markox/html` entirely. Two things that were
+ * This file previously served two dialects — `@mxlang/html`'s retired `.mx`
+ * dialect, alongside `@mxlang/translator`'s stock `.marko` — until decision
+ * 68 retired `.mx` and deleted `@mxlang/html` entirely. Two things that were
  * true while both existed, kept here because they still explain choices this
  * core makes:
  *
@@ -52,11 +52,11 @@ const require = createRequire(import.meta.url);
  *
  * The core parses JS in two places (an `import` statement's bindings, and an
  * expression whose identifier references a host may rewrite). Both used
- * `@markox/parser`'s vendored Babel while this file lived in the translator,
+ * `@mxlang/parser`'s vendored Babel while this file lived in the translator,
  * which made the string host depend on the *SolidMX parser* package for a
  * plain `parse` call. `@marko/compiler` is already this package's only
  * dependency and already bundles a full Babel, and these nodes belong to that
- * instance anyway — so the core asks it, and `@markox/core` depends on
+ * instance anyway — so the core asks it, and `@mxlang/core` depends on
  * nothing else.
  *
  * Required lazily: `escape` and the type surface stay importable without

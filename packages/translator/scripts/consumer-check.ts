@@ -35,7 +35,7 @@ const simulateMissingDist = process.argv.includes("--simulate-missing-dist");
  * `mx-parser` packaging defect (likely its `files`/`.npmignore` traversal
  * walking the 800KB+ vendored Babel tree or `node_modules`), not this
  * script's problem to fix, and no longer on this script's path at all now
- * that the translator depends on `@markox/core` instead. The timeout stays
+ * that the translator depends on `@mxlang/core` instead. The timeout stays
  * as a standing guard against the same class of hang recurring on any
  * future dependency. Wrapped in the POSIX `timeout` command rather than
  * `AbortSignal.timeout` so a killed child's descendants are actually reaped
@@ -98,15 +98,15 @@ console.log("[consumer-check] packing tarball...");
 const tarballPath = packTarball(pkgDir);
 console.log(`[consumer-check] packed: ${tarballPath}`);
 
-// `@markox/core` (the Marko-node consumer, `translate.ts`'s import source)
+// `@mxlang/core` (the Marko-node consumer, `translate.ts`'s import source)
 // is a real runtime dependency, not a devDependency, but it is `private:
 // true` and not on the npm registry — a plain `bun add` of the translator
 // tarball 404s resolving it. Packing and installing it too proves this
-// package is *installable* today without requiring `@markox/core` to
+// package is *installable* today without requiring `@mxlang/core` to
 // actually be published yet.
 const coreDir = join(pkgDir, "..", "core");
 console.log(
-  "[consumer-check] packing @markox/core (unpublished dependency)...",
+  "[consumer-check] packing @mxlang/core (unpublished dependency)...",
 );
 const coreTarballPath = packTarball(coreDir);
 console.log(`[consumer-check] packed: ${coreTarballPath}`);
@@ -115,13 +115,13 @@ const scratchDir = mkdtempSync(join(tmpdir(), "consumer-check-"));
 console.log(`[consumer-check] scratch project: ${scratchDir}`);
 
 try {
-  // `@markox/core` is a transitive dependency (declared by the translator
+  // `@mxlang/core` is a transitive dependency (declared by the translator
   // tarball's own `package.json`, rewritten from `workspace:*` to its literal
   // version at pack time), so a plain `bun add <tarball>` still resolves it
   // against the registry, 404s, and fails — passing the core tarball as a
   // second top-level `add` argument does not change how the *transitive*
   // reference resolves. `overrides` pins it to the local tarball by file:
-  // path instead, standing in for `@markox/core` actually being published.
+  // path instead, standing in for `@mxlang/core` actually being published.
   writeFileSync(
     join(scratchDir, "package.json"),
     JSON.stringify(
@@ -130,7 +130,7 @@ try {
         private: true,
         type: "module",
         overrides: {
-          "@markox/core": `file:${coreTarballPath}`,
+          "@mxlang/core": `file:${coreTarballPath}`,
         },
       },
       null,
@@ -150,7 +150,7 @@ try {
   writeFileSync(
     join(scratchDir, "via-api.ts"),
     [
-      'import { compile } from "@markox/translator";',
+      'import { compile } from "@mxlang/translator";',
       'import { readFileSync } from "node:fs";',
       'const source = readFileSync("hello.marko", "utf8");',
       'const { code } = compile(source, "hello.marko");',
@@ -165,7 +165,7 @@ try {
   // 2. Bun loader.
   writeFileSync(
     join(scratchDir, "bunfig.toml"),
-    'preload = ["@markox/translator/bun"]\n',
+    'preload = ["@mxlang/translator/bun"]\n',
   );
   writeFileSync(
     join(scratchDir, "via-loader.ts"),
@@ -191,17 +191,17 @@ try {
           moduleResolution: "bundler",
           target: "ES2022",
           noEmit: true,
-          // Checked against the published `@markox/translator` `.d.ts`
+          // Checked against the published `@mxlang/translator` `.d.ts`
           // only; a dependency's own `.d.ts`/`.ts` internals (e.g. a
           // `bun-types`/`typescript` version skew unrelated to either
           // package) are not what this step exists to catch.
           skipLibCheck: true,
           types: ["node"],
-          // `@markox/translator`'s `.d.ts` re-exports types from
-          // `@markox/core`, which — unlike the translator itself — has no
+          // `@mxlang/translator`'s `.d.ts` re-exports types from
+          // `@mxlang/core`, which — unlike the translator itself — has no
           // `dist/` yet (`main`/`types` point straight at `src/index.ts`),
           // so tsc has to parse that raw `.ts` source to resolve the
-          // imported types. Any TS consumer of an unbuilt `@markox/*`
+          // imported types. Any TS consumer of an unbuilt `@mxlang/*`
           // package needs this flag today (see the Vite-plugin section of
           // the repo's own AGENTS.md for the same requirement elsewhere);
           // it is not something this consumer's own code needs.

@@ -1,12 +1,12 @@
 /**
- * Public types for `@markox/parser` as seen by other packages.
+ * Public types for `@mxlang/parser` as seen by other packages.
  *
  * Consumers typecheck against this rather than against `src/index.ts`, because
  * the vendored `@babel/parser` source under `src/babel/` needs relaxations
  * (`allowImportingTsExtensions`, looser index/variance checks) that should not
  * leak into every package that merely calls `parse`.
  */
-declare module "@markox/parser" {
+declare module "@mxlang/parser" {
   import type { Expression, File } from "@babel/types";
 
   export interface MxParseOptions {
@@ -18,7 +18,7 @@ declare module "@markox/parser" {
   /**
    * Parses a `.solid.mx` file into a Babel `File` of standard node types.
    *
-   * Whole-file `.marko` templates are not parsed here: `@markox/translator`
+   * Whole-file `.marko` templates are not parsed here: `@mxlang/translator`
    * drives `@marko/compiler` with its own translator instead (ADR 0001).
    */
   export function parse(

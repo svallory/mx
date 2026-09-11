@@ -6,17 +6,17 @@ MX (Markup eXtended) is a template language born from Marko. It takes Marko's sy
 
 | Package | npm name | Purpose |
 |---|---|---|
-| `packages/mx-parser` | `@markox/parser` | `@babel/parser` fork: MX in expression position -> lowered JSX AST (the language) |
-| `packages/babel-plugin-mx` | `@markox/babel-plugin` | `parserOverride` -> mx-parser |
-| `packages/mx-typescript-plugin` | `@markox/typescript-plugin` | `@volar/typescript` plugin; virtual `.tsx` via `@babel/generator` source maps |
-| `packages/mx-tsc` | `@markox/tsc` | `tsc` wrapper (`runTsc`) so CI type-checks `.solid.mx` |
-| `packages/mx-vscode` | `@markox/vscode` | TextMate grammar + `typescriptServerPlugins` manifest |
-| `packages/eslint-plugin-mx` | `@markox/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
-| `packages/mx-vite-plugin` | `@markox/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
-| `packages/core` | `@markox/core` | The Marko-node consumer every MX host is built on: the structural tag lowerings, the `Policy` contract, three stateful-tag hooks (tag handler, hoist, binding registry), and two front doors (`compileSource` through `@marko/compiler`'s `config.translator` seam, `parseFragment` for a substring of a larger file). Depends on `@marko/compiler` alone. |
-| `packages/translator` | `@markox/translator` | The vanilla MX host on `@markox/core`: `.mx` (official) and `.marko` (alias) files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`. MX 1.0 is a strict subset of Marko syntax (decision 72), so this is Marko syntax, unmodified — no fork. |
+| `packages/mx-parser` | `@mxlang/parser` | `@babel/parser` fork: MX in expression position -> lowered JSX AST (the language) |
+| `packages/babel-plugin-mx` | `@mxlang/babel-plugin` | `parserOverride` -> mx-parser |
+| `packages/mx-typescript-plugin` | `@mxlang/typescript-plugin` | `@volar/typescript` plugin; virtual `.tsx` via `@babel/generator` source maps |
+| `packages/mx-tsc` | `@mxlang/tsc` | `tsc` wrapper (`runTsc`) so CI type-checks `.solid.mx` |
+| `packages/mx-vscode` | `@mxlang/vscode` | TextMate grammar + `typescriptServerPlugins` manifest |
+| `packages/eslint-plugin-mx` | `@mxlang/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
+| `packages/mx-vite-plugin` | `@mxlang/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
+| `packages/core` | `@mxlang/core` | The Marko-node consumer every MX host is built on: the structural tag lowerings, the `Policy` contract, three stateful-tag hooks (tag handler, hoist, binding registry), and two front doors (`compileSource` through `@marko/compiler`'s `config.translator` seam, `parseFragment` for a substring of a larger file). Depends on `@marko/compiler` alone. |
+| `packages/translator` | `@mxlang/translator` | The vanilla MX host on `@mxlang/core`: `.mx` (official) and `.marko` (alias) files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`. MX 1.0 is a strict subset of Marko syntax (decision 72), so this is Marko syntax, unmodified — no fork. |
 
-**Naming TODO**: the `@markox/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
+**Naming TODO**: the `@mxlang/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
 
 ## Pinned versions
 
@@ -106,17 +106,17 @@ chromium` once). The e2e suite is not part of the root `bun run test` — it
 needs a browser — so it stays behind the example's own script.
 
 `examples/mx-site` is a different kind of example: a Hono-on-Bun server
-rendering MX (`.mx`) templates to HTML strings with `@markox/translator`, no
+rendering MX (`.mx`) templates to HTML strings with `@mxlang/translator`, no
 client runtime, no Solid — one partial (`partials/callout.marko`) is kept as
 the `.marko` alias to exercise it end to end. It imports these files
-directly via `@markox/translator/bun` (no prebuild step). See
+directly via `@mxlang/translator/bun` (no prebuild step). See
 `examples/mx-site/README.md`.
 
 `examples/mx-vite` is a minimal static-site build: two `.mx` pages compiled
-by `@markox/vite-plugin`'s `.mx`/`.marko` handling, bundled by `vite build`
+by `@mxlang/vite-plugin`'s `.mx`/`.marko` handling, bundled by `vite build`
 to an SSR entry, then run once to write `dist/*.html`.
 
-`@markox/translator` needs no app at all — it renders a fixture to stdout,
+`@mxlang/translator` needs no app at all — it renders a fixture to stdout,
 showing the stock `.marko` template, the compiled runtime-free module, and
 the HTML it produces:
 

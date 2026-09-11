@@ -1,5 +1,5 @@
 /**
- * `@markox/core` — the Marko-node consumer every MX host is built on.
+ * `@mxlang/core` — the Marko-node consumer every MX host is built on.
  *
  * See `README.md` for what belongs here and what belongs in a host. The two
  * front doors are `compileSource` (a whole file, through

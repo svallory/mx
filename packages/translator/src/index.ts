@@ -1,10 +1,10 @@
 /**
- * `@markox/translator` — MX's vanilla HTML host, on `@markox/core`.
+ * `@mxlang/translator` — MX's vanilla HTML host, on `@mxlang/core`.
  *
  * A `.mx` (or `.marko`) template becomes a pure `(input) => string` function:
  * no runtime beyond the `escape` helper, no framework. Everything generic —
  * the Marko-node consumer, the `config.translator` seam, the emit model —
- * lives in `@markox/core`; this package supplies the *policy* (`translate.ts`)
+ * lives in `@mxlang/core`; this package supplies the *policy* (`translate.ts`)
  * and the integrations (the Bun loader, the `escape` runtime, the taglib).
  */
 
@@ -14,11 +14,11 @@ import {
   compileSource,
   createTranslator,
   type RawSourceMap,
-} from "@markox/core";
+} from "@mxlang/core";
 import markoTaglib from "../taglib/marko.json" with { type: "json" };
 import { emitProgram, policy, strictPolicy } from "./translate.ts";
 
-export { escape } from "@markox/core";
+export { escape } from "@mxlang/core";
 export { policy, strictPolicy, TranslateError } from "./translate.ts";
 export type { CompileResult, RawSourceMap };
 

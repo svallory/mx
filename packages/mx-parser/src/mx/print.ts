@@ -5,7 +5,7 @@ import { parse } from "../index.ts";
 /**
  * A source map in the shape `@babel/generator` produces, which is also the
  * shape Vite's `transform` hook accepts. Declared structurally rather than
- * imported from `source-map` so `@markox/parser` keeps no extra dependency.
+ * imported from `source-map` so `@mxlang/parser` keeps no extra dependency.
  */
 export interface RawSourceMap {
   version: number;

@@ -86,6 +86,6 @@ describe("mx-vite static build", () => {
     const html = await response?.text();
 
     expect(html).toContain("<h1>About</h1>");
-    expect(html).toContain("@markox/vite-plugin");
+    expect(html).toContain("@mxlang/vite-plugin");
   });
 });

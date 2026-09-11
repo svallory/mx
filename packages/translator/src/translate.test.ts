@@ -8,7 +8,7 @@ import { compile } from "./index.ts";
  * rendered HTML for constructs that *work*; these assert the policy table of
  * decision 65 — which constructs are accepted with no output (inert), which
  * are errors because the target genuinely cannot express them, and the
- * conventions that differ from `@markox/html`'s dialect.
+ * conventions that differ from `@mxlang/html`'s dialect.
  *
  * The distinction the table turns on: a construct that only configures
  * behaviour after the first render is inert, and one that contributes output
@@ -75,7 +75,7 @@ describe("class:foo / style:foo modifiers", () => {
   // ("`class:active` is not a valid attribute, did you mean
   // `class={ active: condition }`?"), so matching Marko means rejecting them.
   // The message must be this dialect's own — the shared core's fallback is
-  // `@markox/html`'s "standalone template" wording, which is `.mx` vocabulary
+  // `@mxlang/html`'s "standalone template" wording, which is `.mx` vocabulary
   // leaking into a Marko-parity target.
   it.each([
     ["class:active", "<div class:active=input.on>a</div>"],
@@ -259,7 +259,7 @@ describe("class and style take Marko's structured values", () => {
 });
 
 describe("attribute tags are renderables, Marko's convention", () => {
-  // `@markox/html` passes callable function props (S3); Marko passes
+  // `@mxlang/html` passes callable function props (S3); Marko passes
   // renderables read with `<${input.header}/>`, and a repeated attribute tag
   // is an array. The two conventions are incompatible, which is exactly why
   // this is a separate package rather than a flag.
@@ -323,7 +323,7 @@ describe("the eight-field guard", () => {
 describe("module shape", () => {
   it("imports escape and default-exports the renderer", () => {
     const { code } = compile(src("<p>hi</p>"), file);
-    expect(code).toContain('import { escape } from "@markox/translator";');
+    expect(code).toContain('import { escape } from "@mxlang/translator";');
     expect(code).toContain("export default function (input: Input): string {");
   });
 

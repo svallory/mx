@@ -8,7 +8,7 @@ export interface Input { }
   </head>
   <body>
     <h1>About</h1>
-    <p>Two <code>.mx</code> pages, compiled by <code>@markox/vite-plugin</code> and rendered to static HTML.</p>
+    <p>Two <code>.mx</code> pages, compiled by <code>@mxlang/vite-plugin</code> and rendered to static HTML.</p>
     <p><a href="/">Home</a></p>
   </body>
 </html>

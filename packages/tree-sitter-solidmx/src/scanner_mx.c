@@ -12,7 +12,7 @@
 // position with one opaque token, `mx_element`. When tree-sitter marks that
 // token valid, this scanner starts at `<`, finds the byte offset just past the
 // root tag's close, and emits the whole span as a single token. The MX region's
-// interior is deliberately not given structure here — `@markox/parser` owns
+// interior is deliberately not given structure here — `@mxlang/parser` owns
 // that; this scanner only has to agree with it about where the region ENDS.
 //
 // It cannot call htmljs-parser, so it replicates its tokenization. The rules

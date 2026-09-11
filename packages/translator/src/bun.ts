@@ -8,22 +8,22 @@ import { compile } from "./index.ts";
  * default-exported function), so `loader: "ts"` hands it straight to Bun's
  * own stripper — no JSX, no second transform needed.
  *
- * Usable both as a preload (`bunfig.toml`'s `preload = ["@markox/translator/bun"]`
+ * Usable both as a preload (`bunfig.toml`'s `preload = ["@mxlang/translator/bun"]`
  * runs a preloaded module for its side effects — it does not itself call
  * `Bun.plugin` on a default export — so this module registers itself at
- * import time) and at runtime (`import markoPlugin from "@markox/translator/bun";
+ * import time) and at runtime (`import markoPlugin from "@mxlang/translator/bun";
  * Bun.plugin(markoPlugin)`, which registers the same plugin object again;
  * `Bun.plugin` is idempotent for an already-registered plugin object).
  *
  * `.mx` is the official extension (decision 72), `.marko` an accepted alias
  * with identical treatment. `.solid.mx` is a different file kind (TSX with
- * MX regions, handled by `@markox/vite-plugin`) and must not match here —
+ * MX regions, handled by `@mxlang/vite-plugin`) and must not match here —
  * the negative lookbehind excludes it despite ending in `.mx`.
  */
 const MARKO_FILTER = /(?<!\.solid)\.(?:mx|marko)$/;
 
 const markoPlugin: BunPlugin = {
-  name: "markox-translator",
+  name: "mxlang-translator",
   setup(build) {
     build.onLoad({ filter: MARKO_FILTER }, ({ path }) => {
       const source = readFileSync(path, "utf8");

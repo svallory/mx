@@ -13,7 +13,7 @@ tasks:
 
   test:
     command: "vitest"
-    args: ["run", "--root", "../..", "--project", "@markox/eslint-plugin"]
+    args: ["run", "--root", "../..", "--project", "@mxlang/eslint-plugin"]
     inputs:
       - "src/**/*"
       - "/vitest.config.ts"

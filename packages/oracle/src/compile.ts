@@ -6,7 +6,7 @@ import {
 } from "@babel/core";
 import typescriptPreset from "@babel/preset-typescript";
 import type { File } from "@babel/types";
-import { printAst } from "@markox/parser";
+import { printAst } from "@mxlang/parser";
 import solidBabelPlugin from "@solidjs/babel-plugin";
 import { transform as nativeTransform } from "@solidjs/compiler";
 
@@ -70,7 +70,7 @@ function isMxPath(filename: string): boolean {
  * compiled output and break byte parity against a twin that went through the
  * ordinary TS pipeline.
  *
- * MX input is printed with `@markox/parser`'s `printAst` rather than left to
+ * MX input is printed with `@mxlang/parser`'s `printAst` rather than left to
  * Babel's own output stage, because that printer (and its
  * `retainLines`/`jsescOption` settings) is MX's real product boundary: the
  * text the native compiler will actually receive in the Vite plugin.
@@ -162,7 +162,7 @@ export function compile(
     // The filename must end in an extension the native compiler recognises
     // (`.js/.mjs/.jsx/.cjs/.ts/.d.ts/.mts/.cts/.tsx`) — it picks its parser
     // dialect from the extension and rejects `.solid.mx` outright. Appending
-    // `.tsx` is the same trick `@markox/vite-plugin` uses on its virtual id, and
+    // `.tsx` is the same trick `@mxlang/vite-plugin` uses on its virtual id, and
     // it is what a real MX consumer hands the compiler.
     const result = nativeTransform(jsx, {
       filename: isMxPath(filename) ? `${filename}.tsx` : filename,

@@ -1,4 +1,4 @@
-import mx from "@markox/vite-plugin";
+import mx from "@mxlang/vite-plugin";
 import { defineConfig } from "vite";
 
 // A minimal SSG: `vite build` bundles `src/build.ts` (an SSR/Node build, not
@@ -13,14 +13,14 @@ export default defineConfig({
     outDir: "dist-ssr",
     target: "node22",
   },
-  // Every compiled `.marko` page imports `escape` from `@markox/translator`.
+  // Every compiled `.marko` page imports `escape` from `@mxlang/translator`.
   // Left un-external, rolldown bundles that import by parsing
-  // `@markox/translator`'s own TS source (its `main` is `src/index.ts`,
+  // `@mxlang/translator`'s own TS source (its `main` is `src/index.ts`,
   // unbuilt) — which pulls in `@marko/compiler`'s transitive TypeScript
   // parameter-property syntax that rolldown's strip-only mode rejects.
   // External keeps it a runtime import, resolved by Bun (which transpiles TS
   // natively) when the bundle runs.
   ssr: {
-    external: ["@markox/translator"],
+    external: ["@mxlang/translator"],
   },
 });

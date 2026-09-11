@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the compiled templates call `escape` by this name, so the harness must bind it under the same one
-import { escape } from "@markox/core";
+import { escape } from "@mxlang/core";
 import { compileFile } from "./index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));

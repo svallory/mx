@@ -1,4 +1,4 @@
-# @markox/translator
+# @mxlang/translator
 
 MX (Markup eXtended) is a template language born from Marko: it takes
 Marko's syntax and brings it to wherever JSX lives today, MX 1.0 being a
@@ -7,12 +7,12 @@ aliasing alone. `.mx` is MX's official extension; `.marko` is accepted
 everywhere with identical treatment, so porting a Marko component is a
 rename or nothing.
 
-`@markox/translator` is **the vanilla host on `@markox/core`**: it compiles an
+`@mxlang/translator` is **the vanilla host on `@mxlang/core`**: it compiles an
 MX (`.mx`, or its `.marko` alias) template to a pure function — a JS/TS module
 whose default export is `(input) => string`, with no runtime beyond an `escape`
 helper. No scheduler, no signals, no hydration, no resume markers.
 
-The generic half lives in [`@markox/core`](../core/README.md): the Marko-node
+The generic half lives in [`@mxlang/core`](../core/README.md): the Marko-node
 consumer, the structural tag lowerings, the `config.translator` seam and the
 string-emit model. This package supplies the *policy* — which tags are inert
 and which are errors, component-versus-element resolution, Marko's structured
@@ -20,7 +20,7 @@ and which are errors, component-versus-element resolution, Marko's structured
 loader, the `escape` runtime the emitted modules import, and the taglib.
 
 ```ts
-import { compile } from "@markox/translator";
+import { compile } from "@mxlang/translator";
 
 const { code } = compile(source, "greeting.marko");
 ```
@@ -31,7 +31,7 @@ const { code } = compile(source, "greeting.marko");
 ```
 
 ```ts
-import { escape } from "@markox/translator";
+import { escape } from "@mxlang/translator";
 
 export interface Input {}
 
@@ -57,13 +57,13 @@ here unchanged, and renders the same bytes Marko's own server render produces.
 ## Install
 
 ```
-bun add @markox/translator
+bun add @mxlang/translator
 ```
 
 Published from `dist/` (ESM + `.d.ts`); see `CHANGELOG.md` for release notes.
 Will publish as `@mxlang/translator` once the org rename (decision 74) lands
 across the workspace; this package's own name, its `escapeFrom` import
-string, and every in-repo consumer specifier stay `@markox/translator` until
+string, and every in-repo consumer specifier stay `@mxlang/translator` until
 then, so the two never drift out of sync.
 
 ## Usage
@@ -72,7 +72,7 @@ The package is a Marko translator, so the compiler's own entry points work:
 
 ```ts
 import { compileSync } from "@marko/compiler";
-import translator from "@markox/translator";
+import translator from "@mxlang/translator";
 
 compileSync(source, filename, { translator, output: "html" });
 ```
@@ -105,7 +105,7 @@ it compiles both extensions identically, through the same `compile()`/
 `compileFile()`/`build()` entry points and the same policy table below.
 `packages/mx-html` no longer exists. Its lowering core and its `escape`
 runtime passed through this package and now live in
-[`@markox/core`](../core/README.md), which every MX host shares; this package
+[`@mxlang/core`](../core/README.md), which every MX host shares; this package
 is the policy plus the HTML integrations.
 
 ## Loaders
@@ -113,25 +113,25 @@ is the policy plus the HTML integrations.
 Two loaders make `import page from "./page.mx"` (or `"./page.marko"`)
 resolve, one per runtime:
 
-- **Bun**: `@markox/translator/bun` is a `BunPlugin` that intercepts `.mx`
+- **Bun**: `@mxlang/translator/bun` is a `BunPlugin` that intercepts `.mx`
   and `.marko` imports and compiles them on the fly (`.solid.mx` is excluded
-  — a different file kind, handled by `@markox/vite-plugin`). Register it
+  — a different file kind, handled by `@mxlang/vite-plugin`). Register it
   once via `bunfig.toml`:
 
   ```toml
-  preload = ["@markox/translator/bun"]
+  preload = ["@mxlang/translator/bun"]
   ```
 
   or at runtime with `Bun.plugin`:
 
   ```ts
-  import markoPlugin from "@markox/translator/bun";
+  import markoPlugin from "@mxlang/translator/bun";
   Bun.plugin(markoPlugin);
   ```
 
   See `examples/mx-site` for a full app built this way.
 
-- **Vite**: `@markox/vite-plugin`'s `mx()` plugin handles `.mx` and `.marko`
+- **Vite**: `@mxlang/vite-plugin`'s `mx()` plugin handles `.mx` and `.marko`
   alongside `.solid.mx` (which keeps precedence regardless of extension
   order) — add it to `plugins` and import `.mx`/`.marko` files as usual. See
   `examples/mx-vite`.
@@ -207,7 +207,7 @@ name, for an author who wants "this needs a reactive runtime" to be a compile
 error rather than silently accepted:
 
 ```ts
-import { compile } from "@markox/translator";
+import { compile } from "@mxlang/translator";
 
 const { code } = compile(source, "greeting.marko", { strict: true });
 ```
@@ -404,7 +404,7 @@ cited `by=`, passed, and proved nothing, because the emitter read four
 attributes and discarded the fifth.
 
 Every emission path therefore runs one shared guard (`rejectUnsupportedFields`,
-in `@markox/core`) rather than a check per path. Every caller **declares** the
+in `@mxlang/core`) rather than a check per path. Every caller **declares** the
 fields it genuinely lowers; anything else present on the node is an error
 naming it. Seven scattered copies would drift, and the next field Marko adds
 would be dropped by whichever copy was forgotten.

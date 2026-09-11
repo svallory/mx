@@ -1,10 +1,10 @@
-id = "markox"
+id = "mxlang"
 name = "MX"
 description = "MX (.mx, Marko syntax) and SolidMX (.solid.mx, Marko syntax with Solid host-language expressions) language support for Zed."
 version = "0.1.0"
 schema_version = 1
 authors = ["Saulo Vallory <me@saulo.engineer>"]
-repository = "https://github.com/svallory/mx"
+repository = "https://github.com/mxlang/mx"
 
 # MX (`.mx`, decision 72) rides Marko's own unmodified tree-sitter grammar —
 # no fork, no MX-specific parser. Rev matches the official marko-js/zed
@@ -26,7 +26,7 @@ rev = "7fb20382b9b0c97c8bdbceee0e0641bea11dd00f"
 # (`GrammarManifestEntry.path`, crates/extension/src/extension_manifest.rs).
 #
 # AT PUBLISH TIME: after `packages/zed-extension` is subtree-split into its
-# own `markox/zed` repo (see scripts/subtree-split.sh), swap `repository` to
+# own `mxlang/zed` repo (see scripts/subtree-split.sh), swap `repository` to
 # the split-off `tree-sitter-solidmx` repo's real GitHub URL and drop `path`
 # (that repo's root will already be the grammar root).
 repository = "file:///Users/svallory/work/mx"

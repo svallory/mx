@@ -191,7 +191,7 @@ token, so a construct's test pins **that the scanner finds the right region end*
 — not that the construct is semantically valid. The legacy namespaces
 (`on:`/`oncapture:`/`attr:`/`bool:`/`use:`, checklist 20-24), `fallback=<Spin/>`
 (32, 68) and `<for step=>` (46) are all specified as *parse errors*, but they are
-errors raised by `@markox/parser` during lowering, not by this grammar:
+errors raised by `@mxlang/parser` during lowering, not by this grammar:
 `test/corpus/legacy-namespaces.txt` pins that each still scans as a
 well-formed `mx_element` so the editor highlights the line instead of collapsing
 the rest of the file into an error node. Diagnosing them is the parser's job.

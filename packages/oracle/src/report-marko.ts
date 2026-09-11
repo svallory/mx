@@ -2,10 +2,10 @@ import { runStockTable } from "./report-marko-stock";
 
 /**
  * `oracle:marko` (decisions 51, 55, 68): parity check between Marko's own
- * toolchain and `@markox/translator`'s output for the stock `.marko` fixture
+ * toolchain and `@mxlang/translator`'s output for the stock `.marko` fixture
  * set at `packages/translator/fixtures-marko/`.
  *
- * Decision 68 retired the `.mx` dialect and `@markox/html`, so the table this
+ * Decision 68 retired the `.mx` dialect and `@mxlang/html`, so the table this
  * script used to print for `packages/mx-html/fixtures-mx/` is gone — there is
  * only one dialect (stock Marko) and one table now, `runStockTable()`'s.
  *

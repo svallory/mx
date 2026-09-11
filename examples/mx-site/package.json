@@ -1,5 +1,5 @@
 {
-  "name": "@markox/example-mx-site",
+  "name": "@mxlang/example-mx-site",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,11 +10,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@markox/translator": "workspace:*",
+    "@mxlang/translator": "workspace:*",
     "hono": "4.6.20"
   },
   "devDependencies": {
-    "@markox/parser": "workspace:*",
+    "@mxlang/parser": "workspace:*",
     "@types/node": "26.5.1",
     "playwright": "1.63.0",
     "typescript": "5.9.3",

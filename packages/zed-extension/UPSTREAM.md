@@ -22,7 +22,7 @@
 | MX queries | `marko-js/zed` (`languages/marko/*.scm`) | snapshot `dd854edec1fab86d23eb24af9691505dfe3856a6` (repo `main` HEAD at fetch time, via `gh api repos/marko-js/zed/contents/languages/marko/<file>`) | `languages/mx/{highlights,injections,brackets,outline}.scm`, copied **verbatim** with a 3-line header comment naming source + rev — no overlay, no edits (decision 72: MX 1.0 is a strict subset, so Marko's own queries apply as-is). `languages/mx/config.toml` is hand-written (not copied): `name = "MX"`, `path_suffixes = ["mx"]`, same `brackets`/comment conventions as the official file. |
 | SolidMX grammar | `packages/tree-sitter-solidmx` (in this monorepo) | working-tree HEAD, referenced by `extension.toml`'s `[grammars.solidmx]` `rev` as a **committed sha** (dev form: `file://` + `path`) | Zed clones this monorepo at that sha and compiles `packages/tree-sitter-solidmx/src/{parser.c,scanner_mx.c,scanner.c}`. Also the source of `queries/highlights.scm`, copied (not fetched over the network — it's a local sibling package) by `scripts/vendor.sh` into `languages/solidmx/highlights.scm`. |
 
-`extension.toml`'s `name` and `description` are hand-written; `id = "markox"`
+`extension.toml`'s `name` and `description` are hand-written; `id = "mxlang"`
 is unchanged, since the extension id is a publishing identity, not a
 language name.
 

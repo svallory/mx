@@ -1,5 +1,5 @@
 {
-  "name": "@markox/translator",
+  "name": "@mxlang/translator",
   "version": "0.1.0",
   "description": "Compiles a stock .marko template to a runtime-free (input) => string function",
   "license": "MIT",
@@ -42,12 +42,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:bun": "bun --tsconfig-override=../../tsconfig.base.json test src/bun.test.ts",
-    "build": "rm -rf dist && bun build src/index.ts src/bun.ts src/example.ts --outdir dist --target node --format esm --external @marko/compiler --external @markox/core && tsc -p tsconfig.build.json --emitDeclarationOnly --outDir dist",
+    "build": "rm -rf dist && bun build src/index.ts src/bun.ts src/example.ts --outdir dist --target node --format esm --external @marko/compiler --external @mxlang/core && tsc -p tsconfig.build.json --emitDeclarationOnly --outDir dist",
     "example": "bun run build && node dist/example.js $@"
   },
   "dependencies": {
     "@marko/compiler": "5.42.5",
-    "@markox/core": "workspace:*"
+    "@mxlang/core": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.4.2"

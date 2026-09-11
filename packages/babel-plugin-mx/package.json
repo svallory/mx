@@ -1,5 +1,5 @@
 {
-  "name": "@markox/babel-plugin",
+  "name": "@mxlang/babel-plugin",
   "version": "0.0.0",
   "private": true,
   "type": "module",

@@ -13,7 +13,7 @@ tasks:
 
   test:
     command: "vitest"
-    args: ["run", "--root", "../..", "--project", "@markox/translator"]
+    args: ["run", "--root", "../..", "--project", "@mxlang/translator"]
     inputs:
       - "src/**/*"
       - "fixtures-marko/**/*"

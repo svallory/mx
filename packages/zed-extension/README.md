@@ -1,4 +1,4 @@
-# `markox` — Zed extension
+# `mxlang` — Zed extension
 
 Ships two languages:
 
@@ -131,7 +131,7 @@ entry — see `notes/zed-extension-plan.md` decision 6). This monorepo's
 
 ```sh
 ./scripts/subtree-split.sh              # -> local branch zed-extension-split
-git push <markox/zed remote> zed-extension-split:main
+git push <mxlang/zed remote> zed-extension-split:main
 ```
 
 `git subtree split --prefix=packages/zed-extension HEAD` rewrites every

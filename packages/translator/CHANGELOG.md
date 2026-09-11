@@ -1,4 +1,4 @@
-# @markox/translator
+# @mxlang/translator
 
 ## 0.1.0 (unreleased)
 
@@ -24,10 +24,4 @@ and the always-quoted form is safer and more readable.
 - **build:** publishable from `dist/` (ESM + `.d.ts`); `exports` map for
   `.` and `./bun`.
 
-Scope note (decision 74): the org is renaming `@markox` to `@mxlang`. This
-package will publish as `@mxlang/translator` once that rename lands across
-the workspace (a separate `org-rename` task); until then its `package.json`
-`name`, the `escapeFrom` string baked into every compiled template's
-`import { escape } from "..."`, and every in-repo consumer specifier stay
-`@markox/translator`, so the published name and the runtime import never
-drift apart mid-migration.
+- **chore:** renamed scope from `@markox` to `@mxlang` (decision 74).

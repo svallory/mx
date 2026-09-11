@@ -1,6 +1,6 @@
 # fixtures
 
-Golden/oracle fixtures for `@markox/oracle` (`packages/oracle`). Exit criterion
+Golden/oracle fixtures for `@mxlang/oracle` (`packages/oracle`). Exit criterion
 this harness checks: byte-parity (whitespace normalized) between compiled
 `dom-expressions` output of a `.solid.mx` file and its hand-written `.tsx`
 twin, across **both Solid 2 compiler backends** and both generate variants —
@@ -28,7 +28,7 @@ Two native-compiler facts the spec did not predict, both worked around in
 - The compiler picks its parser dialect from the **filename extension** and
   rejects `.solid.mx` outright (`Unknown file extension`). The oracle appends
   `.tsx` to MX filenames for that backend, the same trick
-  `@markox/vite-plugin` uses on its virtual id.
+  `@mxlang/vite-plugin` uses on its virtual id.
 
 ## Layout
 
@@ -160,7 +160,7 @@ carries a `PENDING` marker. Neither is a pass. `bun run oracle` prints a loud
 `ALL SKIPPED` banner whenever every row is skipped as a reminder, and
 `--strict` fails the run on either status.
 
-`@markox/parser` is wired in now, so a `skipped` row means the parser genuinely
+`@mxlang/parser` is wired in now, so a `skipped` row means the parser genuinely
 failed to load — treat it as a failure, not as "not implemented yet".
 
 ## `bun run oracle` flags
@@ -176,14 +176,14 @@ Flags pass through `bun run`, e.g. `bun run oracle -- --strict --update`.
 ## `oracle:marko`: Marko parity for the stock `.marko` fixture set
 
 Decision 51: the parity target for Marko syntax is Marko itself, not Solid.
-Decision 68 retired the `.mx` dialect and `@markox/html`, so there is one
+Decision 68 retired the `.mx` dialect and `@mxlang/html`, so there is one
 dialect (stock Marko) and one table. `bun run oracle:marko`
 (`packages/oracle/src/report-marko.ts`, delegating to
 `report-marko-stock.ts`) renders every fixture under
 `packages/translator/fixtures-marko/<name>/` (`input.marko`, `input.json`,
 `expected.html`, plus any sibling component or `tags/` directory) two ways —
 through the real Marko 6 toolchain (`@marko/compiler` + `marko/translator`)
-and through `@markox/translator`'s own `compile()` — and compares both
+and through `@mxlang/translator`'s own `compile()` — and compares both
 against that fixture's `expected.html` for **semantic** equality —
 `htmlEquals()` (`packages/oracle/src/normalize-html.ts`) parses both sides
 with `parse5` and compares decoded tag names, attribute names/values, text
@@ -194,7 +194,7 @@ confirm whether an unescaped character was a genuine escaping gap or a safe
 alternate spelling); parsing decodes both the same way a browser would, so a
 match there means the same rendered output. Before comparison, a trailing
 Marko resume/hydration marker (`<!--M_$…--><script>…</script>`) is stripped —
-hydration plumbing with no `@markox/translator` equivalent, not template
+hydration plumbing with no `@mxlang/translator` equivalent, not template
 content, and its id/script body is randomly generated per compile so it could
 never byte-match regardless. Not compared: attribute quote character, entity
 spelling, void self-closing spelling, or inter-tag whitespace (all collapsed
@@ -234,7 +234,7 @@ that two of our own opinions agree.
 ### `meta.json`: the Marko column's skip/divergence marker
 
 An optional `meta.json` in a fixture directory classifies why that fixture's
-real-Marko rendering does not match `@markox/translator`'s:
+real-Marko rendering does not match `@mxlang/translator`'s:
 
 ```json
 { "marko": "skip", "reason": "why this fixture is never compiled by Marko" }
