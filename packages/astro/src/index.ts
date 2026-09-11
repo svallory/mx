@@ -16,6 +16,7 @@
  */
 
 import mx from "@mxlang/vite-plugin";
+import { mxPages } from "./vite-pages.ts";
 
 /**
  * Astro's integration surface, to the depth this file uses it.
@@ -35,7 +36,9 @@ interface AstroIntegration {
   name: string;
   hooks: {
     "astro:config:setup"?: (options: {
+      config: { srcDir: URL };
       addRenderer: (renderer: AstroRenderer) => void;
+      addPageExtension: (ext: string) => void;
       updateConfig: (config: Record<string, unknown>) => void;
     }) => void;
   };
@@ -101,15 +104,27 @@ export default function mxAstro(
   return {
     name: "@mxlang/astro",
     hooks: {
-      "astro:config:setup": ({ addRenderer, updateConfig }) => {
+      "astro:config:setup": ({
+        config,
+        addRenderer,
+        addPageExtension,
+        updateConfig,
+      }) => {
         addRenderer({
           name: "@mxlang/astro",
           serverEntrypoint: "@mxlang/astro/server",
         });
 
+        // `.mx` files under `src/pages` are pages (decision 76b), not
+        // components: `.marko` stays a component-only alias and is
+        // deliberately not registered here, so a `.marko` file placed under
+        // `src/pages` is invisible to Astro's router rather than half-page,
+        // half-component.
+        addPageExtension(".mx");
+
         updateConfig({
           vite: {
-            plugins: [mx({ extensions, strict: true })],
+            plugins: [mx({ extensions, strict: true }), mxPages(config.srcDir)],
           },
         });
       },

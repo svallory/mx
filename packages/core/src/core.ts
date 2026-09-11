@@ -998,7 +998,10 @@ export function emitIfChain(ctx: Ctx, children: Node[], index: number): number {
  * `import` reaches module scope verbatim; `static` drops its keyword and joins
  * it there, running once per module rather than once per render; `export
  * interface Input` is lifted out so the emitted module can place it above the
- * render function it types.
+ * render function it types; any other `export` (a page host's
+ * `getStaticPaths`, `prerender`, and so on) hoists verbatim as a real module
+ * export, same as `import` — the module's default export is still its render
+ * function, this just allows others alongside it.
  */
 export function emitStatement(ctx: Ctx, node: Node, name: string): void {
   const line = sliceLoc(ctx, node.loc).trim();
@@ -1016,8 +1019,12 @@ export function emitStatement(ctx: Ctx, node: Node, name: string): void {
     ctx.inputInterface = line;
     return;
   }
+  if (name === "export") {
+    ctx.hoisted.push(line);
+    return;
+  }
   fail(
-    "a standalone template may only `export interface Input`; the module's default export is its render function",
+    `unrecognized statement tag \`${name}\`; expected \`import\`, \`static\`, or \`export\``,
     node,
   );
 }

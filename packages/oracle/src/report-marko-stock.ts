@@ -26,7 +26,7 @@ import { renderTranslator } from "./translator-render";
  * processed — a gate must assert it did work, not merely that nothing failed.
  */
 
-const MIN_FIXTURES = 40;
+const MIN_FIXTURES = 41; // was 40; +1 for export-statements (round-2 code review, export function/let coverage)
 
 interface FixtureMeta {
   /**
