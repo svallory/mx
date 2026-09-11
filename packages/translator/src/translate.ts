@@ -28,12 +28,14 @@
  */
 
 import {
+  type Attr,
   attrByName,
   type Ctx,
   type Disposition,
   DYNAMIC_TAG,
   type Expr,
   expr,
+  expressionShape,
   fail,
   type Node,
   type Policy,
@@ -386,7 +388,11 @@ function resolveHostTag(name: string, node: Node, ctx: Ctx): HostTagData {
     // The emitter builds the `content` block from `tag.children`.
     return {
       kind: "dynamic",
-      expr: { code: expr(ctx, node.name), node: node.name },
+      expr: {
+        code: expr(ctx, node.name),
+        shape: expressionShape(node.name),
+        node: node.name,
+      },
     };
   }
 
@@ -453,6 +459,15 @@ export const policy: Policy = {
   checkBinding: rejectInputShadowing,
   claimsTag,
   resolveHostTag,
+  orderAttrs: (name, attrs) => {
+    if (name !== "input") return attrs;
+    const index = attrs.findIndex(
+      (attr) => attr.kind !== "spread" && attr.name === "value",
+    );
+    if (index <= 0) return attrs;
+    const value = attrs[index] as Attr;
+    return [value, ...attrs.slice(0, index), ...attrs.slice(index + 1)];
+  },
   // The resolver offers the host first refusal on each of these so the
   // diagnostic quotes Marko's own wording rather than the core's generic
   // fallback, which is `.mx` dialect vocabulary leaking into a Marko-parity

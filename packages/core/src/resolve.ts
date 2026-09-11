@@ -49,6 +49,7 @@ import type {
   Branch,
   ComponentTarget,
   Expr,
+  ExprShape,
   ForSource,
   Ir,
   IrNode,
@@ -61,9 +62,24 @@ function posOf(node: Node): Position {
   return { line: start.line ?? 0, column: start.column ?? 0 };
 }
 
-/** An expression, printed through the binding registry and kept with its node. */
+/** Classifies an expression once, while its parsed node is still available. */
+export function expressionShape(node: Node): ExprShape {
+  switch (node?.type) {
+    case "ObjectExpression":
+      return "object";
+    case "ArrayExpression":
+      return "array";
+    case "StringLiteral":
+    case "TemplateLiteral":
+      return "string";
+    default:
+      return "other";
+  }
+}
+
+/** An expression, printed and classified through the binding registry. */
 function exprOf(ctx: Ctx, node: Node): Expr {
-  return { code: expr(ctx, node), node };
+  return { code: expr(ctx, node), shape: expressionShape(node), node };
 }
 
 /**
@@ -144,11 +160,13 @@ function resolveAttr(
 function resolveAttrs(
   ctx: Ctx,
   node: Node,
+  name: string,
   on: "element" | "component" = "element",
 ): Attr[] {
-  return (node.attributes ?? []).map((attr: Node) =>
+  const attrs = (node.attributes ?? []).map((attr: Node) =>
     resolveAttr(ctx, attr, on),
   );
+  return ctx.declarations.orderAttrs?.(name, attrs, on, ctx) ?? attrs;
 }
 
 /** The tag params of `<for|a, b|>` / `<@name|p|>`, as source text. */
@@ -442,7 +460,7 @@ function resolveHostTag(ctx: Ctx, node: Node, name: string): IrNode {
     kind: "HostTag",
     tag: {
       name,
-      attrs: resolveAttrs(ctx, node),
+      attrs: resolveAttrs(ctx, node, name),
       children,
       attributeTags: resolveAttributeTags(ctx, node),
       params: paramsOf(ctx, node),
@@ -475,7 +493,7 @@ function resolveComponent(
   return {
     kind: "Component",
     target,
-    attrs: resolveAttrs(ctx, node, "component"),
+    attrs: resolveAttrs(ctx, node, targetName(target), "component"),
     content: hasContent(children) ? resolveBlock(ctx, node) : null,
     attributeTags: resolveAttributeTags(ctx, node),
     args: (node.arguments ?? []).map((a: Node) => exprOf(ctx, a)),
@@ -588,7 +606,7 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
   return {
     kind: "Element",
     name,
-    attrs: resolveAttrs(ctx, node),
+    attrs: resolveAttrs(ctx, node, name),
     children: isVoid ? [] : resolveChildren(ctx, node.body?.body ?? []),
     void: isVoid,
     loc: posOf(node),

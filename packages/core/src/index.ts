@@ -52,10 +52,11 @@ export type {
   Branch,
   ComponentTarget,
   Expr,
+  ExprShape,
   ForSource,
   HostTag,
   Ir,
   IrNode,
   Position,
 } from "./ir.ts";
-export { resolve, resolveChildren } from "./resolve.ts";
+export { expressionShape, resolve, resolveChildren } from "./resolve.ts";

@@ -20,6 +20,7 @@
  */
 
 import type { Ctx, Disposition, Node } from "./core.ts";
+import type { Attr } from "./ir.ts";
 
 export type { Disposition };
 
@@ -115,6 +116,20 @@ export interface HostDeclarations {
    * core's wording is only the fallback for a host that supplies none.
    */
   rejectUnknownTag?(name: string, node: Node, ctx: Ctx): void;
+  /**
+   * Places already-resolved attributes in the order this host requires.
+   *
+   * Called during resolution for elements, components, and claimed host tags,
+   * so the IR is already in host order and an emitter only walks it. This is
+   * observable for HTML inputs: Marko places `value` before `type` because a
+   * browser may reset or reinterpret a value when its type changes.
+   */
+  orderAttrs?(
+    name: string,
+    attrs: Attr[],
+    on: "element" | "component",
+    ctx: Ctx,
+  ): Attr[];
   /**
    * Inspects a name a construct is about to bind at *render* scope — a
    * `<let>` or `<const>` name. A host rejects a name that would collide with

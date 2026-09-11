@@ -180,6 +180,44 @@ describe("one fixture per IR kind", () => {
     ]);
   });
 
+  it("Expr records its parsed value shape during resolution", () => {
+    const ir = resolveSource(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: Marko placeholder syntax in template source
+      '<div object={active: true} array=[1] other=input.value>${"text"}</div>\n',
+    );
+    const element = find(ir.body, "Element");
+    expect(element.attrs).toMatchObject([
+      { kind: "dynamic", value: { shape: "object" } },
+      { kind: "dynamic", value: { shape: "array" } },
+      { kind: "dynamic", value: { shape: "other" } },
+    ]);
+    expect(find(element.children, "Interpolation").expr.shape).toBe("string");
+  });
+
+  it("lets the host order attributes before they enter the IR", () => {
+    const calls: Array<[string, string]> = [];
+    const ir = resolveSource(
+      '<input type="text" value=input.value disabled>\n',
+      fakeDeclarations({
+        orderAttrs(name, attrs, on) {
+          calls.push([name, on]);
+          const value = attrs.find(
+            (attr) => attr.kind !== "spread" && attr.name === "value",
+          );
+          return value
+            ? [value, ...attrs.filter((attr) => attr !== value)]
+            : attrs;
+        },
+      }),
+    );
+    expect(calls).toEqual([["input", "element"]]);
+    expect(
+      find(ir.body, "Element").attrs.map((attr) =>
+        attr.kind === "spread" ? "..." : attr.name,
+      ),
+    ).toEqual(["value", "type", "disabled"]);
+  });
+
   it("IfChain groups every branch, with a null condition for else", () => {
     const ir = resolveSource(
       [

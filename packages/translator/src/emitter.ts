@@ -247,25 +247,6 @@ export function createEmitter(): StringEmitter {
     literal('"');
   };
 
-  /**
-   * `<input value=…>` emits `value` before every other attribute, as Marko
-   * does.
-   *
-   * Not cosmetic: a browser parsing `<input type="checkbox" value="x">`
-   * applies `type` first, and for some types that resets or reinterprets a
-   * `value` seen afterwards. Matching Marko byte-for-byte is this package's
-   * whole claim.
-   */
-  const orderAttrs = (tagName: string, attrs: Attr[]): Attr[] => {
-    if (tagName !== "input") return attrs;
-    const index = attrs.findIndex(
-      (a) => a.kind !== "spread" && a.name === "value",
-    );
-    if (index <= 0) return attrs;
-    const value = attrs[index] as Attr;
-    return [value, ...attrs.slice(0, index), ...attrs.slice(index + 1)];
-  };
-
   /** A component's props, in Marko's own convention. */
   const propsOf = (
     attrs: Attr[],
@@ -353,7 +334,7 @@ export function createEmitter(): StringEmitter {
 
     element(node) {
       literal(`<${node.name}`);
-      for (const attr of orderAttrs(node.name, node.attrs)) attribute(attr);
+      for (const attr of node.attrs) attribute(attr);
       literal(">");
       if (node.void || VOID_TAGS.has(node.name)) return;
       drive(emitter, node.children);

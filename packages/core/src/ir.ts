@@ -27,11 +27,12 @@
  *
  * ## Expressions
  *
- * An expression appears as `Expr`: the Marko/Babel node plus the source text
- * it prints to. The node is kept because a host may need to inspect it (the
- * vanilla host asks whether a `class` value is an object literal); the text is
- * carried because that is what every host ultimately emits, and printing it
- * once during resolve keeps hosts from each reaching for a Babel generator.
+ * An expression appears as `Expr`: its source text, parsed shape, and the
+ * Marko/Babel node it came from. The resolver computes the shape once so an
+ * emitter never has to inspect that parser node to distinguish an object,
+ * array, string, or other expression. The text is what every host ultimately
+ * emits, and printing it once during resolve keeps hosts from each reaching
+ * for a Babel generator.
  */
 
 import type { Node } from "./core.ts";
@@ -55,8 +56,12 @@ export interface Position {
  */
 export interface Expr {
   code: string;
+  shape: ExprShape;
   node: Node;
 }
+
+/** The syntax-level value shape known while resolving an expression. */
+export type ExprShape = "object" | "array" | "string" | "other";
 
 /** Common to every IR node. */
 export interface IrBase {

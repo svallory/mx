@@ -115,6 +115,15 @@ const declarations: HostDeclarations = {
   isElement: (name) => !isComponentName(name),
   isComponent: (name) => isComponentName(name),
   keepComments: true,
+  orderAttrs: (name, attrs) => {
+    if (name !== "input") return attrs;
+    const index = attrs.findIndex(
+      (attr) => attr.kind !== "spread" && attr.name === "value",
+    );
+    if (index <= 0) return attrs;
+    const value = attrs[index] as Attr;
+    return [value, ...attrs.slice(0, index), ...attrs.slice(index + 1)];
+  },
   claimsTag: (name) => name === DYNAMIC_TAG,
   resolveHostTag: (name, node, ctx): HostTagData => {
     if (name !== DYNAMIC_TAG) {
@@ -180,7 +189,7 @@ function fragment(nodes: IrNode[]): string {
   return `<Fragment>${renderChildren(nodes)}</Fragment>`;
 }
 
-function attrsOf(attrs: Attr[], tagName: string): string {
+function attrsOf(attrs: Attr[]): string {
   const rendered = attrs.map((attr) => {
     switch (attr.kind) {
       case "spread":
@@ -197,8 +206,7 @@ function attrsOf(attrs: Attr[], tagName: string): string {
       case "dynamic": {
         const structuredClass =
           attr.name === "class" &&
-          (attr.value.node?.type === "ObjectExpression" ||
-            attr.value.node?.type === "ArrayExpression");
+          (attr.value.shape === "object" || attr.value.shape === "array");
         return structuredClass
           ? ` class:list={${attr.value.code}}`
           : ` ${attr.name}={${attr.value.code}}`;
@@ -207,13 +215,6 @@ function attrsOf(attrs: Attr[], tagName: string): string {
     throw new Error("unreachable attribute kind");
   });
 
-  if (tagName === "input") {
-    const value = rendered.findIndex((attr) => attr.startsWith(" value="));
-    if (value > 0) {
-      const [entry] = rendered.splice(value, 1);
-      rendered.unshift(entry as string);
-    }
-  }
   return rendered.join("");
 }
 
@@ -235,7 +236,7 @@ export function createEmitter(): Emitter<string> {
     },
 
     element(node) {
-      const attrs = attrsOf(node.attrs, node.name);
+      const attrs = attrsOf(node.attrs);
       if (node.void) {
         out.push(`<${node.name}${attrs} />`);
         return;
@@ -262,7 +263,7 @@ export function createEmitter(): Emitter<string> {
           node,
         );
       }
-      const attrs = attrsOf(node.attrs, name);
+      const attrs = attrsOf(node.attrs);
       const hasChildren =
         Boolean(node.content) || node.attributeTags.length > 0;
       if (!hasChildren) {
