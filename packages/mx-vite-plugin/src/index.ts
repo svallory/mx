@@ -68,6 +68,28 @@ export interface MxPluginOptions {
 const DEFAULT_EXTENSIONS = [".solid.mx", ".mx", ".marko"];
 
 /**
+ * Multi-dot MX extensions that are *not* this plugin's to compile, but which
+ * a shorter registered extension would otherwise swallow.
+ *
+ * `matchExt` tests a plain `endsWith`, so `.mx` matches `Base.astro.mx` just
+ * as readily as `Base.mx`. For `.solid.mx` that is already handled, because
+ * `.solid.mx` is itself registered and the longest-first sort below puts it
+ * ahead of `.mx`. `.astro.mx` (decision 76c) is different: it belongs to
+ * `@mxlang/astro`'s own plugin, which lowers it to Astro template syntax and
+ * hands it to Astro's compiler, so this plugin must decline it rather than
+ * compile it through the `.mx` (`compile()` / string) branch.
+ *
+ * Without this guard the two plugins fight over the same id: measured, `mx()`
+ * rewrote `x.astro.mx` to `x.astro.mx.ts`, the Astro plugin then re-resolved
+ * that to `x.astro.mx.ts.astro`, and the build failed inside `compileMarko`.
+ *
+ * Declared as a list rather than inferred from the dot count so the rule is
+ * stated where it can be read: a shorter extension never claims a file whose
+ * name ends in one of these.
+ */
+const FOREIGN_EXTENSIONS = [".astro.mx"];
+
+/**
  * Appended to the resolved path so the rest of the pipeline sees a JS-family
  * module. See the note on `resolveId` below for why this is necessary.
  *
@@ -197,8 +219,16 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
   const extensions = [...(options.extensions ?? DEFAULT_EXTENSIONS)].sort(
     (a, b) => b.length - a.length,
   );
+  // A file whose name ends in a multi-dot extension belonging to another MX
+  // host is not this plugin's, even when a shorter registered extension is a
+  // string suffix of it. Skipped when the caller registered that extension
+  // explicitly, so an opt-in `extensions: [".astro.mx"]` still works.
+  const isForeign = (file: string): boolean =>
+    FOREIGN_EXTENSIONS.some(
+      (ext) => file.endsWith(ext) && !extensions.includes(ext),
+    );
   const matchExt = (file: string): string | undefined =>
-    extensions.find((ext) => file.endsWith(ext));
+    isForeign(file) ? undefined : extensions.find((ext) => file.endsWith(ext));
   const isMxModule = (file: string): string | undefined =>
     extensions.find((ext) => file.endsWith(ext + suffixFor(ext)));
   /** `/a/App.solid.mx.tsx` -> `/a/App.solid.mx`; `/a/x.mx.ts` -> `/a/x.mx` */

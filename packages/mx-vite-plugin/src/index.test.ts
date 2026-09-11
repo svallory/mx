@@ -243,6 +243,32 @@ describe("mx()", () => {
       ).toBeNull();
     });
 
+    it("declines .astro.mx, which belongs to @mxlang/astro's own plugin", async () => {
+      // `.mx` is a plain string suffix of `.astro.mx`, so without the
+      // foreign-extension guard this plugin would claim the file and rewrite
+      // it to `...astro.mx.ts` — measured to break the build, since
+      // `@mxlang/astro`'s plugin then re-resolves that to
+      // `...astro.mx.ts.astro` and `compileMarko` runs on an Astro template.
+      const context = makeContext();
+      const resolveId = resolveIdOf(mx());
+
+      expect(
+        await resolveId.call(context, "./Base.astro.mx", "/root/src/index.tsx"),
+      ).toBeNull();
+      expect(context.calls).toHaveLength(0);
+    });
+
+    it("still handles .astro.mx when it is registered explicitly", async () => {
+      // The guard only defends a shorter extension from swallowing a longer
+      // one; an opt-in registration is a deliberate choice and still works.
+      const context = makeContext();
+      const resolveId = resolveIdOf(mx({ extensions: [".astro.mx"] }));
+
+      expect(
+        await resolveId.call(context, "./Base.astro.mx", "/root/src/index.tsx"),
+      ).toBe("/root/src/Base.astro.mx.tsx");
+    });
+
     it("leaves ids it does not handle alone", async () => {
       const context = makeContext();
       const resolveId = resolveIdOf(mx());
