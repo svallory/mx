@@ -54,6 +54,18 @@ This is **stock Marko**, not a dialect: tag discovery through taglibs and
 attribute-tag and component conventions. A template written for Marko compiles
 here unchanged, and renders the same bytes Marko's own server render produces.
 
+## Install
+
+```
+bun add @markox/translator
+```
+
+Published from `dist/` (ESM + `.d.ts`); see `CHANGELOG.md` for release notes.
+Will publish as `@mxlang/translator` once the org rename (decision 74) lands
+across the workspace; this package's own name, its `escapeFrom` import
+string, and every in-repo consumer specifier stay `@markox/translator` until
+then, so the two never drift out of sync.
+
 ## Usage
 
 The package is a Marko translator, so the compiler's own entry points work:
@@ -309,10 +321,18 @@ Plain `<!-- -->` comments are **stripped**, because Marko strips them.
 | `<try>` with `<@placeholder>` | Needs a second render pass over suspended content, with nowhere to schedule it. A `<try>` **without** a placeholder lowers to a plain `try`/`catch`, with `<@catch>` as the catch block. |
 | `<let/input=…>`, `<const/input=…>` | Declares `input` at render scope, where the emitted `function (input: Input)` already binds it — the template's own input would become unreachable. Marko rejects the same thing: *"Duplicate declaration of `input`"*. A tag *param* (`<for|input|>`) is a nested scope and is fine; see below. |
 | `<return>` | Provides a value to the **parent** template that rendered this one. A module compiled to `(input) => string` has no parent to return to — its only output is the string. Marko emits no markup for it either, so accepting it silently would read as support for something that cannot work here. |
+| A lowercase tag naming a local binding (`import layout from "./layout.marko"` then `<layout>`) | Marko itself refuses this: *"Local variables must be in a dynamic tag unless they are PascalCase. Use `<${layout}/>` or rename to `Layout`."* — a lowercase name is only ever resolved through taglib/`tags/` discovery, never a local variable, so the ambiguity is real and Marko's own answer is to reject it. `<${layout}/>` (dynamic tag) and `<Layout/>` (PascalCase) both still work — see fixtures `dynamic-tag-lowercase-import` and `nested-layout`. |
+| An unresolved hyphenated tag (`<my-widget>` with no taglib entry) | Marko's own failed custom-element lookup: *"Unable to find entry point for custom tag `<my-widget>`."* An unresolved hyphenated name is not literal HTML — matching Marko means erroring, not rendering it as-is. A candidate for a later, deliberate MX 2 divergence; see `divergences.md`. |
 
 A valueless `<const/x/>` is an error, as it is in Marko (*"the `<const>` tag
 requires a value"*). A valueless `<let/x/>` is fine and renders empty, also
 matching Marko.
+
+### Deliberately not byte-matched
+
+| Choice | Reason |
+|---|---|
+| Attribute values are always double-quoted | Marko elides quotes when a value needs none (`<div id=x>` → `id=x`, unquoted). This translator always emits `id="x"`. Chasing Marko's quote-minimizer byte-for-byte would trade readability and defense-in-depth (an unquoted attribute is one stray space away from becoming a second attribute) for a spelling difference `oracle:marko` cannot even see: `htmlEquals` compares parsed, decoded attribute values, not source bytes, so both spellings already parse identically. Decision 67. |
 
 ### Not Marko syntax
 
@@ -416,7 +436,7 @@ Marko 6 toolchain, not written by hand.
 `bun run oracle:marko` renders every fixture both ways and compares them
 semantically (parse5, decoded content, resume markers stripped). The run fails
 if the glob is empty, a fixture is missing one of its three files, or fewer
-than 30 fixtures were processed — a gate must assert it did work, not merely
+than 40 fixtures were processed — a gate must assert it did work, not merely
 that nothing failed.
 
 ## Pins
