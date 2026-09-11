@@ -136,8 +136,12 @@ components (props, a default slot, a named slot, a `.marko` alias import, one
 component composed from another) and, per decision 76b, `.mx` files directly
 under `src/pages` as pages — one through a layout with a `static`-block props
 and `<if>`/`<for>`, one with no layout writing its own full document, and a
-dynamic `posts/[slug].mx` with `getStaticPaths`. Every page is prerendered
-with `output: "static"` and ships no client JS at all.
+dynamic `posts/[slug].mx` with `getStaticPaths`. It also covers `.amx`
+(decisions 76c/78) — an Astro component whose *template* is MX, lowered to
+Astro's own template syntax: a page, a layout and two components, exercising
+props from the `---` fence, named slots, `class:list`, `<if>`/`<else if>`/
+`<else>` and `<for>` with an index. Every page is prerendered with
+`output: "static"` and ships no client JS at all.
 
 ```
 cd examples/astro-static
@@ -147,6 +151,8 @@ bun run e2e        # headless Chromium over dist/, plus the two error builds
 
 ## Editors
 
-`packages/zed-extension` ships the `MX` language for Zed, backed by the
-unmodified `marko-js/tree-sitter` grammar. See its `README.md` for dev-install
-steps and the upstream bump procedure.
+`packages/zed-extension` ships three languages for Zed: `MX` (`.mx`) and
+`AstroMX` (`.amx`), both backed by the unmodified `marko-js/tree-sitter`
+grammar, and `SolidMX` (`.solid.mx`), backed by `packages/tree-sitter-solidmx`.
+See its `README.md` for dev-install steps, the per-language limitations, and
+the upstream bump procedure.

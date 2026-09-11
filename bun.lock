@@ -112,6 +112,7 @@
       "name": "@mxlang/astro",
       "version": "0.0.0",
       "dependencies": {
+        "@mxlang/core": "workspace:*",
         "@mxlang/translator": "workspace:*",
         "@mxlang/vite-plugin": "workspace:*",
       },

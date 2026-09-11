@@ -131,9 +131,26 @@ this precedence correct when `MX` was added back.
   the official Marko extension gives you the LS on `.marko` files (a separate
   extension's language); it does not extend to `.mx`. A future MX diagnostics
   language server (decision 71/72) is a phase-3 item, not part of this task.
+- `AstroMX` (`.amx`): syntax highlighting, brackets, outline, from the same
+  Marko grammar and queries as `MX` — an `.amx` file's template half *is* MX
+  (decisions 76c/78), so Marko's queries apply unchanged. **Known limitation**:
+  Marko's grammar has no `---` frontmatter notion, so the TypeScript fence at
+  the top of an `.amx` file highlights as Marko markup rather than TypeScript.
+  The official Astro grammar (`virchau13/tree-sitter-astro`, pinned by
+  `zed-extensions/astro`) is the worse trade, not the fix: it parses a fence
+  followed by an **HTML/JSX** body, so it would mis-parse the entire MX
+  template — the larger half of the file. A proper fix is an `.amx` grammar
+  composing the two, in the shape of `packages/tree-sitter-solidmx`'s scanner
+  (whose split, fence versus body, is simpler than SolidMX's
+  expression-position problem); follow-up work, not done here. No language
+  server.
 - `SolidMX` (`.solid.mx`): syntax highlighting, brackets, outline, and syntax
   highlighting inside `mx_element` regions via the official Marko extension's
   injection (see "Prerequisite" below). No language server either.
+
+`.amx` needs no precedence rule of its own: Zed's matcher reads the text after
+the last dot, and `amx` is not `mx`, so `AstroMX` and `MX` never contend the
+way `MX` and `SolidMX` do above.
 
 ## Prerequisite: install the official Marko extension too
 
