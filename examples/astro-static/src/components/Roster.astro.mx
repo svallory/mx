@@ -1,0 +1,25 @@
+---
+export interface Props {
+  heading: string;
+  members: string[];
+  showEmpty?: boolean;
+}
+
+const { heading, members, showEmpty = false } = Astro.props as Props;
+---
+<div class="roster">
+  <h3>${heading}</h3>
+  <if=members.length>
+    <ol class="roster-list">
+      <for|member, i| of=members>
+        <li class="roster-item">${i}: ${member}</li>
+      </for>
+    </ol>
+  </if>
+  <else if=showEmpty>
+    <p class="roster-empty">Nobody here yet.</p>
+  </else>
+  <else>
+    <p class="roster-hidden">(hidden)</p>
+  </else>
+</div>

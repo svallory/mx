@@ -176,6 +176,47 @@ describe("astro-static", () => {
     }
   });
 
+  it("/templates renders .astro.mx components: MX template, Astro semantics", async () => {
+    // Decision 76c. Every component on this page is `.astro.mx` — an Astro
+    // component whose template is MX, lowered to Astro template syntax and
+    // compiled by Astro itself. This asserts each construct the lowering
+    // table claims, on real rendered output rather than on emitted code.
+    const response = await page.goto(`${baseUrl}/templates`, {
+      waitUntil: "networkidle",
+    });
+    expect(response?.status()).toBe(200);
+    const html = (await response?.text()) ?? "";
+
+    // The `.astro.mx` layout ran, and `${title}` reached its `<title>`: the
+    // `---` fence kept Astro's own semantics (`Astro.props`).
+    expect(html).toContain("Rendered through BaseMx.astro.mx");
+    expect(html).toContain("<title>AstroMX templates — astro-static</title>");
+
+    // A structured `class` lowered to Astro's `class:list`, so the toggled
+    // entry appears only when its value is true.
+    expect(html).toContain('class="panel panel-on"');
+    // ...and the plain panel keeps only the always-on entry.
+    expect(html).toContain('class="panel"');
+
+    // An attribute tag lowered to an Astro named slot, and the page's
+    // `<Fragment slot="header">` landed in the component's `<slot name=...>`.
+    expect(html).toContain(
+      '<span class="panel-badge">badge in the named slot</span>',
+    );
+    // The default slot still works alongside the named one.
+    expect(html).toContain("<p>This paragraph is the default slot.</p>");
+
+    // `<for|member, i| of=members>` lowered to `.map()`, index included.
+    expect(html).toContain('<li class="roster-item">0: ada</li>');
+    expect(html).toContain('<li class="roster-item">1: grace</li>');
+    expect(html).toContain('<li class="roster-item">2: alan</li>');
+
+    // `<if>`/`<else if>`/`<else>` lowered to a ternary chain: each of the
+    // three rosters takes a different arm.
+    expect(html).toContain('<p class="roster-empty">Nobody here yet.</p>');
+    expect(html).toContain('<p class="roster-hidden">(hidden)</p>');
+  });
+
   it("ships no renderer script: the pages are static markup", async () => {
     // The whole claim of this host. An MX component has no runtime, the
     // renderer registers no client entrypoint, and `output: "static"`
@@ -188,6 +229,9 @@ describe("astro-static", () => {
       "/no-layout",
       "/posts/first",
       "/posts/second",
+      // `.astro.mx` components lower to Astro template syntax and are
+      // compiled by Astro itself, so they ship no client JS either.
+      "/templates",
     ]) {
       const response = await page.goto(`${baseUrl}${route}`, {
         waitUntil: "networkidle",

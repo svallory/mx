@@ -1,0 +1,17 @@
+---
+export interface Props {
+  title: string;
+  highlighted?: boolean;
+}
+
+const { title, highlighted = false } = Astro.props as Props;
+---
+<section class={panel: true, "panel-on": highlighted}>
+  <header class="panel-header">
+    <h2>${title}</h2>
+    <slot name="header"></slot>
+  </header>
+  <div class="panel-body">
+    <slot></slot>
+  </div>
+</section>

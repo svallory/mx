@@ -1,0 +1,33 @@
+---
+import Panel from "../components/Panel.astro.mx";
+import Roster from "../components/Roster.astro.mx";
+import BaseMx from "../layouts/BaseMx.astro.mx";
+
+// Every component on this page is `.astro.mx`: an Astro component whose
+// template is MX, lowered to Astro template syntax (decision 76c). The page
+// itself is `.astro` because Astro's router cannot register a multi-dot page
+// extension — `path.extname` returns only the last segment, so `.astro.mx`
+// under `src/pages` is either skipped or routed to the wrong URL. See
+// `packages/astro/README.md` "AstroMX templates".
+---
+
+<BaseMx title="AstroMX templates">
+  <h1>AstroMX templates</h1>
+
+  <Panel title="A highlighted panel" highlighted={true}>
+    <Fragment slot="header">
+      <span class="panel-badge">badge in the named slot</span>
+    </Fragment>
+    <p>This paragraph is the default slot.</p>
+  </Panel>
+
+  <Panel title="A plain panel">
+    <p>No highlight, so `class:list` drops the toggled class.</p>
+  </Panel>
+
+  <Roster heading="Crew" members={["ada", "grace", "alan"]} />
+  <Roster heading="Empty roster" members={[]} showEmpty={true} />
+  <Roster heading="Hidden roster" members={[]} />
+
+  <p><a href="/">Home</a></p>
+</BaseMx>
