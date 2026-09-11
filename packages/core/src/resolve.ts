@@ -573,18 +573,15 @@ export function resolveChildren(ctx: Ctx, children: Node[]): IrNode[] {
           loc: posOf(child),
         });
         break;
-      case "MarkoTag": {
-        const before = ctx.prelude.length;
-        const node = resolveTag(ctx, child);
-        // A host tag that hoisted during resolve contributes its statements
-        // ahead of itself, so the declaration precedes every reference.
-        for (const code of ctx.prelude.slice(before)) {
-          out.push({ kind: "Hoisted", code, loc: posOf(child) });
-        }
-        ctx.prelude.length = before;
-        out.push(node);
+      case "MarkoTag":
+        // A statement the host hoisted stays on `ctx.prelude` and is drained
+        // by the enclosing *function* — `resolveDefine`, or `resolve` for the
+        // render function — never here. Draining it at every child list would
+        // trap a hoist from inside an `<if>` in that branch, which is the one
+        // thing decision 70's hoist hook exists to prevent: the declaration
+        // has to outlive the block it was written in.
+        out.push(resolveTag(ctx, child));
         break;
-      }
       case "MarkoDocumentType":
         out.push({
           kind: "DocumentType",
