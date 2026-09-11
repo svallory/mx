@@ -546,15 +546,16 @@ The three pieces: `src/ir.ts` (the node kinds, a position on every one),
 `src/resolve.ts` (Marko AST in, `Ir` out, carrying every validation and every
 error message the emitting walk had), and `src/emit.ts` (`Emitter<Out>`, one
 method per kind, plus the `drive`/`emit` driver). `src/declarations.ts` holds
-`HostDeclarations` — the questions the resolver asks — and `Policy` is defined
-as `HostDeclarations &` the emitting members, so the declaration half exists in
-exactly one place and the two views cannot drift.
+`HostDeclarations` — the questions the resolver asks — and `Policy` remains a
+compatibility alias of `HostDeclarations` only. `HostOptions.emitIr` is
+required: there is no pre-IR string-walk fallback.
 
-A host opts in with `HostOptions.emitIr`. `@mxlang/translator` is ported
-(`packages/translator/src/emitter.ts`, the worked example). **`@mxlang/astro`'s
-`.amx` emitter is still a node-walker** with its own parallel walk over
-`parseFragment`'s output; porting it is the follow-up task `astro-ir-port`, and
-it is why `emitProgram` and the emitting half of `Policy` are still present.
+Both current hosts are on the driver. `@mxlang/translator` uses
+`packages/translator/src/emitter.ts` for vanilla HTML strings;
+`@mxlang/astro` uses `packages/astro/src/astro-template.ts` for `.amx`'s
+expression-shaped Astro syntax. Neither emitter reads a Marko node; a
+host-specific resolve-time decision goes in `HostTag.data` through
+`claimsTag`/`resolveHostTag`.
 
 Four facts worth knowing before editing it:
 
@@ -563,19 +564,16 @@ Four facts worth knowing before editing it:
   single `parse` call. It now asks `@marko/compiler/internal/babel`
   (`parse`/`parseExpression`/`traverse`/`types`, all present), which is also
   the instance Marko's own nodes belong to. Do not reintroduce a second Babel.
-- **The emit layer here is the core's default string-emit model**, not a
-  policy: `out +=` buffering, `blockFunction`, `VOID_TAGS`, `DYNAMIC_TAG`, the
-  emitted module shape. A string host reuses it as is (which is what makes a
-  second string host cheap); a JSX host (SolidMX, phase 4) replaces the emit
-  layer instead. Pushing `VOID_TAGS` behind a policy member would cost every
-  string host an indirection and buy the JSX host nothing.
-- **Three stateful-tag hooks** (decision 70), real and unit-tested against a
-  fake policy in `src/hooks.test.ts`, used by no host yet: `policy.emitSpecial`
-  (the tag handler), `ctx.hoist(code)` (lift a statement to the enclosing
-  function's head — the render function, or the nearest `blockFunction`), and
+- **Every host implements `Emitter<Out>`**, one method per IR kind, and the
+  core's `drive`/`emit` owns the walk. A host that cannot express a kind throws;
+  no optional callback may silently drop it.
+- **Three stateful-tag hooks** (decision 70), unit-tested through
+  `src/resolve.test.ts`: `claimsTag`/`resolveHostTag` (the resolve-time tag
+  handler), `ctx.hoist(code)` (lift a statement to the enclosing function's
+  head — the render function, or the nearest `Define`), and
   `ctx.bindings.register(name, rewrite)` (rewrite identifier *references*, so a
-  host whose state is a getter emits `count()` for `${count}`). Reference
-  positions only, and shadowing is deliberately untracked.
+  host whose state is a getter emits `count()` for `${count}`). Rewrites apply
+  only to reference positions, and emitted-JS scopes restore shadowed names.
 - **`parseFragment` is spike 1's stopgap, with measured limits.** Marko's own
   nodes carry no numeric `start`/`end` at all (only `loc.{line,column}`); the
   Babel expression nodes nested inside them carry their offset at
@@ -793,17 +791,11 @@ Four facts worth knowing before editing `src/astro-template.ts` or
   the URL. Note `dist/core/util.js`'s `endsWithPageExt` *does* use `endsWith`,
   so `isPage()` accepts what route collection rejects: two code paths in one
   version disagree. `.amx` sidesteps all of it.
-- **This is an emitter, not a `Policy`.** `@mxlang/core`'s emit layer is the
-  string-emit model — `emitLiteral` pushes `out += "..."`, `emitFor` pushes
-  `for (const x of xs) {`, and `emitChildren` claims `<if>` before any policy
-  dispatch — all statement-shaped JS, while Astro's template syntax is
-  expression-shaped (`{c ? (…) : (…)}`, `{xs.map(…)}`). No arrangement of
-  policy members produces it. `packages/core/README.md` states the rule: a JSX
-  host replaces the emit layer instead. So `.amx` uses the core's *other*
-  front door, `parseFragment`, whose base-offset shifting is exactly what a
-  template sitting after a fence needs, and supplies its own emit layer. The
-  node walk and the emit callbacks are kept separate so SolidMX's phase-4 JSX
-  host can lift the walk rather than write a third one.
+- **This is `Emitter<string>` over core's IR.** `.amx` uses `parseFragment` for
+  fence-relative positions, then `resolve()` and the shared `drive`/`emit`
+  traversal. Astro-specific decisions happen in `HostDeclarations`; the
+  emitter consumes IR and opaque `HostTag.data`, never Marko nodes. `static`
+  statements resolve into `Ir.hoisted` and are inserted into the fence.
 - **The Vite mechanism is forced.** Astro's `astro:build` `transform` filters
   `include: [/\.astro$/, /\.astro\?/]` **and** re-checks
   `if (!parsedId.filename.endsWith(".astro")) return;`, so an `enforce: "pre"`
@@ -811,12 +803,11 @@ Four facts worth knowing before editing `src/astro-template.ts` or
   id itself must end in `.astro`: `resolveId` appends that suffix to whatever
   Vite's own resolver returns, `load` returns the lowered source. Same shape
   `@mxlang/vite-plugin` already uses for `.solid.mx`.
-- **An attribute method is a `FunctionExpression` value, not `attr.arguments`.**
+- **An attribute method can be a `FunctionExpression` value, not `attr.arguments`.**
   `<button onClick() { … }>` arrives with `arguments` falsy and the method body
   as the attribute's *value* (measured against `@marko/compiler` 5.42.5).
-  Testing only `attr.arguments` — the core's own check — let it fall through to
-  the source-slicing path and fail with a parser-internal message instead of
-  the unsupported-construct error. Both shapes are tested.
+  The resolver detects both shapes and lets Astro provide the target-specific
+  diagnostic through `rejectAttributeMethod`.
 
 The lowering table and the full error list live in
 `packages/astro/README.md` "AstroMX templates (`.amx`)". Nothing silently

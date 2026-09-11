@@ -309,15 +309,14 @@ template rather than at the stray `---`.
 
 ### How it works
 
-`@mxlang/core`'s `Policy` cannot express this target, so this is an emitter
-rather than a policy. The core's emit layer is the string-emit model
-(`emitLiteral` pushes `out += "..."`, `emitFor` pushes `for (const x of xs) {`,
-and `emitChildren` claims `<if>` before any policy dispatch) — all
-statement-shaped JS, while Astro's template syntax is expression-shaped.
-`packages/core/README.md` states the rule: a JSX host replaces the emit layer
-instead. So `.amx` uses the core's other front door, `parseFragment`, whose
-base-offset position shifting is exactly what a template sitting after a fence
-needs, and supplies its own emit layer over those nodes.
+`.amx` uses `@mxlang/core`'s fragment door, whose base-offset shifting places
+every diagnostic after the frontmatter fence. The core resolves that Marko AST
+into its host-independent IR, consulting Astro's `HostDeclarations` for
+host-specific rejections, then drives this package's `Emitter<string>`. The
+emitter sees IR kinds and resolved `HostTag.data`, never Marko nodes. Module
+statements such as `static` arrive in the IR's hoisted fields and are inserted
+into the Astro fence; the template emitter produces the expression-shaped
+ternaries, `.map` calls, attributes and slots below it.
 
 The Vite mechanism is forced rather than chosen. Astro's `astro:build`
 `transform` filters `include: [/\.astro$/, /\.astro\?/]` and then re-checks

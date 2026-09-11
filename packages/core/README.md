@@ -8,8 +8,8 @@ JSX lives today (see `notes/mx-vision.md`). MX itself defines the markup and the
 attribute tags, tag params, `<define>`, `<const>`, `static`, `import` — and each
 **host** decides what state, reactivity and output mean. This package is the
 half that is the same for every host: it consumes Marko's AST through
-`@marko/compiler`, applies the structural lowerings, and asks a `Policy` for
-everything host-specific.
+`@marko/compiler`, resolves the structural lowerings into an IR, and asks
+`HostDeclarations` for everything host-specific.
 
 It depends on `@marko/compiler` and nothing else.
 
@@ -19,48 +19,47 @@ It depends on `@marko/compiler` and nothing else.
 | --- | --- |
 | The structural tag lowerings (`<if>`, `<for>`, `<define>`, `<const>`, statement tags) | The disposition table: which tags are inert, which are errors, why |
 | The field guard (`rejectUnsupportedFields`) and the inert-shape guard | Component-versus-element resolution, and what a component call emits |
-| The default string-emit model (see below) | Structured attribute values (`class`, `style`), attribute order, modifiers |
+| The IR and its `drive`/`emit` traversal | An `Emitter` for the target's output shape, attributes and component calls |
 | The two front doors (`compileSource`, `parseFragment`) | Stateful tags (`<let>`, `<effect>`, `:=`), through the three hooks |
 | `escape` | Its own integration: a Vite plugin, a Bun loader, a TypeScript plugin |
 
 `@mxlang/translator` is the first host (vanilla HTML strings); SolidMX and
 Astro follow.
 
-## The Policy contract
+## The HostDeclarations contract
 
-A host passes one `Policy` object. Every member, one line each:
+A host passes one `HostDeclarations` object. `Policy` remains a compatibility
+alias of that type only. Every member is a resolve-time question:
 
 | Member | What it decides |
 | --- | --- |
 | `tags` | Per-tag-name dispositions: `inert` (accepted, no output, in a declared shape) or `error` (this target cannot express it). Decision 65: never "my code cannot". |
 | `isElement(name, ctx)` | Whether an unbound lowercase tag name is a real element. |
 | `isComponent(name, ctx)` | Whether a tag name resolves to a component in this host. |
-| `emitComponent(ctx, node, name)` | Emits the call to a component, with this host's props convention. |
-| `emitSpecial?(ctx, node, name)` | **Hook 1, the tag handler.** Every tag the core does not own reaches this, by name; returning true claims it. Stateful tags live here. |
-| `emitModifier?(ctx, attr)` | Handles or rejects `class:foo="x"`-style attribute modifiers. |
-| `attrValue?(ctx, name, source)` | Rewrites a structured attribute value (`class`, `style`); undefined interpolates unchanged. |
-| `emitBoundAttr?(ctx, attr)` | Lowers a `:=` two-way binding; true when consumed. |
-| `orderAttrs?(tagName, attrs)` | Reorders an element's attributes, for a target that emits them in an order other than the author's. |
+| `claimsTag?(name, ctx)` | Whether the host owns a tag the structural core does not. |
+| `resolveHostTag?(name, node, ctx)` | Records the host's decision in `HostTag.data` while the Marko node is available. |
+| `rejectModifier?`, `rejectAttributeMethod?` | Replace generic attribute diagnostics with the host's own wording. |
+| `rejectElementAttributeTags?`, `rejectComponentTag?`, `rejectUnknownTag?` | Replace generic tag-routing diagnostics with the host's own wording. |
 | `checkBinding?(target, what)` | Inspects a name a construct is about to bind at *render* scope; not called for tag params, which open a nested scope. |
 | `keepComments?` | Whether an HTML comment reaches the output. |
-| `escapeFrom` | The import specifier the emitted module's `escape` comes from. |
 
-`DYNAMIC_TAG` is the sentinel name `emitSpecial` receives for `<${expr}/>`;
+`DYNAMIC_TAG` is the sentinel name `claimsTag` receives for `<${expr}/>`;
 match against the exported constant rather than retyping it.
 
 ## The three stateful-tag hooks (decision 70)
 
 MX does not define `<let>`, `<effect>`, `<lifecycle>`, `<script>` or `:=` —
 those are framework territory, and mean whatever the host says (decision 71).
-The core gives a host exactly three capabilities, and `src/hooks.test.ts`
-exercises all three against a fake policy (no real host uses them yet):
+The core gives a host exactly three capabilities, exercised through the
+resolver tests:
 
-**1. Tag handler — `policy.emitSpecial`.** The core dispatches every tag it has
-no lowering of its own for to the policy, before deciding whether the name is a
-component or an element. A host's `<signal/count=1/>` is implemented there.
+**1. Tag handler — `claimsTag` + `resolveHostTag`.** The core offers every tag
+it does not own to the declarations before component/element routing. A host's
+`<signal/count=1/>` records its resolved form in `HostTag.data`; the emitter
+consumes that data and never sees the Marko node.
 
 **2. Hoist — `ctx.hoist(code)`.** Lifts a statement to the head of the
-enclosing function: the render function, or the nearest `blockFunction`. A
+enclosing function: the render function, or the nearest `Define`. A
 declaration written inside an `<if>` lands before the branch, so a reference
 after the branch still resolves:
 
@@ -141,8 +140,9 @@ missing export at require time, not silent wrong output.
 
 ## The two front doors
 
-**`compileSource(source, filename, policy, host?)`** — a whole file, through
-`@marko/compiler`'s `config.translator` seam (ADR 0001). `host` carries the
+**`compileSource(source, filename, declarations, host)`** — a whole file,
+through `@marko/compiler`'s `config.translator` seam (ADR 0001). `host` is
+required and carries its `emitIr` function plus the
 taglibs to register, the tag-discovery directories, and an optional `postEmit`
 pass over the emitted module text. `createTranslator(host)` is exported
 separately because the taglib lookup is keyed on the translator object, so a
@@ -227,53 +227,21 @@ is an `ObjectExpression` test, not a string test.
    compile (the S8 class this codebase's guards exist to close), so a host that
    cannot express a construct throws from the method, naming it and its
    position.
-4. **Wire it.** Pass `emitIr` in `HostOptions`; the core then resolves and hands
-   your emitter the `Ir`, and its own string walk never runs.
+4. **Wire it.** Pass the required `emitIr` in `HostOptions`; the core resolves
+   and hands your emitter the `Ir`.
 
-**The worked example is `@mxlang/translator`** (`src/emitter.ts`): the vanilla
+**The string worked example is `@mxlang/translator`** (`src/emitter.ts`): the vanilla
 HTML host, an `Emitter<string[]>` that accumulates `out +=` lines. It is the
 one to read, because it reproduces its predecessor's output byte for byte —
 including two details that look accidental and are not: literals merge across
 node boundaries into a single `out +=`, and `$forN` names a loop temporary from
-the emitted-line count rather than a loop counter.
+the emitted-line count rather than a loop counter. The expression-shaped
+example is `@mxlang/astro`'s `.amx` emitter: an `Emitter<string>` producing
+ternaries, `.map` expressions, `class:list` and Astro named slots.
 
-**`@mxlang/astro` is still a node-walker.** Its `.amx` emitter
-(`packages/astro/src/astro-template.ts`) drives `parseFragment` and walks
-Marko nodes with its own parallel walk, because the core's node API has not
-gone away. Porting it onto `Emitter` is the follow-up task `astro-ir-port`;
-until then it is the last host that reads Marko nodes directly, and the reason
-`emitProgram` and the emitting half of `Policy` are still here.
-
-## The emit model (the pre-IR path, still present)
-
-`emitProgram` and the emitting members of `Policy` are the core's **default
-string-emit model**: an `out +=` buffer, `blockFunction`'s `() => string`
-blocks, `VOID_TAGS`, `DYNAMIC_TAG`, and the emitted module shape (the `escape`
-import, the author's hoisted module scope, their `Input` interface, one
-default-exported render function).
-
-A host that supplies no `emitIr` still compiles through this path, which is
-what lets hosts move to the IR one at a time. `Policy` is defined as
-`HostDeclarations &` the emitting members, so the declaration half lives in
-exactly one place and the two views cannot drift.
-
-`emitStatement`'s statement-tag handling (`import`, `static`, `export
-interface Input`) hoists each to real module scope, verbatim or lightly
-rewritten. **Any top-level `export` statement** — `export const`, `export
-function`, `export class`, `export let`, `export var` — hoists the same way
-`import` does: as a real, verbatim module-scope export of the compiled
-module, not only `export interface Input`. This is a general core capability
-for every host (`@mxlang/translator`'s vanilla string host included, not
-only `@mxlang/astro`), added for `@mxlang/astro`'s page mode (decision 76b):
-a `.mx` file placed under `src/pages` needs `export const getStaticPaths =
-...`/`export const prerender = ...` to reach Astro's router as genuine named
-exports of the compiled module, the same way a `.astro` page's own
-frontmatter does. Verified this is within decision 72's "strict Marko
-subset" rule, not an MX-only extension: real Marko 6 compiles and renders
-`export function`/`export let` at a template's top level identically
-(`packages/translator/fixtures-marko/export-statements`, checked against
-`oracle:marko`). Any *non*-`export` top-level statement tag is still a
-`fail()` naming the construct.
+Statement tags resolve into `Ir.imports`, `Ir.hoisted` and
+`Ir.inputInterface`; each host places them in its own module shape. This is
+also how `.amx` moves a template `static` statement into Astro frontmatter.
 
 ## Tests
 
@@ -281,9 +249,6 @@ subset" rule, not an MX-only extension: real Marko 6 compiles and renders
 bunx vitest run --root ../.. --project @mxlang/core
 ```
 
-`src/resolve.test.ts` (one fixture per IR kind, the positions, and the error
-cases — whose messages are asserted verbatim because the translator's fixtures
-and the oracle's error class assert the same strings), `src/hooks.test.ts` (the
-three stateful-tag hooks), `src/fragment.test.ts` (the fragment door, non-zero
-bases and the error path), `src/emit-statement.test.ts` and
-`src/escape.test.ts`.
+`src/resolve.test.ts` (one fixture per IR kind, positions, host hooks and error
+cases), `src/emit.test.ts` (the exhaustive driver), `src/fragment.test.ts` (the
+fragment door, non-zero bases and the error path), and `src/escape.test.ts`.
