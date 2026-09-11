@@ -1,1 +1,1 @@
-preload = ["@markox/html/bun"]
+preload = ["@markox/translator/bun"]

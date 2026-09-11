@@ -1,7 +1,7 @@
 export interface Input {
   title: string;
   active: string;
-  children: () => string;
+  content: () => string;
 }
 
 <!doctype html>
@@ -23,10 +23,10 @@ export interface Input {
       </nav>
     </header>
     <main>
-      $!{input.children()}
+      $!{input.content()}
     </main>
     <footer.site-footer>
-      <p>Rendered by @markox/html — no client runtime.</p>
+      <p>Rendered by @markox/translator — no client runtime.</p>
     </footer>
   </body>
 </html>

@@ -9,7 +9,7 @@
     "e2e": "vitest run --config e2e/vitest.config.ts"
   },
   "dependencies": {
-    "@markox/html": "workspace:*"
+    "@markox/translator": "workspace:*"
   },
   "devDependencies": {
     "@markox/vite-plugin": "workspace:*",

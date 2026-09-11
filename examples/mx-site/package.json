@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@markox/html": "workspace:*",
+    "@markox/translator": "workspace:*",
     "hono": "4.6.20"
   },
   "devDependencies": {
