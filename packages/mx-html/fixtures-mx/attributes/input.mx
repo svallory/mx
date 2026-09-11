@@ -1,3 +1,0 @@
-export interface Input { href: string; extra: Record<string, unknown> }
-<a href=input.href title="static" download>link</a>
-<input type="text" ...input.extra>

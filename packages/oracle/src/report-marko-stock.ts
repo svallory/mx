@@ -6,17 +6,15 @@ import { htmlEquals } from "./normalize-html";
 import { renderTranslator } from "./translator-render";
 
 /**
- * `oracle:marko`'s second table (decision 66): parity between Marko's own
- * toolchain and `@markox/translator` for the *stock* `.marko` fixture set.
+ * `oracle:marko`'s one table (decisions 66, 68): parity between Marko's own
+ * toolchain and `@markox/translator` for the stock `.marko` fixture set.
  *
- * The first table asks whether `@markox/html` matches Marko on MX's own `.mx`
- * dialect, where a dozen recorded divergences are expected — the two systems
- * deliberately disagree about component calling conventions and tag dispatch.
- * This table asks a stricter question about a narrower claim: for templates an
- * ordinary Marko user would write, does the expressions-only translator emit
- * what Marko's own server render emits? Every fixture is expected to pass, and
- * a skip needs a decision-65 reason — "this target cannot", never "my code
- * cannot".
+ * There is no dialect to compare it against any more (decision 68 retired
+ * `.mx` and `@markox/html`), so this asks a single, narrow question: for
+ * templates an ordinary Marko user would write, does the expressions-only
+ * translator emit what Marko's own server render emits? Every fixture is
+ * expected to pass, and a skip needs a decision-65 reason — "this target
+ * cannot", never "my code cannot".
  *
  * Same comparison as the first table: `htmlEquals` parses both sides with
  * parse5 and compares decoded content, and Marko's resume/hydration markers
@@ -28,7 +26,7 @@ import { renderTranslator } from "./translator-render";
  * processed — a gate must assert it did work, not merely that nothing failed.
  */
 
-const MIN_FIXTURES = 31;
+const MIN_FIXTURES = 40;
 
 interface FixtureMeta {
   /** "skip" is never compiled; "divergence" is compiled and expected to differ. */

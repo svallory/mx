@@ -1,4 +1,0 @@
-{
-  "marko": "divergence",
-  "reason": "Same placeholder-first parser workaround as define-block (notes/team-standalone-mx.md, defect 3) — not MX-only multi-root syntax. Marko rejects <fragment> as an unresolvable custom tag."
-}

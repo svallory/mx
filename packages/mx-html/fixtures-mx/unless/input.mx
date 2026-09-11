@@ -1,4 +1,0 @@
-export interface Input { loggedIn: boolean }
-<if=!input.loggedIn>
-  <p>please log in</p>
-</if>

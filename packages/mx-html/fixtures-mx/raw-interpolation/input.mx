@@ -1,3 +1,0 @@
-export interface Input { markup: string; text: string }
-<div>$!{input.markup}</div>
-<div>${input.text}</div>

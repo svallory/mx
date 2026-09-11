@@ -1,2 +1,0 @@
-export interface Input { attrs: Record<string, unknown> }
-<div ...input.attrs>z</div>

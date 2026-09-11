@@ -47,9 +47,9 @@ import {
   quote,
   rejectUnsupportedFields,
   sliceLoc,
-} from "@markox/html/core";
+} from "./core.ts";
 
-export { TranslateError } from "@markox/html/core";
+export { TranslateError } from "./core.ts";
 
 /**
  * The policy table of decision 65, as implemented.
@@ -608,6 +608,63 @@ export const policy: Policy = {
 };
 
 /**
+ * Reactive constructs, rejected by name instead of rendering their initial
+ * value or being treated as inert.
+ *
+ * Kept from `.mx`'s dialect (decision 68's policy fold) as an opt-in stance,
+ * not the default: `policy.tags` renders `<let>`'s initial value and treats
+ * `<effect>`/`<lifecycle>`/`<script>`/`<client>`/`<id>` as inert, matching
+ * what Marko's own server render emits (decision 65). A `strict` author may
+ * instead want a construct that only makes sense with a reactive runtime to
+ * be a compile error, naming the construct, rather than silently accepted.
+ * `<await>`/`<try>`-with-placeholder/`<return>` are errors in both policies
+ * already — the target genuinely cannot express them — so only the
+ * inert/initial-value rows change here.
+ */
+const STRICT_TAGS: Record<string, Disposition> = {
+  ...TAGS,
+  let: {
+    kind: "error",
+    reason:
+      "`<let>` is reactive state and requires a runtime; this strict policy has no reactive target",
+  },
+  effect: {
+    kind: "error",
+    reason:
+      "`<effect>` is a reactive effect and requires a runtime; this strict policy has no reactive target",
+  },
+  lifecycle: {
+    kind: "error",
+    reason:
+      "`<lifecycle>` is a reactive lifecycle hook and requires a runtime; this strict policy has no reactive target",
+  },
+  script: {
+    kind: "error",
+    reason:
+      "`<script>` as a Marko tag runs client code and requires a runtime; this strict policy has no reactive target",
+  },
+  client: {
+    kind: "error",
+    reason:
+      "a `client` block is client-only and requires a runtime; this strict policy has no reactive target",
+  },
+  id: {
+    kind: "error",
+    reason:
+      "`<id>` allocates an identifier for the reactive runtime; this strict policy has no reactive target",
+  },
+};
+
+/**
+ * The `strict` policy: stock Marko syntax, reactive constructs rejected by
+ * name instead of rendered as inert or as their initial value.
+ */
+export const strictPolicy: Policy = {
+  ...policy,
+  tags: STRICT_TAGS,
+};
+
+/**
  * The one helper beyond `escape` the emitted module may need, inlined rather
  * than imported so the runtime surface stays a single import.
  *
@@ -667,8 +724,9 @@ export function emitProgram(
   source: string,
   generate: (node: Node) => string,
   lookup?: Ctx["lookup"],
+  usePolicy: Policy = policy,
 ): string {
-  const code = emitProgramCore(body, source, generate, policy, lookup);
+  const code = emitProgramCore(body, source, generate, usePolicy, lookup);
 
   // Each helper is emitted only when something calls it, so a template that
   // uses none of them compiles to `escape` and string concatenation alone —

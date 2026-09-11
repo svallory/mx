@@ -1,9 +1,0 @@
-import Layout from "./layout.mx"
-<Layout title="Docs">
-  <@content>
-    <p>main content</p>
-  </@content>
-  <@sidebar>
-    <nav>links</nav>
-  </@sidebar>
-</Layout>

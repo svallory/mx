@@ -1,2 +1,0 @@
-export interface Input { label: string }
-<my-widget data-x="1">${input.label}</my-widget>

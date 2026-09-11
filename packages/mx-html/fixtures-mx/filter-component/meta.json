@@ -1,4 +1,0 @@
-{
-  "marko": "divergence",
-  "reason": "This fixture's component (upper.mx) hits the same placeholder-first parser workaround as define-block (notes/team-standalone-mx.md, defect 3): its whole body is one $!{...} with no preceding element, so it needs <fragment> to compile at all. Not MX-only multi-root syntax; Marko rejects <fragment> as an unresolvable custom tag."
-}

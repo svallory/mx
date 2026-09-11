@@ -1,4 +1,0 @@
-{
-  "marko": "divergence",
-  "reason": "This fixture's <fragment> is a workaround, not MX-only multi-root syntax: a placeholder ($!{}/${}) cannot be the first rendering content in a template, even after a <define>/import/static statement tag, or @markox/html's own compile() throws 'Mismatched group' (notes/team-standalone-mx.md, defect 3, a known parser limitation, not a Marko-parity concern). Marko rejects the wrapper tag itself as an unresolvable custom tag, since it has no such limitation to work around."
-}

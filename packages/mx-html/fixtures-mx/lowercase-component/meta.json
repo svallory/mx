@@ -1,4 +1,0 @@
-{
-  "marko": "divergence",
-  "reason": "MX calls an imported component through its lowercase binding name (S11 'Lowercase tags resolve to in-scope bindings', notes/standalone-mx-decisions.md; also decision 47, notes/decisions-2026-09-10.md — Marko's own rule, applied to template mode only, SolidMX keeps JSX's PascalCase convention); Marko itself requires PascalCase or the <${expr}/> dynamic-tag form for a lowercase-bound custom tag rather than resolving by binding."
-}

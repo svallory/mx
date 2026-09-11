@@ -1,16 +1,14 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the compiled templates call `escape` by this name
-import { escape } from "@markox/html";
-import { compile } from "@markox/translator";
+import { compile, escape } from "@markox/translator";
 
 /**
  * Renders a stock `.marko` fixture through `@markox/translator`.
  *
  * The emitted module is TypeScript with ESM imports, which cannot be `eval`ed
  * directly, so both are stripped and the body run with `new Function` —
- * `escape` and any imported component passed in as parameters. The same shape
- * as `mx-html-render.ts`, against the other translator.
+ * `escape` and any imported component passed in as parameters.
  *
  * A `tags/`-discovered component reaches the emitted module as a call to a
  * bare identifier with no import to rewrite, so the discovered `.marko` files

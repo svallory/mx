@@ -1,29 +1,29 @@
 /**
- * The lowering core shared by MX's two string targets.
+ * The lowering core for `@markox/translator`'s string target.
  *
- * Two packages compile Marko's AST to a runtime-free `(input) => string`
- * module: `@markox/html` (MX's `.mx` dialect and conventions) and
- * `@markox/translator` (stock `.marko` files, decision 66). Everything that is
- * a property of *the string target* lives here — buffering, block functions,
- * the `<for>`/`<if>` lowerings, statement hoisting, the field guard, the
- * emitted module shape. Everything that is a property of *a dialect* lives in
- * the policy each package supplies.
+ * Compiles Marko's AST to a runtime-free `(input) => string` module.
+ * Everything that is a property of *the string target* lives here —
+ * buffering, block functions, the `<for>`/`<if>` lowerings, statement
+ * hoisting, the field guard, the emitted module shape. Everything that is a
+ * property of *the dialect* lives in `translate.ts`'s policy, kept as a
+ * separate hook rather than folded in here even though this core now has
+ * only one caller: decision 70's core/host split (`@markox/translator` is
+ * the vanilla host; SolidMX is another) means a second host is expected, not
+ * hypothetical, and this seam is where it plugs in.
  *
- * The split matters because the two dialects genuinely disagree, and each
- * disagreement is a recorded decision rather than an accident:
+ * This file previously served two dialects — `@markox/html`'s retired `.mx`
+ * dialect, alongside `@markox/translator`'s stock `.marko` — until decision
+ * 68 retired `.mx` and deleted `@markox/html` entirely. Two things that were
+ * true while both existed, kept here because they still explain choices this
+ * core makes:
  *
- * - **Component call convention.** `@markox/html` passes attribute tags as
- *   callable function props (S3); stock Marko passes *renderables*, rendered
- *   with `<${input.header}/>`, and a repeated attribute tag arrives as an
- *   array. A translator that got this wrong would compile and render the
- *   wrong markup, which is why it is a policy hook and not a flag.
  * - **Tag disposition.** Decision 65 replaced "what my code can't do" with
  *   "what this target can't do": a construct either contributes output bytes
  *   (lower), only configures behaviour after the first render (inert), or
- *   evaluates to an initial value. Each package declares its own table.
- * - **Element resolution.** `@markox/html` carries its own element set;
- *   `@markox/translator` asks Marko's taglib lookup, so a tag Marko adds or
- *   removes reaches it on a pin bump (ADR 0001's whole point).
+ *   evaluates to an initial value. The policy declares its own table.
+ * - **Element resolution** asks Marko's taglib lookup, so a tag Marko adds or
+ *   removes reaches it on a pin bump (ADR 0001's whole point) — `.mx`'s own
+ *   hand-carried element set is gone with the rest of that dialect.
  *
  * Two shapes of Marko's AST drive nearly everything here, both measured
  * against 5.42.5 rather than assumed:

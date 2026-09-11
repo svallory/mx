@@ -1,2 +1,0 @@
-export interface Input { title: string; url: string }
-<a title=input.title href=input.url>go</a>

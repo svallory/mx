@@ -38,8 +38,8 @@ type P5Node = DefaultTreeAdapterMap["childNode"];
  * indentation as inter-tag whitespace), or a Marko resume/hydration marker
  * (an `<!--M_$…-->` comment immediately followed by an inline `<script>`
  * that revives it — stripped before parsing; these are Marko hydration
- * plumbing, not template content, and `@markox/html` has no equivalent to
- * compare against).
+ * plumbing, not template content, and `@markox/translator` has no equivalent
+ * to compare against).
  */
 export function htmlEquals(a: string, b: string): boolean {
   const [doctypeA, restA] = splitDoctype(a);
@@ -60,9 +60,9 @@ export function htmlEquals(a: string, b: string): boolean {
  * immediately by the inline `<script>` that revives it on the client. Marko
  * emits this even for a pure server `output: "html"` render with
  * `optimize: true` for some constructs (an `<input>`, a dynamic spread) —
- * see `marko-compile.ts`'s own doc comment. The marker's exact id/script
+ * see `marko-compile-stock.ts`'s own doc comment. The marker's exact id/script
  * body is randomly generated per compile, so it can never byte-match
- * anything on the `@markox/html` side; stripping it here is the harness
+ * anything on the `@markox/translator` side; stripping it here is the harness
  * treating it as what it is (hydration plumbing), not silently hiding a
  * real content difference — everything preceding the marker is still
  * compared normally.

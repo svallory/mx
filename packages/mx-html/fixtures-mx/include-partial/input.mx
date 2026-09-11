@@ -1,5 +1,0 @@
-import Partial from "./partial.mx"
-<div>
-  <p>page content</p>
-  <Partial/>
-</div>

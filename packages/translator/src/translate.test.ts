@@ -335,3 +335,63 @@ describe("module shape", () => {
     );
   });
 });
+
+describe("the strict policy (decision 68's fold): reactive tags error by name", () => {
+  it.each([
+    ["<let>", "<let/count=5/>\n<p>x</p>", /`<let>` is reactive state/],
+    ["<effect>", "<effect() { go() }/>", /`<effect>` is a reactive effect/],
+    [
+      "<lifecycle>",
+      "<lifecycle/>",
+      /`<lifecycle>` is a reactive lifecycle hook/,
+    ],
+    [
+      "<script>",
+      "<script>go()</script>",
+      /`<script>` as a Marko tag runs client code/,
+    ],
+    ["client block", "client\n  const x = 1", /`client` block is client-only/],
+    ["<id>", "<id/x/>", /`<id>` allocates an identifier/],
+  ])("rejects %s under { strict: true }", (_name, body, message) => {
+    expect(() => compile(src(body), file, { strict: true })).toThrow(message);
+  });
+
+  it.each([
+    ["<let>", "<let/count=5/>\n<p>${count}</p>", "const count = 5;"],
+    ["<effect>", "<effect() { go() }/>", "export default function"],
+    [
+      "<lifecycle>",
+      "<lifecycle onCreate() { go() }/>",
+      "export default function",
+    ],
+    ["<script>", "<script>go()</script>", "export default function"],
+    ["client block", "client\n  const x = 1", "export default function"],
+    ["<id>", "<id/x/>", "export default function"],
+  ])(
+    "the default policy still renders %s the same as before (unaffected by strict)",
+    (_name, body, expectedSubstring) => {
+      const { code } = compile(src(body), file);
+      expect(code).toContain(expectedSubstring);
+    },
+  );
+
+  it("still compiles ordinary stock Marko unchanged under { strict: true }", () => {
+    const body = "<if=input.ok><p>yes</p></if><else><p>no</p></else>";
+    const strictResult = compile(src(body), file, { strict: true });
+    const defaultResult = compile(src(body), file);
+    expect(strictResult.code).toBe(defaultResult.code);
+  });
+
+  it("input-shadowing is rejected under both the default and strict policies", () => {
+    // <const>, not <let>: <let> is itself a STRICT_TAGS row, so under strict
+    // it would error for being reactive before the input-shadow check ever
+    // runs. <const> isn't reactive, so it isolates the shadow check.
+    const body = "<const/input=1/>\n<p>x</p>";
+    expect(() => compile(src(body), file)).toThrow(
+      /collides with the template input parameter/,
+    );
+    expect(() => compile(src(body), file, { strict: true })).toThrow(
+      /collides with the template input parameter/,
+    );
+  });
+});

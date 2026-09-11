@@ -1,4 +1,0 @@
-import Upper from "./upper.mx"
-<p>
-  <Upper>hello there</Upper>
-</p>

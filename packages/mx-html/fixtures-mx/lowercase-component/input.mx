@@ -1,3 +1,0 @@
-import layout from "./layout.mx"
-export interface Input { title: string }
-<layout title=input.title></layout>

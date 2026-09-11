@@ -1,2 +1,0 @@
-export interface Input { children: () => string }
-<fragment>$!{input.children().toUpperCase()}</fragment>

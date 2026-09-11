@@ -12,11 +12,11 @@ import * as translator from "marko/translator";
 
 /**
  * Renders a *stock* `.marko` fixture through the real Marko 6 toolchain, for
- * `oracle:marko`'s second table.
+ * `oracle:marko`'s one table (decision 68 collapsed the old two-table
+ * mx-html-vs-translator comparison to this single stock-Marko one; the `.mx`
+ * dialect and its own compile path are retired).
  *
- * Simpler than `marko-compile.ts`, which exists to make MX's `.mx` files
- * legible to a toolchain that has never heard of that extension: these
- * fixtures are already `.marko`, so nothing is renamed and no import is
+ * These fixtures are already `.marko`, so nothing is renamed and no import is
  * rewritten to a different extension. What still has to happen is compiling
  * each file ahead of time to a sibling `.mjs` — Marko's loader cannot compile
  * a `.marko` file reached through a plain `import` — and pointing the
