@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@mxlang/core": "workspace:*",
     "@mxlang/translator": "workspace:*",
     "@mxlang/vite-plugin": "workspace:*"
   },

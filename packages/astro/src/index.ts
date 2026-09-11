@@ -17,6 +17,7 @@
 
 import mx from "@mxlang/vite-plugin";
 import { mxPages } from "./vite-pages.ts";
+import { mxTemplates } from "./vite-templates.ts";
 
 /**
  * Astro's integration surface, to the depth this file uses it.
@@ -124,7 +125,16 @@ export default function mxAstro(
 
         updateConfig({
           vite: {
-            plugins: [mx({ extensions, strict: true }), mxPages(config.srcDir)],
+            plugins: [
+              // `.astro.mx` first: it owns that extension outright, lowering
+              // the MX template to Astro template syntax and handing the file
+              // to Astro's own compiler (decision 76c). `mx()` declines the
+              // extension itself, so the order is documentation rather than a
+              // tie-break.
+              mxTemplates(),
+              mx({ extensions, strict: true }),
+              mxPages(config.srcDir),
+            ],
           },
         });
       },
