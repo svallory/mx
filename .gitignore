@@ -24,3 +24,4 @@ packages/zed-extension/grammars/
 /vitest-results.json
 /packages/tree-sitter-solidmx/.test-ran
 /.verify-start
+.astro/

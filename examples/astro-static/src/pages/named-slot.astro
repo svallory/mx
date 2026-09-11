@@ -1,0 +1,21 @@
+---
+import Badge from "../components/badge.marko";
+import Card from "../components/card.mx";
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Named slot — astro-static</title>
+  </head>
+  <body>
+    <h1>Named slot</h1>
+    <Card title="A card with a footer">
+      <p>Default slot content.</p>
+      <Fragment slot="footer">
+        <Badge label="footer slot" />
+      </Fragment>
+    </Card>
+    <p><a href="/">Home</a></p>
+  </body>
+</html>

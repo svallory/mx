@@ -1,0 +1,15 @@
+---
+// Also expected to fail the build, for the other reason: `stateful.mx` uses
+// `<let>`, and `@mxlang/astro` compiles MX under `@mxlang/translator`'s
+// `strictPolicy` (decision 71 — this host has no reactive target, so a
+// reactive construct is a compile error naming the construct, not markup that
+// silently renders once and never updates).
+import Stateful from "../../src/components/stateful.mx";
+---
+
+<html lang="en">
+  <head><meta charset="utf-8" /><title>reactive tag in a static host</title></head>
+  <body>
+    <Stateful />
+  </body>
+</html>

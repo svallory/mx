@@ -1,0 +1,17 @@
+import Card from "./card.mx";
+import Badge from "./badge.marko";
+
+export interface Input {
+  title: string;
+  tag: string;
+  content: () => string;
+}
+
+<section class="panel">
+  <Card title=input.title>
+    $!{input.content()}
+    <@footer>
+      <Badge label=input.tag/>
+    </@footer>
+  </Card>
+</section>

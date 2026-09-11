@@ -24,6 +24,7 @@ interface Package {
 }
 
 const NO_TEST_EXCEPTIONS: Record<string, string> = {
+  "astro-static": "e2e only",
   "counter-app": "e2e only",
   "mx-site": "e2e only",
   "mx-vite": "e2e only",

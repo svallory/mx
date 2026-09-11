@@ -1,0 +1,22 @@
+---
+// Kept out of `src/pages/` on purpose: this page is *expected* to fail the
+// build, so it must never be part of the ordinary `astro build`.
+// `e2e/build-errors.spec.ts` copies it into `src/pages/` for one build, asserts
+// the error, and removes it again.
+//
+// `@mxlang/astro` registers a renderer with no `clientEntrypoint`, because an
+// MX component is a `(input) => string` function with no state and nothing to
+// hydrate. Astro 7.3.2 raises no error of its own here (`NoClientEntrypoint`
+// is defined and never thrown), so the renderer throws on `metadata.hydrate`
+// rather than let the build ship an island that silently does nothing.
+import Card from "../../src/components/card.mx";
+---
+
+<html lang="en">
+  <head><meta charset="utf-8" /><title>client:load on an MX component</title></head>
+  <body>
+    <Card title="This cannot hydrate" client:load>
+      <p>There is no client entrypoint for MX.</p>
+    </Card>
+  </body>
+</html>

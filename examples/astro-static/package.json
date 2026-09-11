@@ -1,0 +1,21 @@
+{
+  "name": "@mxlang/example-astro-static",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "astro build",
+    "typecheck": "tsc --noEmit",
+    "e2e": "vitest run --config e2e/vitest.config.ts"
+  },
+  "dependencies": {
+    "@mxlang/astro": "workspace:*",
+    "@mxlang/translator": "workspace:*"
+  },
+  "devDependencies": {
+    "astro": "7.3.2",
+    "playwright": "1.63.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

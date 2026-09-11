@@ -1,0 +1,13 @@
+export interface Input {
+  title: string;
+  content: () => string;
+  footer?: () => string;
+}
+
+<article class="card">
+  <h2>${input.title}</h2>
+  <div class="card-body">$!{input.content()}</div>
+  <if=input.footer>
+    <footer class="card-footer">$!{input.footer()}</footer>
+  </if>
+</article>

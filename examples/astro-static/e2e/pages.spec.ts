@@ -1,0 +1,136 @@
+import { type ChildProcess, spawn } from "node:child_process";
+import { createReadStream, statSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import { fileURLToPath } from "node:url";
+import { type Browser, chromium, type Page } from "playwright";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const port = 5374;
+const baseUrl = `http://localhost:${port}`;
+
+/** Waits until `url` responds or `timeoutMs` elapses. */
+async function waitForServer(url: string, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok || response.status < 500) return;
+    } catch {
+      // Server not up yet; retry.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`server at ${url} did not respond within ${timeoutMs}ms`);
+}
+
+/** Runs `astro build`, writing `dist/`. */
+async function buildSite(): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const build: ChildProcess = spawn("bun", ["run", "build"], { cwd: root });
+    build.on("error", reject);
+    build.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`build failed with exit code ${code}`));
+    });
+  });
+}
+
+let browser: Browser;
+let server: Server;
+let page: Page;
+
+beforeAll(async () => {
+  await buildSite();
+
+  server = createServer((request, response) => {
+    const url = new URL(request.url ?? "/", "http://localhost");
+    const name = url.pathname === "/" ? "/index.html" : url.pathname;
+    // Astro writes `about/index.html` for the route `/about`.
+    const candidates = [
+      `${root}dist${name}`,
+      `${root}dist${name}/index.html`,
+      `${root}dist${name}.html`,
+    ];
+    // `isFile()`, not `existsSync`: Astro writes the route `/named-slot` as
+    // the directory `dist/named-slot/` containing `index.html`, so the first
+    // candidate exists but is a directory — streaming it raises EISDIR.
+    const path = candidates.find((candidate) => {
+      try {
+        return statSync(candidate).isFile();
+      } catch {
+        return false;
+      }
+    });
+    if (!path) {
+      response.writeHead(404).end("not found");
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    createReadStream(path).pipe(response);
+  });
+  await new Promise<void>((resolve) => server.listen(port, resolve));
+  await waitForServer(baseUrl);
+
+  browser = await chromium.launch();
+  page = await browser.newPage();
+});
+
+afterAll(async () => {
+  await page?.close();
+  await browser?.close();
+  await new Promise<void>((resolve) => server?.close(() => resolve()));
+});
+
+describe("astro-static", () => {
+  it("/ renders an MX component with props and Astro's default slot", async () => {
+    const response = await page.goto(baseUrl, { waitUntil: "networkidle" });
+    expect(response?.status()).toBe(200);
+    const html = await response?.text();
+
+    // The prop reached `input.title`...
+    expect(html).toContain("<h2>Props and a default slot</h2>");
+    // ...and Astro's default slot reached MX's `content` thunk, as markup
+    // rather than escaped text.
+    expect(html).toContain(
+      "<p>This paragraph is Astro's default slot, rendered to HTML before MX sees it.</p>",
+    );
+    expect(html).not.toContain("&lt;p&gt;");
+  });
+
+  it("/named-slot maps a named slot to the matching attribute tag", async () => {
+    const response = await page.goto(`${baseUrl}/named-slot`, {
+      waitUntil: "networkidle",
+    });
+    expect(response?.status()).toBe(200);
+    const html = await response?.text();
+
+    expect(html).toContain('<footer class="card-footer">');
+    expect(html).toContain('<span class="badge">footer slot</span>');
+  });
+
+  it("/composed renders one MX component through another, .marko alias included", async () => {
+    const response = await page.goto(`${baseUrl}/composed`, {
+      waitUntil: "networkidle",
+    });
+    expect(response?.status()).toBe(200);
+    const html = await response?.text();
+
+    expect(html).toContain('<section class="panel">');
+    expect(html).toContain("<h2>Panel wraps Card</h2>");
+    expect(html).toContain('<span class="badge">composed</span>');
+  });
+
+  it("ships no renderer script: the pages are static markup", async () => {
+    // The whole claim of this host. An MX component has no runtime, the
+    // renderer registers no client entrypoint, and `output: "static"`
+    // prerenders everything — so no `<script>` should appear in the output.
+    for (const route of ["/", "/named-slot", "/composed"]) {
+      const response = await page.goto(`${baseUrl}${route}`, {
+        waitUntil: "networkidle",
+      });
+      const html = (await response?.text()) ?? "";
+      expect(html).not.toContain("<script");
+    }
+  });
+});
