@@ -36,7 +36,6 @@ import {
   emitChildren,
   emitExpression,
   emitLiteral,
-  emitProgram as emitProgramCore,
   expr,
   fail,
   hasContent,
@@ -47,9 +46,9 @@ import {
   quote,
   rejectUnsupportedFields,
   sliceLoc,
-} from "./core.ts";
+} from "@markox/core";
 
-export { TranslateError } from "./core.ts";
+export { TranslateError } from "@markox/core";
 
 /**
  * The policy table of decision 65, as implemented.
@@ -719,15 +718,15 @@ const RENDER_DYNAMIC = `function renderDynamic(target, props) {
   return target(props);
 }`;
 
-export function emitProgram(
-  body: Node[],
-  source: string,
-  generate: (node: Node) => string,
-  lookup?: Ctx["lookup"],
-  usePolicy: Policy = policy,
-): string {
-  const code = emitProgramCore(body, source, generate, usePolicy, lookup);
-
+/**
+ * This host's post-emit pass: appends the helpers the module actually calls.
+ *
+ * Runs over the core's emitted module text (`HostOptions.postEmit`) rather
+ * than inside the core's emitter, because *which* helpers exist — and that
+ * they are inlined rather than imported, to keep the runtime surface at one
+ * `escape` — is a property of this host's target, not of the core.
+ */
+export function emitProgram(code: string): string {
   // Each helper is emitted only when something calls it, so a template that
   // uses none of them compiles to `escape` and string concatenation alone —
   // which is the claim this package exists to make checkable.

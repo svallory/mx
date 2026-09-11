@@ -1,76 +1,53 @@
+/**
+ * `@markox/translator` — MX's vanilla HTML host, on `@markox/core`.
+ *
+ * A `.mx` (or `.marko`) template becomes a pure `(input) => string` function:
+ * no runtime beyond the `escape` helper, no framework. Everything generic —
+ * the Marko-node consumer, the `config.translator` seam, the emit model —
+ * lives in `@markox/core`; this package supplies the *policy* (`translate.ts`)
+ * and the integrations (the Bun loader, the `escape` runtime, the taglib).
+ */
+
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname } from "node:path";
-import markoTaglib from "../taglib/marko.json" with { type: "json" };
 import {
-  emitProgram,
-  policy,
-  strictPolicy,
-  TranslateError,
-} from "./translate.ts";
+  type CompileResult,
+  compileSource,
+  createTranslator,
+  type RawSourceMap,
+} from "@markox/core";
+import markoTaglib from "../taglib/marko.json" with { type: "json" };
+import { emitProgram, policy, strictPolicy } from "./translate.ts";
 
-export { escape } from "./escape.ts";
+export { escape } from "@markox/core";
 export { policy, strictPolicy, TranslateError } from "./translate.ts";
+export type { CompileResult, RawSourceMap };
 
-const require = createRequire(import.meta.url);
-
-export interface RawSourceMap {
-  version: number;
-  file: string;
-  sources: string[];
-  sourcesContent: (string | null)[];
-  names: string[];
-  mappings: string;
-}
-
-export interface CompileResult {
-  code: string;
-  map: RawSourceMap;
-}
+/**
+ * This host's options for the core's whole-file front door.
+ *
+ * `tagDiscoveryDirs: ["tags"]` is Marko's own convention, so a `.marko`/`.mx`
+ * file in a `tags/` directory beside the template is callable as a tag with no
+ * import — one of the things that makes this a host for *stock* Marko syntax
+ * rather than for a dialect.
+ *
+ * `postEmit` is `translate.ts`'s `emitProgram` wrapper, which appends the
+ * `classValue`/`styleValue`/`escapeComment`/`renderDynamic` helpers a template
+ * actually calls. It reaches the core as a hook rather than being folded into
+ * the core's emitter because *which* helpers exist is this host's business.
+ */
+const host = {
+  taglibs: [["mx-translator-core", markoTaglib]] as Array<[string, unknown]>,
+  tagDiscoveryDirs: ["tags"],
+};
 
 /**
  * The Marko translator object, for `compile(src, file, { translator })`.
  *
- * This is the seam decision 66 names: `@marko/compiler` selects a translator
- * by `config.translator`, and a translator supplying only `translate` (plus
- * its taglibs) injects no runtime at all — the emitted module's entire runtime
- * surface is the `escape` import.
- *
- * `tagDiscoveryDirs: ["tags"]` is Marko's own convention, so a `.marko` file
- * in a `tags/` directory beside the template is callable as a tag with no
- * import — one of the things that makes this a translator for *stock* Marko
- * rather than for MX's dialect.
+ * Exported for a caller that drives `@marko/compiler` itself (the oracle's
+ * stock-Marko comparison does). Built by the core, since the seam is the
+ * core's.
  */
-export const translator = {
-  taglibs: [["mx-translator-core", markoTaglib]],
-  tagDiscoveryDirs: ["tags"],
-  translate: {
-    Program: {
-      exit(path: {
-        node: { body: unknown[] };
-        hub: { file: { opts: { filename?: string } } };
-      }) {
-        const state = current;
-        if (!state) throw new Error("@markox/translator: no compile in flight");
-        state.code = emitProgram(
-          path.node.body,
-          state.source,
-          printExpression,
-          state.lookup,
-          state.strict ? strictPolicy : policy,
-        );
-        path.node.body = [];
-      },
-    },
-  },
-};
-
-interface CompileState {
-  source: string;
-  code: string | null;
-  lookup?: { getTag(name: string): { taglibId?: string } | undefined };
-  strict?: boolean;
-}
+export const translator = createTranslator(host);
 
 export interface CompileOptions {
   /**
@@ -84,26 +61,14 @@ export interface CompileOptions {
 }
 
 /**
- * The compile in flight.
- *
- * `translate` is a plain visitor the compiler calls; it receives the AST but
- * not the original source text or the taglib lookup, both of which the
- * lowering needs (source for statement-tag slicing, lookup for element and
- * component resolution). A module-scoped handle is how the visitor reaches
- * them. `compileSync` is synchronous and single-threaded, so there is never
- * more than one.
- */
-let current: CompileState | null = null;
-
-/**
- * Compiles a stock `.marko` template to a runtime-free TypeScript module.
+ * Compiles a `.mx`/`.marko` template to a runtime-free TypeScript module.
  *
  * The emitted module imports `escape` and default-exports
  * `(input: Input) => string` — nothing else is required at run time. This is
  * the "expressions-only" output mode of `notes/marko-runtime-modes.md`,
  * implemented as a translator rather than a fork.
  *
- * The returned map is a placeholder identity map: the translator builds text
+ * The returned map is a placeholder identity map: the emitter builds text
  * directly rather than printing a Babel AST, so there are no node positions to
  * derive real mappings from yet.
  */
@@ -112,43 +77,15 @@ export function compile(
   filename: string,
   options: CompileOptions = {},
 ): CompileResult {
-  // Required lazily and by CJS: `@marko/compiler` is a large dependency and
-  // only `compile()` needs it, so importing `escape` stays free.
-  const compiler = require("@marko/compiler");
-
-  const state: CompileState = { source, code: null, strict: options.strict };
-  // The lookup is keyed on the translator object, so asking for it here gets
-  // exactly the taglibs this translator registers plus Marko's own element
-  // taglibs — and the `tags/` directory beside this particular file.
-  state.lookup = compiler.taglib.buildLookup(dirname(filename), translator);
-
-  const previous = current;
-  current = state;
-  try {
-    compiler.compileSync(source, filename, {
-      translator,
-      output: "html",
-      writeVersionComment: false,
-    });
-  } finally {
-    current = previous;
-  }
-
-  if (state.code === null) {
-    throw new Error(`${filename}: translator produced no output`);
-  }
-
-  return {
-    code: state.code,
-    map: {
-      version: 3,
-      file: filename,
-      sources: [filename],
-      sourcesContent: [source],
-      names: [],
-      mappings: "",
+  return compileSource(
+    source,
+    filename,
+    options.strict ? strictPolicy : policy,
+    {
+      ...host,
+      postEmit: (code) => emitProgram(code),
     },
-  };
+  );
 }
 
 /** `compile()` over a file on disk. */
@@ -175,18 +112,3 @@ export function build(
   }
   return results;
 }
-
-/**
- * Prints one expression node back to source text.
- *
- * The translator emits TypeScript text rather than a Babel AST, so every
- * expression Marko already parsed has to become code again. Marko bundles its
- * own Babel and these nodes belong to that instance, so its generator is the
- * one that can print them — the export is `generator`, not `generate`.
- */
-function printExpression(node: unknown): string {
-  const { generator } = require("@marko/compiler/internal/babel");
-  return generator(node, { concise: true }).code;
-}
-
-void TranslateError;

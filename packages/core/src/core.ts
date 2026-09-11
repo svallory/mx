@@ -1,15 +1,18 @@
 /**
- * The lowering core for `@markox/translator`'s string target.
+ * `@markox/core`: the Marko-node consumer every MX host is built on.
  *
- * Compiles Marko's AST to a runtime-free `(input) => string` module.
- * Everything that is a property of *the string target* lives here —
- * buffering, block functions, the `<for>`/`<if>` lowerings, statement
- * hoisting, the field guard, the emitted module shape. Everything that is a
- * property of *the dialect* lives in `translate.ts`'s policy, kept as a
- * separate hook rather than folded in here even though this core now has
- * only one caller: decision 70's core/host split (`@markox/translator` is
- * the vanilla host; SolidMX is another) means a second host is expected, not
- * hypothetical, and this seam is where it plugs in.
+ * Compiles Marko's AST to a runtime-free `(input) => string` module, with
+ * everything host-specific behind `Policy`. Decisions 70 to 72: MX is the
+ * language, this package is the core, and a *host* (`@markox/translator` is
+ * the vanilla one; SolidMX and Astro follow) supplies a policy plus its own
+ * integration.
+ *
+ * The emit layer here is the core's **default string-emit model** —
+ * buffering, `out +=` concatenation, `VOID_TAGS`, `DYNAMIC_TAG`, block
+ * functions, the emitted module shape. Any host that emits strings reuses it
+ * as is; a JSX host (phase 4) replaces the emit layer rather than pushing it
+ * behind the policy, which is why these live as core functions and not as
+ * policy members. See `README.md` "The emit model".
  *
  * This file previously served two dialects — `@markox/html`'s retired `.mx`
  * dialect, alongside `@markox/translator`'s stock `.marko` — until decision
@@ -38,9 +41,35 @@
  *   text is sliced back out by `loc` and re-parsed.
  */
 
-import { parseBabel } from "@markox/parser";
+import { createRequire } from "node:module";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the compiler calls the same helper the emitted module imports, so a static value and a runtime one are escaped by one implementation
 import { escape } from "./escape.ts";
+
+const require = createRequire(import.meta.url);
+
+/**
+ * Marko's own bundled Babel — parser, traverse and types in one module.
+ *
+ * The core parses JS in two places (an `import` statement's bindings, and an
+ * expression whose identifier references a host may rewrite). Both used
+ * `@markox/parser`'s vendored Babel while this file lived in the translator,
+ * which made the string host depend on the *SolidMX parser* package for a
+ * plain `parse` call. `@marko/compiler` is already this package's only
+ * dependency and already bundles a full Babel, and these nodes belong to that
+ * instance anyway — so the core asks it, and `@markox/core` depends on
+ * nothing else.
+ *
+ * Required lazily: `escape` and the type surface stay importable without
+ * pulling in a 1.7MB bundle.
+ */
+function markoBabel(): {
+  parse: (code: string, options?: Node) => Node;
+  parseExpression: (code: string, options?: Node) => Node;
+  traverse: Node;
+  types: Node;
+} {
+  return require("@marko/compiler/internal/babel");
+}
 
 /**
  * Raised for a construct that parses as Marko but has no string lowering.
@@ -177,11 +206,56 @@ export interface Policy {
   emitSpecial?(ctx: Ctx, node: Node, name: string): boolean;
 }
 
+/**
+ * A host's rewrite for references to one registered binding (decision 70).
+ *
+ * `register("count", ref => `${ref}()`)` makes `${count + 1}` emit
+ * `count() + 1` in a host whose `<let>` is a Solid signal.
+ */
+export type BindingRewrite = (ref: string) => string;
+
+/**
+ * The registry of reference rewrites in scope (decision 70's third hook).
+ *
+ * Registration is flat rather than scoped: a name registered anywhere in the
+ * template rewrites every later reference to it. That is enough for the
+ * stateful tags this exists for (a `<let>` names a binding for the rest of
+ * the render), and a host that needs block scoping registers and unregisters
+ * around its own emit call.
+ */
+export interface BindingRegistry {
+  register(name: string, rewrite: BindingRewrite): void;
+  /** Forgets a registration, for a host unwinding a scope it opened. */
+  unregister(name: string): void;
+  /** The rewrite for `name`, or undefined when it is not registered. */
+  get(name: string): BindingRewrite | undefined;
+  /** Whether anything is registered at all — the fast path for `expr`. */
+  get size(): number;
+}
+
 export interface Ctx {
   source: string;
   lines: string[];
   body: string[];
   hoisted: string[];
+  /**
+   * Statements to place at the head of the function currently being emitted
+   * (decision 70's hoist hook). `hoist()` appends here; `blockFunction` and
+   * `emitProgram` drain it into their own prelude, so a `const` hoisted from
+   * inside an `<if>` lands at the enclosing function's top, not in the branch.
+   */
+  prelude: string[];
+  /**
+   * Lifts a statement to the head of the enclosing function — the render
+   * function, or the nearest `blockFunction`.
+   *
+   * The hook a host needs for a stateful tag whose declaration must outlive
+   * the block it was written in (a signal declared inside an `<if>` but read
+   * after it). Emitted verbatim, at the function's own indent.
+   */
+  hoist(code: string): void;
+  /** Reference rewrites for registered bindings; see `BindingRegistry`. */
+  bindings: BindingRegistry;
   inputInterface: string | null;
   /** `<define>`s bound so far, name -> declared parameter names in order. */
   defines: Map<string, string[]>;
@@ -233,9 +307,73 @@ export function emitExpression(
   push(ctx, `out += ${escaped ? `escape(${expression})` : `(${expression})`};`);
 }
 
-/** The source text an expression node came from, printed back to code. */
+/**
+ * The source text an expression node came from, printed back to code.
+ *
+ * Identifier references to a name the host registered in `ctx.bindings` are
+ * rewritten (decision 70's binding registry): with `count` registered to
+ * `count()`, `count + 1` prints `count() + 1`.
+ *
+ * Precision limits, all deliberate and all tested:
+ *
+ * - Only *reference* positions are rewritten. A member's property name
+ *   (`obj.count`), an object literal's non-shorthand key (`{ count: 1 }`) and
+ *   a declaration's own binding identifier are left alone, because Babel's
+ *   own `isReferencedIdentifier` says they are not references.
+ * - Shadowing is **not** tracked, and that is a real wrong answer rather than a
+ *   near miss: with `count` registered, `xs.map(count => count)` emits
+ *   `xs.map(count => count())`, calling the parameter. Registered names are a
+ *   host's own state bindings and an expression that shadows one is
+ *   pathological, while tracking it would mean running Babel's scope analysis
+ *   on every interpolation — so the limit is accepted and *pinned* by
+ *   `hooks.test.ts`'s "rewrites a shadowing parameter too" case, which asserts
+ *   the wrong output on purpose. Whoever fixes it will see that test fail and
+ *   change the contract deliberately, instead of flipping behaviour silently.
+ * - The walk runs only when something is registered, so a host that uses no
+ *   stateful tags pays nothing.
+ */
 export function expr(ctx: Ctx, node: Node): string {
-  return ctx.generate(node);
+  if (ctx.bindings.size === 0) return ctx.generate(node);
+  return ctx.generate(rewriteReferences(ctx, node));
+}
+
+/**
+ * Clones an expression, replacing registered identifier references.
+ *
+ * The clone is a print-time concern only: the node reaching here belongs to
+ * Marko's own AST, which the caller may emit again (an attribute read twice by
+ * a policy, a condition re-printed by a diagnostic), so rewriting in place
+ * would make the second print see the first one's output.
+ *
+ * The rewrite result is host-supplied *source text*, not a node, so it is
+ * parsed back to an expression — that is what lets a host return anything
+ * from `count()` to `untrack(() => count())` without building Babel nodes.
+ */
+function rewriteReferences(ctx: Ctx, node: Node): Node {
+  const { types, traverse, parseExpression } = markoBabel();
+  const clone = types.cloneNode(node, true);
+  // A bare identifier is never "referenced" as a lone expression to traverse
+  // (there is no parent to ask), so it is handled before the walk.
+  if (clone.type === "Identifier") {
+    const rewrite = ctx.bindings.get(clone.name);
+    return rewrite ? parseExpression(rewrite(clone.name)) : clone;
+  }
+  // `traverse` needs a Program to walk, and these nodes came out of Marko's
+  // own Babel instance, so its bundled traverse is the one that knows them.
+  const file = types.file(
+    types.program([types.expressionStatement(clone as Node)]),
+  );
+  traverse(file, {
+    // biome-ignore lint/style/useNamingConvention: a Babel visitor key is a node type
+    Identifier(path: Node) {
+      if (!path.isReferencedIdentifier()) return;
+      const rewrite = ctx.bindings.get(path.node.name);
+      if (!rewrite) return;
+      path.replaceWith(parseExpression(rewrite(path.node.name)));
+      path.skip();
+    },
+  });
+  return file.program.body[0].expression;
 }
 
 /**
@@ -266,7 +404,7 @@ export function sliceLoc(ctx: Ctx, loc: Node): string {
  */
 export function importBindings(line: string): string[] {
   try {
-    const file = parseBabel(line, { sourceType: "module" });
+    const file = markoBabel().parse(line, { sourceType: "module" });
     const declaration = file.program.body[0] as Node;
     if (declaration?.type !== "ImportDeclaration") return [];
     return declaration.specifiers.map((s: Node) => s.local.name);
@@ -294,15 +432,23 @@ export function hasContent(children: Node[]): boolean {
 export function blockFunction(ctx: Ctx, children: Node[], params = ""): string {
   const outer = ctx.body;
   const outerIndent = ctx.indent;
+  const outerPrelude = ctx.prelude;
   ctx.body = [];
+  ctx.prelude = [];
   ctx.indent = outerIndent + 1;
   push(ctx, 'let out = "";');
   emitChildren(ctx, children);
   push(ctx, "return out;");
   const lines = ctx.body;
+  // A statement hoisted from inside this block belongs at *this* function's
+  // head, not the enclosing one's: it may read the block's own params.
+  const prelude = ctx.prelude.map(
+    (code) => INDENT.repeat(outerIndent + 1) + code,
+  );
   ctx.body = outer;
+  ctx.prelude = outerPrelude;
   ctx.indent = outerIndent;
-  return `(${params}) => {\n${lines.join("\n")}\n${INDENT.repeat(outerIndent)}}`;
+  return `(${params}) => {\n${[...prelude, ...lines].join("\n")}\n${INDENT.repeat(outerIndent)}}`;
 }
 
 /**
@@ -910,6 +1056,53 @@ export function emitChildren(ctx: Ctx, children: Node[]): void {
 }
 
 /**
+ * A fresh emit context, with the three stateful-tag hooks wired.
+ *
+ * Exported because a host — and the hook tests — need a context without going
+ * through `emitProgram`'s whole module shape.
+ */
+export function newCtx(
+  source: string,
+  generate: (node: Node) => string,
+  policy: Policy,
+  lookup?: Ctx["lookup"],
+): Ctx {
+  const rewrites = new Map<string, BindingRewrite>();
+  const ctx: Ctx = {
+    source,
+    lines: source.split("\n"),
+    body: [],
+    hoisted: [],
+    prelude: [],
+    hoist(code: string) {
+      ctx.prelude.push(code);
+    },
+    bindings: {
+      register(name, rewrite) {
+        rewrites.set(name, rewrite);
+      },
+      unregister(name) {
+        rewrites.delete(name);
+      },
+      get(name) {
+        return rewrites.get(name);
+      },
+      get size() {
+        return rewrites.size;
+      },
+    },
+    inputInterface: null,
+    defines: new Map(),
+    imports: new Set(),
+    indent: 1,
+    generate,
+    policy,
+    lookup,
+  };
+  return ctx;
+}
+
+/**
  * Builds the emitted TypeScript module for one parsed template.
  *
  * The module shape is fixed (S3): the escape import, the author's hoisted
@@ -923,19 +1116,7 @@ export function emitProgram(
   policy: Policy,
   lookup?: Ctx["lookup"],
 ): string {
-  const ctx: Ctx = {
-    source,
-    lines: source.split("\n"),
-    body: [],
-    hoisted: [],
-    inputInterface: null,
-    defines: new Map(),
-    imports: new Set(),
-    indent: 1,
-    generate,
-    policy,
-    lookup,
-  };
+  const ctx = newCtx(source, generate, policy, lookup);
 
   emitChildren(ctx, body);
 
@@ -947,6 +1128,10 @@ export function emitProgram(
     "",
     "export default function (input: Input): string {",
     `${INDENT}let out = "";`,
+    // Hoisted statements precede the body but follow `out`, so a hoisted
+    // declaration may not reference the buffer — which is the point: it is a
+    // declaration, not output.
+    ...ctx.prelude.map((code) => INDENT + code),
     ...ctx.body,
     `${INDENT}return out;`,
     "}",
