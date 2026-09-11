@@ -29,18 +29,15 @@
 
 import {
   attrByName,
-  type Block,
   type Ctx,
   type Disposition,
   DYNAMIC_TAG,
   type Expr,
   expr,
   fail,
-  hasContent,
   type Node,
   type Policy,
   rejectUnsupportedFields,
-  resolveChildren,
   sliceLoc,
 } from "@mxlang/core";
 
@@ -259,7 +256,21 @@ function isComponent(name: string, ctx: Ctx): boolean {
  * core falls back to `@mxlang/html`'s wording ("not supported in a standalone
  * template"), which is `.mx`'s vocabulary leaking into a Marko-parity target.
  */
-function rejectModifier(attr: Node): void {
+function rejectModifier(
+  attr: Node,
+  on: "element" | "component" = "element",
+): void {
+  // A modifier on a *component* call is a different diagnostic from one on an
+  // element: Marko's `class={ active: cond }` fix-it is about markup, and a
+  // component takes props rather than attributes, so suggesting it there
+  // would point the author at markup they did not write. The pre-IR walk drew
+  // the same line, and this keeps its wording.
+  if (on === "component") {
+    fail(
+      `attribute modifier \`${attr.name}:${attr.modifier}\` on a component call is not supported`,
+      attr,
+    );
+  }
   fail(
     `\`${attr.name}:${attr.modifier}\` is not a valid attribute; Marko rejects this form too — write \`${attr.name}={ ${attr.modifier}: condition }\``,
     attr,
@@ -331,8 +342,13 @@ export type HostTagData =
   | { kind: "raw-element"; tag: string }
   | { kind: "style" }
   | { kind: "try" }
-  /** `<${expr}/>`: the target expression, and its children as `content`. */
-  | { kind: "dynamic"; expr: Expr; content: Block | null };
+  /**
+   * `<${expr}/>`: the target expression only.
+   *
+   * The children live on the `HostTag`'s own `children`, already resolved by
+   * the core — this carries no `content` block, so nothing re-resolves them.
+   */
+  | { kind: "dynamic"; expr: Expr };
 
 /** Tag names this host lowers itself, rather than as a component or element. */
 const CLAIMED = new Set([
@@ -362,20 +378,15 @@ function claimsTag(name: string): boolean {
  */
 function resolveHostTag(name: string, node: Node, ctx: Ctx): HostTagData {
   if (name === DYNAMIC_TAG) {
-    const children = node.body?.body ?? [];
+    // Only the target expression is decided here. The children are *not*
+    // resolved again: the core has already resolved them into the
+    // `HostTag`'s own `children`, and walking the same Marko nodes a second
+    // time replays every resolver side effect (hoists, binding
+    // registrations) and makes nested dynamic tags resolve exponentially.
+    // The emitter builds the `content` block from `tag.children`.
     return {
       kind: "dynamic",
       expr: { code: expr(ctx, node.name), node: node.name },
-      content: hasContent(children)
-        ? {
-            params: [],
-            children: resolveChildren(ctx, children),
-            loc: {
-              line: node.loc?.start?.line ?? 0,
-              column: node.loc?.start?.column ?? 0,
-            },
-          }
-        : null,
     };
   }
 

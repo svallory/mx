@@ -76,7 +76,7 @@ export interface HostDeclarations {
    * differently from "not supported in a standalone template" — the core's
    * wording is a dialect's vocabulary leaking into a parity target.
    */
-  rejectModifier?(attr: Node): void;
+  rejectModifier?(attr: Node, on?: "element" | "component"): void;
   /**
    * Rejects a component call this host will not route, in its own words.
    *

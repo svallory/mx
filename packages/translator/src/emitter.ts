@@ -271,23 +271,42 @@ export function createEmitter(): StringEmitter {
     attrs: Attr[],
     attributeTags: AttributeTag[],
     content: Block | null,
-  ): { props: Map<string, string>; spreads: string[] } => {
-    const props = new Map<string, string>();
+  ): {
+    parts: string[];
+    named: Map<string, string>;
+    spreads: string[];
+  } => {
+    // `parts` is built in **source order**, spreads included, because that is
+    // what decides precedence: `<C name="a" ...rest name="b"/>` must emit
+    // `{ name: "a", ...rest, name: "b" }`, so `rest.name` overrides the first
+    // and is overridden by the second. Partitioning spreads out and emitting
+    // them first (the shape this replaced) silently inverted that for every
+    // key a spread shares with an earlier named prop.
+    const parts: string[] = [];
+    // The named values alone, for the positional `<define>` lookup, which asks
+    // by parameter name rather than by position in the source.
+    const named = new Map<string, string>();
     const spreads: string[] = [];
+
+    const setNamed = (name: string, value: string): void => {
+      named.set(name, value);
+      parts.push(`${propKey(name)}: ${value}`);
+    };
 
     for (const attr of attrs) {
       switch (attr.kind) {
         case "spread":
           spreads.push(attr.value.code);
+          parts.push(`...${attr.value.code}`);
           break;
         case "boolean":
-          props.set(attr.name, "true");
+          setNamed(attr.name, "true");
           break;
         case "static":
-          props.set(attr.name, quote(attr.value));
+          setNamed(attr.name, quote(attr.value));
           break;
         default:
-          props.set(attr.name, attr.value.code);
+          setNamed(attr.name, attr.value.code);
       }
     }
 
@@ -301,7 +320,7 @@ export function createEmitter(): StringEmitter {
       else blocks.set(tag.name, [fn]);
     }
     for (const [name, fns] of blocks) {
-      props.set(
+      setNamed(
         name,
         fns.length === 1 ? (fns[0] as string) : `[${fns.join(", ")}]`,
       );
@@ -310,13 +329,13 @@ export function createEmitter(): StringEmitter {
     // Ordinary children become `content`, not `children`: that is the prop
     // name Marko's own `<${input.content}/>` reads.
     if (content) {
-      props.set(
+      setNamed(
         "content",
         blockFunction(content.children, content.params.join(", ")),
       );
     }
 
-    return { props, spreads };
+    return { parts, named, spreads };
   };
 
   const emitter: StringEmitter = {
@@ -342,7 +361,7 @@ export function createEmitter(): StringEmitter {
     },
 
     component(node) {
-      const { props, spreads } = propsOf(
+      const { parts, named, spreads } = propsOf(
         node.attrs,
         node.attributeTags,
         node.content,
@@ -353,9 +372,8 @@ export function createEmitter(): StringEmitter {
         // The value may be a component function, a renderable block, or a tag
         // name as a string; all three are resolved at run time by
         // `renderDynamic`, emitted into the module rather than imported.
-        const parts = [...props].map(
-          ([key, value]) => `${propKey(key)}: ${value}`,
-        );
+        // `parts` carries spreads in source order too: dropping them here (the
+        // shape this replaced) silently lost every spread on a dynamic tag.
         push(
           `out += renderDynamic(${target.expr.code}, { ${parts.join(", ")} });`,
         );
@@ -375,15 +393,11 @@ export function createEmitter(): StringEmitter {
         const args =
           node.args.length > 0
             ? node.args.map((a: Expr) => a.code)
-            : target.params.map((param) => props.get(param) ?? "undefined");
+            : target.params.map((param) => named.get(param) ?? "undefined");
         push(`out += ${target.name}(${args.join(", ")});`);
         return;
       }
 
-      const parts = [
-        ...spreads.map((s) => `...${s}`),
-        ...[...props].map(([key, value]) => `${propKey(key)}: ${value}`),
-      ];
       push(`out += ${target.name}({ ${parts.join(", ")} });`);
     },
 
@@ -586,11 +600,22 @@ export function createEmitter(): StringEmitter {
         return;
       }
       case "dynamic": {
+        // The children are the ones the **core** already resolved into
+        // `tag.children`. Re-resolving them in `resolveHostTag` (the shape
+        // this replaced) walked the same Marko nodes a second time, which
+        // replayed every resolver side effect — hoists and binding
+        // registrations — and made nested dynamic tags resolve exponentially.
+        const content: Block | null =
+          tag.children.length > 0
+            ? { params: [], children: tag.children, loc: tag.loc }
+            : null;
         emitter.component({
           kind: "Component",
           target: { kind: "dynamic", expr: data.expr } as ComponentTarget,
-          attrs: tag.attrs.filter((a) => a.kind !== "spread"),
-          content: data.content,
+          // Spreads included: `renderDynamic` receives them in source order
+          // like any other component call.
+          attrs: tag.attrs,
+          content,
           attributeTags: [],
           args: [],
           loc: tag.loc,

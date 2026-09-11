@@ -36,6 +36,7 @@ import {
   type Node,
   rejectInertShape,
   rejectUnsupportedFields,
+  scopeBindings,
   shadowBindings,
   sliceLoc,
   VOID_TAGS,
@@ -84,7 +85,11 @@ function withPrelude<T>(ctx: Ctx, run: () => T): [T, string[]] {
 }
 
 /** Resolves one attribute of an element or component call. */
-function resolveAttr(ctx: Ctx, attr: Node): Attr {
+function resolveAttr(
+  ctx: Ctx,
+  attr: Node,
+  on: "element" | "component" = "element",
+): Attr {
   const loc = posOf(attr);
 
   if (attr.type === "MarkoSpreadAttribute") {
@@ -113,7 +118,11 @@ function resolveAttr(ctx: Ctx, attr: Node): Attr {
   // diagnostic is in its own vocabulary (a Marko-parity target quotes Marko's
   // own fix-it); the core's wording is only the fallback.
   if (attr.modifier) {
-    ctx.declarations.rejectModifier?.(attr);
+    // The tag kind travels with the rejection: a modifier on a *component*
+    // call is a different diagnostic from one on an element, and the pre-IR
+    // walk said so ("… on a component call is not supported"). Losing that
+    // distinction was a message regression even though both still fail.
+    ctx.declarations.rejectModifier?.(attr, on);
     fail(
       `attribute modifier \`${attr.name}:${attr.modifier}\` is not supported in a standalone template`,
       attr,
@@ -131,8 +140,14 @@ function resolveAttr(ctx: Ctx, attr: Node): Attr {
   return { kind: "dynamic", name: attr.name, value: exprOf(ctx, value), loc };
 }
 
-function resolveAttrs(ctx: Ctx, node: Node): Attr[] {
-  return (node.attributes ?? []).map((attr: Node) => resolveAttr(ctx, attr));
+function resolveAttrs(
+  ctx: Ctx,
+  node: Node,
+  on: "element" | "component" = "element",
+): Attr[] {
+  return (node.attributes ?? []).map((attr: Node) =>
+    resolveAttr(ctx, attr, on),
+  );
 }
 
 /** The tag params of `<for|a, b|>` / `<@name|p|>`, as source text. */
@@ -153,9 +168,13 @@ function paramBindings(node: Node): string[] {
  * name. Restored on the way out.
  */
 function resolveBlock(ctx: Ctx, node: Node): Block {
+  // A block is its own JS scope: both the params it shadows *and* anything a
+  // `<const>` inside it unregisters are confined to it.
+  const unscope = scopeBindings(ctx);
   const restore = shadowBindings(ctx, paramBindings(node));
   const children = resolveChildren(ctx, node.body?.body ?? []);
   restore();
+  unscope();
   return { params: paramsOf(ctx, node), children, loc: posOf(node) };
 }
 
@@ -189,10 +208,19 @@ function resolveIfChain(
   const cond = attrByName(node, "value") ?? node.attributes?.[0];
   if (!cond?.value) fail("`<if>` without a condition", node);
 
+  // Each branch is its own JS block: a `<const>` declared inside one does not
+  // shadow the host's binding for the code that follows the chain.
+  const branchChildren = (branchNode: Node): IrNode[] => {
+    const unscope = scopeBindings(ctx);
+    const children = resolveChildren(ctx, branchNode.body?.body ?? []);
+    unscope();
+    return children;
+  };
+
   const branches: Branch[] = [
     {
       condition: exprOf(ctx, cond.value),
-      children: resolveChildren(ctx, node.body?.body ?? []),
+      children: branchChildren(node),
       loc: posOf(node),
     },
   ];
@@ -226,7 +254,7 @@ function resolveIfChain(
         : attrByName(child, "if");
     branches.push({
       condition: ifAttr ? exprOf(ctx, ifAttr.value) : null,
-      children: resolveChildren(ctx, child.body?.body ?? []),
+      children: branchChildren(child),
       loc: posOf(child),
     });
     i++;
@@ -285,9 +313,12 @@ function resolveFor(ctx: Ctx, node: Node): IrNode {
   }
 
   const bindings = paramBindings(node);
+  // The loop body is a JS block, so a `<const>` inside it is confined to it.
+  const unscope = scopeBindings(ctx);
   const restore = shadowBindings(ctx, bindings);
   const children = resolveChildren(ctx, node.body?.body ?? []);
   restore();
+  unscope();
 
   return {
     kind: "For",
@@ -400,9 +431,11 @@ function resolveStatement(ctx: Ctx, node: Node, name: string): IrNode {
 /** A tag this host claims, with every part resolved for its emitter. */
 function resolveHostTag(ctx: Ctx, node: Node, name: string): IrNode {
   const loc = posOf(node);
+  const unscope = scopeBindings(ctx);
   const restore = shadowBindings(ctx, paramBindings(node));
   const children = resolveChildren(ctx, node.body?.body ?? []);
   restore();
+  unscope();
 
   return {
     kind: "HostTag",
@@ -442,7 +475,7 @@ function resolveComponent(
   return {
     kind: "Component",
     target,
-    attrs: resolveAttrs(ctx, node),
+    attrs: resolveAttrs(ctx, node, "component"),
     content: hasContent(children) ? resolveBlock(ctx, node) : null,
     attributeTags: resolveAttributeTags(ctx, node),
     args: (node.arguments ?? []).map((a: Node) => exprOf(ctx, a)),

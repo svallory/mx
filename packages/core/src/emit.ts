@@ -109,6 +109,17 @@ export function drive<Out>(emitter: Emitter<Out>, nodes: IrNode[]): void {
         throw new Error(
           `@mxlang/core: unexpected module-level node kind "${node.kind}" in the body walk; resolve() lifts these into Ir's own fields`,
         );
+      // A kind no emitter knows about. `node` is `never` here when the switch
+      // is exhaustive, so the compiler catches a *new* IR kind at build time;
+      // the runtime throw stays because the guard has to hold for a forged or
+      // cross-version node too, and silently ignoring one drops authored
+      // content from a successful compile (the S8 class).
+      default: {
+        const unknown = node as { kind?: unknown };
+        throw new Error(
+          `@mxlang/core: unknown IR node kind ${JSON.stringify(unknown?.kind)}; every kind must be handled by the driver`,
+        );
+      }
     }
   }
 }

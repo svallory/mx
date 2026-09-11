@@ -239,6 +239,10 @@ export interface BindingRegistry {
   get(name: string): BindingRewrite | undefined;
   /** Whether anything is registered at all — the fast path for `expr`. */
   get size(): number;
+  /** Every registration as it stands, for `scopeBindings` to restore. */
+  snapshot(): Array<[string, BindingRewrite]>;
+  /** Replaces every registration with a previous `snapshot()`. */
+  restore(saved: Array<[string, BindingRewrite]>): void;
 }
 
 export interface Ctx {
@@ -387,6 +391,22 @@ export function declName(ctx: Ctx, node: Node): string {
  * param shadows for its block and is restored after, which is what the undo is
  * for.
  */
+/**
+ * Snapshots the whole binding registry, returning a restore for the scope.
+ *
+ * `shadowBindings` only undoes the names it was handed, which is right for a
+ * parameter list but wrong for a *block*: a `<const>` inside an `<if>` branch
+ * unregisters its own name for the rest of the render (deliberately — it is a
+ * real JS `const` from there on), and without a snapshot that unregistration
+ * escapes the branch it was written in. Emitted JS scoping is per block, so
+ * the registry has to be too: a name shadowed inside one branch is the host's
+ * binding again after it.
+ */
+export function scopeBindings(ctx: Ctx): () => void {
+  const saved = ctx.bindings.snapshot();
+  return () => ctx.bindings.restore(saved);
+}
+
 export function shadowBindings(ctx: Ctx, names: string[]): () => void {
   const saved: Array<[string, BindingRewrite]> = [];
   for (const name of names) {
@@ -1239,6 +1259,13 @@ export function newCtx(
       },
       get size() {
         return rewrites.size;
+      },
+      snapshot() {
+        return [...rewrites];
+      },
+      restore(saved) {
+        rewrites.clear();
+        for (const [name, rewrite] of saved) rewrites.set(name, rewrite);
       },
     },
     inputInterface: null,

@@ -552,3 +552,123 @@ describe("the resolver runs under the real front door", () => {
     expect(code).toContain('out += "<p>hi</p>"');
   });
 });
+
+/**
+ * The placeholder inside the *last* top-level element.
+ *
+ * These fixtures end with `<p>${count}</p>`, so the interpolation under test
+ * is a child of that element rather than a body-level node — filtering
+ * `ir.body` for `Interpolation` finds nothing at all.
+ */
+function trailingInterpolation(
+  body: IrNode[],
+): Extract<IrNode, { kind: "Interpolation" }> {
+  const elements = body.filter(
+    (n): n is Extract<IrNode, { kind: "Element" }> => n.kind === "Element",
+  );
+  const last = elements.at(-1);
+  if (!last) throw new Error("no trailing element in the IR body");
+  return find(last.children, "Interpolation");
+}
+
+describe("binding scopes are per JS block", () => {
+  /**
+   * A host whose state is a getter registers a rewrite; a `<const>` of the
+   * same name shadows it for the rest of *its own block*, and no further.
+   *
+   * The emitted JS scopes a `const` to the block it sits in, so the registry
+   * has to scope the same way. Before this was fixed, a `<const/count>` inside
+   * an `<if>` branch unregistered the name permanently, and every later
+   * `${count}` outside the branch silently stopped using the host's rewrite —
+   * wrong output from a successful compile.
+   */
+  const signalPolicy = fakeDeclarations({
+    claimsTag: (name) => name === "signal",
+    resolveHostTag: (_name, node, ctx) => {
+      ctx.hoist(`const ${node.var.name} = () => 0;`);
+      ctx.bindings.register(node.var.name, (ref) => `${ref}()`);
+      return null;
+    },
+  });
+
+  it("restores a name shadowed inside an <if> branch after the branch", () => {
+    const ir = resolveSource(
+      [
+        "<signal/count=1/>",
+        "<if=input.on>",
+        "  <const/count=2/>",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+        "  <p>${count}</p>",
+        "</if>",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+        "<p>${count}</p>",
+        "",
+      ].join("\n"),
+      signalPolicy,
+    );
+
+    const chain = find(ir.body, "IfChain");
+    const inside = find(chain.branches[0]?.children ?? [], "Interpolation");
+    // Inside the branch the `<const>` is what `count` means, so it prints bare.
+    expect(inside.expr.code).toBe("count");
+
+    // After the branch the host's binding is back, so it prints the call. The
+    // placeholder sits inside the trailing `<p>`, not at body level.
+    expect(trailingInterpolation(ir.body).expr.code).toBe("count()");
+  });
+
+  it("restores a name shadowed inside a <for> body after the loop", () => {
+    const ir = resolveSource(
+      [
+        "<signal/count=1/>",
+        "<for|item| of=input.xs>",
+        "  <const/count=item/>",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+        "  <p>${count}</p>",
+        "</for>",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+        "<p>${count}</p>",
+        "",
+      ].join("\n"),
+      signalPolicy,
+    );
+
+    const loop = find(ir.body, "For");
+    expect(find(loop.children, "Interpolation").expr.code).toBe("count");
+
+    expect(trailingInterpolation(ir.body).expr.code).toBe("count()");
+  });
+});
+
+describe("a claimed tag's children are resolved exactly once", () => {
+  /**
+   * `resolveHostTag` receives children the core has *already* resolved. A host
+   * that walked the Marko nodes again replayed every resolver side effect —
+   * each `ctx.hoist` ran twice — and nested tags resolved exponentially.
+   */
+  it("hoists once for a <const>-like host tag inside a claimed tag's body", () => {
+    let hoists = 0;
+    const ir = resolveSource(
+      [
+        "<dyn>",
+        "  <signal/inner=1/>",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+        "  <p>${inner}</p>",
+        "</dyn>",
+        "",
+      ].join("\n"),
+      fakeDeclarations({
+        claimsTag: (name) => name === "dyn" || name === "signal",
+        resolveHostTag: (name, node, ctx) => {
+          if (name !== "signal") return null;
+          hoists++;
+          ctx.hoist(`const ${node.var.name} = 1;`);
+          return null;
+        },
+      }),
+    );
+
+    expect(hoists).toBe(1);
+    expect(ir.prelude).toEqual(["const inner = 1;"]);
+  });
+});
