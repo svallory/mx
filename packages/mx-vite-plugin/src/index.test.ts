@@ -357,26 +357,26 @@ describe("mx()", () => {
     });
   });
 
-  describe("plain .mx (not .solid.mx)", () => {
+  describe("stock .marko (not .solid.mx)", () => {
     const GREETING = `export interface Input { name: string }
 <h1>Hello, \${input.name}</h1>
 `;
 
-    it("resolves a plain .mx id to a .ts-suffixed module, not .tsx", async () => {
+    it("resolves a .marko id to a .ts-suffixed module, not .tsx", async () => {
       const context = makeContext();
       const resolveId = resolveIdOf(mx());
 
       const resolved = await resolveId.call(
         context,
-        "./greeting.mx",
+        "./greeting.marko",
         "/root/src/index.tsx",
       );
 
-      expect(resolved).toBe("/root/src/greeting.mx.ts");
+      expect(resolved).toBe("/root/src/greeting.marko.ts");
     });
 
-    it("compiles a .mx module to a string-returning function, unaffected by .solid.mx handling", async () => {
-      const path = writeMx("greeting.mx", GREETING);
+    it("compiles a .marko module to a string-returning function, unaffected by .solid.mx handling", async () => {
+      const path = writeMx("greeting.marko", GREETING);
       const transform = transformOf(mx());
 
       const result = await transform.call({}, GREETING, `${path}.ts`);
@@ -397,29 +397,53 @@ describe("mx()", () => {
       expect(result?.code).toContain("<button");
     });
 
-    it("routes .solid.mx correctly even when extensions lists .mx first", async () => {
-      // `.mx` is a string suffix of `.solid.mx` — a caller-supplied order
-      // with `.mx` before `.solid.mx` must not misroute a `.solid.mx` file
-      // through the .mx (compile()/HTML) branch instead of print()/JSX.
-      const plugin = mx({ extensions: [".mx", ".solid.mx"] });
+    it.each([
+      [".marko", ".solid.marko"],
+      [".solid.marko", ".marko"],
+    ])(
+      "routes a longer extension correctly regardless of extensions order (given %j)",
+      async (...order) => {
+        // Neither of the plugin's two real, live extensions is a string
+        // suffix of the other any more (".marko" is not a suffix of
+        // ".solid.mx", unlike the retired ".mx"/".solid.mx" pair this test
+        // used to collide on) — so exercising the longest-first sort at
+        // index.ts:177-179 needs a caller-supplied pair that still collides
+        // the way a real one used to. ".marko" is a genuine string suffix of
+        // the synthetic ".solid.marko" here, and `suffixFor` only special-
+        // cases the literal string ".marko" (-> .ts; everything else -> the
+        // JSX suffix), so misrouting is directly observable in the resolved
+        // id's own suffix — unlike ".mx", whose transform behavior no longer
+        // differs from ".solid.mx"'s, which is why a collision built on the
+        // now-dead ".mx" extension can no longer prove anything (see the
+        // "with the sort removed" note this test's introduction cites in the
+        // PR).
+        //
+        // Removing the `.sort(...)` at index.ts:177-179 makes the
+        // `[".marko", ".solid.marko"]` order in this test fail: `matchExt`
+        // would then return the caller's first array match, ".marko", for
+        // "./Counter.solid.marko" (a string ending in ".solid.marko" also
+        // ends in ".marko"), and `suffixFor(".marko")` is ".ts" — wrong for
+        // a file that should route through the generic (".tsx") branch.
+        // Verified directly: temporarily replacing the sorted `extensions`
+        // assignment with the unsorted `[...(options.extensions ??
+        // DEFAULT_EXTENSIONS)]` makes exactly the `[".marko",
+        // ".solid.marko"]` case of this test fail on the suffix assertion
+        // below (got `.../Counter.solid.marko.ts`, wanted `...tsx`), while
+        // the `[".solid.marko", ".marko"]` case still passes — proving the
+        // sort, not incidental array order, is what this test depends on.
+        const plugin = mx({ extensions: order });
 
-      const resolveId = resolveIdOf(plugin);
-      const resolved = await resolveId.call(
-        makeContext(),
-        "./Counter.solid.mx",
-        "/root/src/index.tsx",
-      );
-      // .tsx (print()/JSX), not .ts (compile()/HTML) — proves the .solid.mx
-      // branch won even with .mx listed first.
-      expect(resolved).toBe(`/root/src/Counter.solid.mx${MX_SUFFIX}`);
-
-      const path = writeMx("Counter.solid.mx", COUNTER);
-      const transform = transformOf(plugin);
-      const result = await transform.call({}, COUNTER, path + MX_SUFFIX);
-
-      expect(result?.code).toContain("<button");
-      expect(result?.code).toContain("onClick={");
-      expect(result?.code).not.toContain("export default function");
-    });
+        const resolveId = resolveIdOf(plugin);
+        const resolved = await resolveId.call(
+          makeContext(),
+          "./Counter.solid.marko",
+          "/root/src/index.tsx",
+        );
+        // .tsx (the generic/JSX suffix), not .ts (the .marko-specific
+        // suffix) — proves the longer ".solid.marko" extension won
+        // regardless of extensions order.
+        expect(resolved).toBe("/root/src/Counter.solid.marko.tsx");
+      },
+    );
   });
 });

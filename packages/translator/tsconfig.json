@@ -3,8 +3,11 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"],
-    "allowImportingTsExtensions": true
+    "types": ["node", "bun"],
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@markox/parser": ["../mx-parser/src/public.d.ts"]
+    }
   },
   "include": ["src"]
 }

@@ -1,0 +1,33 @@
+import { readFileSync } from "node:fs";
+import type { BunPlugin } from "bun";
+import { compile } from "./index.ts";
+
+/**
+ * Registers an `onLoad` for `.marko` files: `compile()`'s output is plain
+ * TypeScript (an `import`, an optional `export interface Input`, and a
+ * default-exported function), so `loader: "ts"` hands it straight to Bun's
+ * own stripper — no JSX, no second transform needed.
+ *
+ * Usable both as a preload (`bunfig.toml`'s `preload = ["@markox/translator/bun"]`
+ * runs a preloaded module for its side effects — it does not itself call
+ * `Bun.plugin` on a default export — so this module registers itself at
+ * import time) and at runtime (`import markoPlugin from "@markox/translator/bun";
+ * Bun.plugin(markoPlugin)`, which registers the same plugin object again;
+ * `Bun.plugin` is idempotent for an already-registered plugin object).
+ */
+const MARKO_FILTER = /\.marko$/;
+
+const markoPlugin: BunPlugin = {
+  name: "markox-translator",
+  setup(build) {
+    build.onLoad({ filter: MARKO_FILTER }, ({ path }) => {
+      const source = readFileSync(path, "utf8");
+      const { code } = compile(source, path);
+      return { contents: code, loader: "ts" };
+    });
+  },
+};
+
+Bun.plugin(markoPlugin);
+
+export default markoPlugin;

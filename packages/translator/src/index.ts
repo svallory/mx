@@ -1,10 +1,16 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
-import { emitProgram, TranslateError } from "./translate.ts";
+import markoTaglib from "../taglib/marko.json" with { type: "json" };
+import {
+  emitProgram,
+  policy,
+  strictPolicy,
+  TranslateError,
+} from "./translate.ts";
 
-export { escape } from "@markox/html";
-export { policy, TranslateError } from "./translate.ts";
+export { escape } from "./escape.ts";
+export { policy, strictPolicy, TranslateError } from "./translate.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -36,7 +42,7 @@ export interface CompileResult {
  * rather than for MX's dialect.
  */
 export const translator = {
-  taglibs: [["mx-translator-core", require("../taglib/marko.json")]],
+  taglibs: [["mx-translator-core", markoTaglib]],
   tagDiscoveryDirs: ["tags"],
   translate: {
     Program: {
@@ -51,6 +57,7 @@ export const translator = {
           state.source,
           printExpression,
           state.lookup,
+          state.strict ? strictPolicy : policy,
         );
         path.node.body = [];
       },
@@ -62,6 +69,18 @@ interface CompileState {
   source: string;
   code: string | null;
   lookup?: { getTag(name: string): { taglibId?: string } | undefined };
+  strict?: boolean;
+}
+
+export interface CompileOptions {
+  /**
+   * Rejects reactive constructs (`<let>`, `<effect>`, `<lifecycle>`,
+   * `<script>`, `client` blocks, `<id>`) by name instead of rendering their
+   * initial value or treating them as inert. Folded from `.mx`'s dialect
+   * (decision 68) as an opt-in stance for an author who wants those
+   * constructs to be a compile error rather than silently accepted.
+   */
+  strict?: boolean;
 }
 
 /**
@@ -88,12 +107,16 @@ let current: CompileState | null = null;
  * directly rather than printing a Babel AST, so there are no node positions to
  * derive real mappings from yet.
  */
-export function compile(source: string, filename: string): CompileResult {
+export function compile(
+  source: string,
+  filename: string,
+  options: CompileOptions = {},
+): CompileResult {
   // Required lazily and by CJS: `@marko/compiler` is a large dependency and
   // only `compile()` needs it, so importing `escape` stays free.
   const compiler = require("@marko/compiler");
 
-  const state: CompileState = { source, code: null };
+  const state: CompileState = { source, code: null, strict: options.strict };
   // The lookup is keyed on the translator object, so asking for it here gets
   // exactly the taglibs this translator registers plus Marko's own element
   // taglibs — and the `tags/` directory beside this particular file.
@@ -129,8 +152,11 @@ export function compile(source: string, filename: string): CompileResult {
 }
 
 /** `compile()` over a file on disk. */
-export function compileFile(filename: string): CompileResult {
-  return compile(readFileSync(filename, "utf8"), filename);
+export function compileFile(
+  filename: string,
+  options: CompileOptions = {},
+): CompileResult {
+  return compile(readFileSync(filename, "utf8"), filename, options);
 }
 
 /**
@@ -139,10 +165,13 @@ export function compileFile(filename: string): CompileResult {
  * The CLI-free equivalent of a build step: a caller writes the results
  * wherever its own pipeline wants them.
  */
-export function build(filenames: string[]): Map<string, CompileResult> {
+export function build(
+  filenames: string[],
+  options: CompileOptions = {},
+): Map<string, CompileResult> {
   const results = new Map<string, CompileResult>();
   for (const filename of filenames) {
-    results.set(filename, compileFile(filename));
+    results.set(filename, compileFile(filename, options));
   }
   return results;
 }

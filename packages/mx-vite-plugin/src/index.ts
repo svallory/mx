@@ -3,35 +3,36 @@ import { print } from "@markox/parser";
 import type { Plugin } from "vite";
 
 /**
- * Lazily imported, and only inside `transform`'s `.mx` branch: `@markox/html`
- * pulls in `@marko/compiler`, a large dependency whose transitive code uses
- * TypeScript parameter-property syntax. A static top-level import here would
- * load that dependency the moment `vite.config.ts` imports this plugin —
- * including for a `.solid.mx`-only project like `examples/counter-app` that
- * never touches plain `.mx` at all — and break config loading, since Vite's
- * own config loader reads `vite.config.ts` through Node's native strip-only
- * TS mode, which rejects that syntax outright.
+ * Lazily imported, and only inside `transform`'s `.marko` branch:
+ * `@markox/translator` pulls in `@marko/compiler`, a large dependency whose
+ * transitive code uses TypeScript parameter-property syntax. A static
+ * top-level import here would load that dependency the moment
+ * `vite.config.ts` imports this plugin — including for a `.solid.mx`-only
+ * project like `examples/counter-app` that never touches `.marko` at all —
+ * and break config loading, since Vite's own config loader reads
+ * `vite.config.ts` through Node's native strip-only TS mode, which rejects
+ * that syntax outright.
  *
  * A dynamic `import()`, not `require()`: `require()` on a bare specifier
- * whose `main` is TS source (`@markox/html`'s `src/index.ts`) goes through
- * Node's native module loader with no transform step at all under Vitest's
- * Node-native `require`, hitting the same strip-only-mode error one line of
- * source further in. Dynamic `import()` is handled by Vite's/Vitest's own
- * transform pipeline instead, which strips TypeScript fully rather than in
- * the narrow subset Node's native loader accepts.
+ * whose `main` is TS source (`@markox/translator`'s `src/index.ts`) goes
+ * through Node's native module loader with no transform step at all under
+ * Vitest's Node-native `require`, hitting the same strip-only-mode error one
+ * line of source further in. Dynamic `import()` is handled by Vite's/Vitest's
+ * own transform pipeline instead, which strips TypeScript fully rather than
+ * in the narrow subset Node's native loader accepts.
  *
- * `@markox/html` has no compiled entry (its `main` is `src/index.ts`), so
- * resolving its types at all — even through this dynamic `import()`, cast
+ * `@markox/translator` has no compiled entry (its `main` is `src/index.ts`),
+ * so resolving its types at all — even through this dynamic `import()`, cast
  * away below — needs `allowImportingTsExtensions` wherever `tsc` walks that
  * far. Every consumer of this plugin (each example) needs the same flag in
  * its own tsconfig for that reason, not because it imports `.ts` paths
  * itself.
  */
-async function compileHtml(
+async function compileMarko(
   source: string,
   filename: string,
 ): Promise<{ code: string }> {
-  const { compile } = (await import("@markox/html")) as {
+  const { compile } = (await import("@markox/translator")) as {
     compile: (source: string, filename: string) => { code: string };
   };
   return compile(source, filename);
@@ -39,25 +40,25 @@ async function compileHtml(
 
 export interface MxPluginOptions {
   /**
-   * File extensions handled by the plugin. Defaults to `.solid.mx`; `.mx`
-   * becomes meaningful once a target other than Solid exists.
+   * File extensions handled by the plugin. Defaults to `.solid.mx` and
+   * `.marko`.
    */
   extensions?: string[];
 }
 
-const DEFAULT_EXTENSIONS = [".solid.mx", ".mx"];
+const DEFAULT_EXTENSIONS = [".solid.mx", ".marko"];
 
 /**
  * Appended to the resolved path so the rest of the pipeline sees a JS-family
  * module. See the note on `resolveId` below for why this is necessary.
  *
- * `.solid.mx` prints to JSX text (`print()`), so it needs `.tsx`; plain `.mx`
+ * `.solid.mx` prints to JSX text (`print()`), so it needs `.tsx`; `.marko`
  * compiles to a string-returning function with no JSX (`compile()`), so `.ts`
  * is enough and keeps rolldown/esbuild from running a JSX transform over code
  * that has none.
  */
 function suffixFor(ext: string): string {
-  return ext === ".mx" ? ".ts" : ".tsx";
+  return ext === ".marko" ? ".ts" : ".tsx";
 }
 
 /** `suffixFor(".solid.mx")`, kept as a named export for existing callers/tests. */
@@ -113,7 +114,7 @@ export function codeFrame(
 }
 
 /**
- * Compiles `.solid.mx` and `.mx` ahead of the rest of the pipeline.
+ * Compiles `.solid.mx` and `.marko` ahead of the rest of the pipeline.
  *
  * `.solid.mx` prints to JSX source text (`print()`, from `@markox/parser`)
  * ahead of `@solidjs/vite-plugin`. Ordering: this plugin is `enforce: "pre"`,
@@ -124,15 +125,15 @@ export function codeFrame(
  * and Babel backends consume source text, so neither needs special-casing
  * here.
  *
- * `.mx` (not `.solid.mx`) compiles to a plain `(input) => string` module via
- * `compile()` from `@markox/html` — the same whole-file translator
- * `examples/mx-site` and `@markox/html/bun` use, so a `.mx` template behaves
- * identically whether it is loaded by Vite or by Bun. `compile()`'s returned
- * map is presently an identity placeholder (see its own doc comment — the
- * translator builds text directly, not from a printed AST), so this plugin
- * has no real source map to hand Vite yet for that extension; `transform`
- * returns `map: null` for it rather than a placeholder Vite would treat as
- * real.
+ * `.marko` compiles to a plain `(input) => string` module via `compile()`
+ * from `@markox/translator` — the same whole-file translator
+ * `examples/mx-site` and `@markox/translator/bun` use, so a `.marko` template
+ * behaves identically whether it is loaded by Vite or by Bun. `compile()`'s
+ * returned map is presently an identity placeholder (see its own doc comment
+ * — the translator builds text directly, not from a printed AST), so this
+ * plugin has no real source map to hand Vite yet for that extension;
+ * `transform` returns `map: null` for it rather than a placeholder Vite would
+ * treat as real.
  *
  * Why `resolveId` rewrites the id to `<path><ext>.tsx`/`.ts` rather than just
  * returning the resolved path — three separate parts of the pipeline dispatch
@@ -264,11 +265,11 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
       const source = sourcePath(path, ext);
 
       try {
-        if (ext === ".mx") {
+        if (ext === ".marko") {
           // `compile()`'s map is presently an identity placeholder (no AST
           // is printed on this path), so there is nothing real to hand Vite
           // — returning it would claim a mapping that does not exist.
-          const { code: compiled } = await compileHtml(code, source);
+          const { code: compiled } = await compileMarko(code, source);
           return { code: compiled, map: null };
         }
 
