@@ -1,0 +1,31 @@
+---
+import Panel from "../components/Panel.amx";
+import Roster from "../components/Roster.amx";
+import BaseMx from "../layouts/BaseMx.amx";
+
+// An AstroMX *page*: `.amx` is registered with `addPageExtension`, so this
+// file is a route (`/templates`) as well as an Astro component. That is why
+// the extension is single-dot (decision 78) — Astro's route collection reads
+// only the last extension segment, so a multi-dot `.astro.mx` could never be
+// a page. The components and the layout it uses are `.amx` too.
+---
+<BaseMx title="AstroMX templates">
+  <h1>AstroMX templates</h1>
+
+  <Panel title="A highlighted panel" highlighted=true>
+    <@header>
+      <span class="panel-badge">badge in the named slot</span>
+    </@header>
+    <p>This paragraph is the default slot.</p>
+  </Panel>
+
+  <Panel title="A plain panel">
+    <p>No highlight, so class:list drops the toggled class.</p>
+  </Panel>
+
+  <Roster heading="Crew" members=["ada", "grace", "alan"]/>
+  <Roster heading="Empty roster" members=[] showEmpty=true/>
+  <Roster heading="Hidden roster" members=[]/>
+
+  <p><a href="/">Home</a></p>
+</BaseMx>

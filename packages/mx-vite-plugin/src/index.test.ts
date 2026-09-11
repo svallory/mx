@@ -243,30 +243,33 @@ describe("mx()", () => {
       ).toBeNull();
     });
 
-    it("declines .astro.mx, which belongs to @mxlang/astro's own plugin", async () => {
-      // `.mx` is a plain string suffix of `.astro.mx`, so without the
-      // foreign-extension guard this plugin would claim the file and rewrite
-      // it to `...astro.mx.ts` — measured to break the build, since
-      // `@mxlang/astro`'s plugin then re-resolves that to
-      // `...astro.mx.ts.astro` and `compileMarko` runs on an Astro template.
+    it("leaves AstroMX's .amx alone: a different host's extension", async () => {
+      // `.amx` (decision 78) belongs to `@mxlang/astro`'s own plugin, which
+      // lowers it to Astro template syntax. Its last extension segment differs
+      // from `.mx`, so the plain `endsWith` match never claims it — this pins
+      // that, since the two plugins run in the same Vite instance.
       const context = makeContext();
       const resolveId = resolveIdOf(mx());
 
       expect(
-        await resolveId.call(context, "./Base.astro.mx", "/root/src/index.tsx"),
+        await resolveId.call(context, "./Base.amx", "/root/src/index.tsx"),
       ).toBeNull();
       expect(context.calls).toHaveLength(0);
     });
 
-    it("still handles .astro.mx when it is registered explicitly", async () => {
-      // The guard only defends a shorter extension from swallowing a longer
-      // one; an opt-in registration is a deliberate choice and still works.
+    it("declines a multi-dot extension owned by another host", async () => {
+      // The foreign-extension guard is empty today, but the collision it
+      // defends against is a property of the `endsWith` matching rule rather
+      // than of any one extension: a registered `.mx` matches `Base.any.mx`
+      // just as readily as `Base.mx`. Registering the longer extension is what
+      // makes the longest-first sort pick it, which is the same mechanism that
+      // keeps `.solid.mx` from being compiled as `.mx`.
       const context = makeContext();
-      const resolveId = resolveIdOf(mx({ extensions: [".astro.mx"] }));
+      const resolveId = resolveIdOf(mx({ extensions: [".other.mx", ".mx"] }));
 
       expect(
-        await resolveId.call(context, "./Base.astro.mx", "/root/src/index.tsx"),
-      ).toBe("/root/src/Base.astro.mx.tsx");
+        await resolveId.call(context, "./Base.other.mx", "/root/src/index.tsx"),
+      ).toBe("/root/src/Base.other.mx.tsx");
     });
 
     it("leaves ids it does not handle alone", async () => {

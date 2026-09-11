@@ -195,6 +195,120 @@ component.
 another component's slot — and, like components, `client:*` on a page-mode
 MX file fails the build for the same reason (nothing to hydrate).
 
+## AstroMX templates (`.amx`)
+
+Decisions 76c/78. An `.amx` file is an **Astro component whose template is
+MX**: a TypeScript frontmatter fence with Astro's own semantics, followed by
+an MX template instead of Astro's JSX-shaped markup. The template is lowered
+to Astro template syntax and the whole file is handed to Astro's compiler, so
+everything downstream — scoped styles, `Astro.props`, `getStaticPaths`,
+source maps — is Astro's own.
+
+```astro
+---
+// This half is untouched: ordinary Astro frontmatter.
+export interface Props { title: string; members: string[] }
+const { title, members } = Astro.props as Props;
+---
+<h1>${title}</h1>
+<if=members.length>
+  <ul>
+    <for|member, i| of=members>
+      <li>${i}: ${member}</li>
+    </for>
+  </ul>
+</if>
+<else>
+  <p>Nobody here yet.</p>
+</else>
+```
+
+This is a different file kind from `.mx`. An `.mx` component compiles to a
+runtime-free `(input) => string` function and is called *through* this
+package's renderer; an `.amx` component **becomes** an Astro component. Use
+`.amx` when you want Astro's own component semantics with MX's syntax, and
+`.mx` when you want a portable MX component that happens to render in Astro.
+
+**Components, layouts and pages**, all from the one extension — `.amx` is
+registered with `addPageExtension`, so `src/pages/about.amx` routes to
+`/about`.
+
+**Why the single dot.** The obvious spelling was `.astro.mx`, and it works for
+components. It cannot work for pages: Astro's route collection keys on
+`path.extname(basename)`, which returns only the **last** extension segment,
+so `.astro.mx` can never be registered as a page extension. Measured against
+`astro@7.3.2`, a `page.astro.mx` under `src/pages` is skipped entirely; and
+once `.mx` is also registered, it is routed to `/page.astro/` — a literal
+`.astro` in the URL. `.amx` has one segment, so every file kind works.
+
+### The lowering table
+
+| MX | Astro | Notes |
+| --- | --- | --- |
+| `${expr}` | `{expr}` | Astro escapes by default, as MX does |
+| `$!{expr}` | `<Fragment set:html={expr} />` | the unescaped placeholder |
+| text containing `{` or `}` | `&#123;` / `&#125;` | a literal brace would otherwise open an expression |
+| `<if=c>` / `<else if=c>` / `<else>` | `{c ? (<Fragment>…</Fragment>) : …}` | a ternary chain; a chain with no `<else>` gets a `null` arm |
+| `<for\|x\| of=xs>` | `{[...xs].map((x) => (…))}` | `<for\|x, i\|>` passes the index |
+| `<for\|k, v\| in=obj>` | `{Object.entries(obj).map(([k, v]) => (…))}` | |
+| `<for\|n\| from=a to=b>` | `{Array.from({length: …}, …).map(…)}` | `to=` inclusive, `until=` exclusive |
+| `attr="static"` | `attr="static"` | unchanged |
+| `attr=expr` | `attr={expr}` | |
+| `...obj` | `{...obj}` | |
+| `class={a: true}` / `class=[…]` | `class:list={…}` | Astro's own structured-class attribute |
+| `<@name>` on a component | `<Fragment slot="name">…</Fragment>` | an attribute tag is a named slot |
+| children | the default slot | |
+| HTML comments | HTML comments | |
+| several root elements | several root elements | Astro allows a fragment at top level |
+
+### Errors
+
+Nothing silently degrades: every construct this target cannot express is a
+build error naming the construct, the reason, and the line in the `.amx` file.
+
+- **Stateful tags** — `<let>`, `<effect>`, `<lifecycle>`, `<script>`, `client`
+  blocks, `<id>`. Same stance as `.mx` under this host (decision 71): static
+  markup at build time, no reactive runtime, so "this needs a runtime" is a
+  build error rather than markup that renders once and never updates.
+- **`<await>`** — needs a suspense-capable renderer.
+- **`<return>`** — hands a value to a parent template; an Astro component has
+  none.
+- **`<const>`** — a template expression cannot introduce a binding. Declare it
+  in the `---` fence, which is where an Astro component declares values.
+- **`<define>`** — Astro has no local component form. Extract it into its own
+  `.amx` file and import it.
+- **`<try>`** — needs an error boundary; Astro renders statically.
+- **Tag params** (`<Comp|x|>`) — these lower to a render prop, and Astro
+  passes markup through slots, not functions. The same applies to an attribute
+  tag declaring params (`<@footer|year|>`).
+- **Attribute tags on an HTML element** — named slots exist only on a
+  component.
+- **Attribute methods** (`onClick() { … }`) — an event handler needs a
+  runtime.
+- **`:=`** — a two-way binding needs a reactive runtime.
+- **A dynamic tag name** (`<${expr}>`) — Astro resolves component names
+  statically.
+
+### How it works
+
+`@mxlang/core`'s `Policy` cannot express this target, so this is an emitter
+rather than a policy. The core's emit layer is the string-emit model
+(`emitLiteral` pushes `out += "..."`, `emitFor` pushes `for (const x of xs) {`,
+and `emitChildren` claims `<if>` before any policy dispatch) — all
+statement-shaped JS, while Astro's template syntax is expression-shaped.
+`packages/core/README.md` states the rule: a JSX host replaces the emit layer
+instead. So `.amx` uses the core's other front door, `parseFragment`, whose
+base-offset position shifting is exactly what a template sitting after a fence
+needs, and supplies its own emit layer over those nodes.
+
+The Vite mechanism is forced rather than chosen. Astro's `astro:build`
+`transform` filters `include: [/\.astro$/, /\.astro\?/]` and then re-checks
+`if (!parsedId.filename.endsWith(".astro")) return;`, so a transform on the
+real `.amx` id can never reach Astro's compiler — the module id itself has to
+end in `.astro`. `resolveId` appends that suffix to whatever Vite's own
+resolver returns and `load` returns the lowered source, the same shape
+`@mxlang/vite-plugin` already uses for `.solid.mx`.
+
 ## Typing `.mx` imports
 
 Add the ambient declarations to your project's `src/env.d.ts`:

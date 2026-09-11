@@ -123,6 +123,14 @@ export default function mxAstro(
         // half-component.
         addPageExtension(".mx");
 
+        // `.amx` files are AstroMX: an Astro component whose template is MX,
+        // lowered to Astro template syntax (decision 76c/78). Registered as a
+        // page extension too, so components, layouts and pages all share the
+        // one spelling — which is why the extension is single-dot: Astro's
+        // route collection reads only the last extension segment, so a
+        // multi-dot `.astro.mx` could never be a page.
+        addPageExtension(".amx");
+
         updateConfig({
           vite: {
             plugins: [

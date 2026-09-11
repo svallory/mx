@@ -1,7 +1,7 @@
 /**
  * The MX → Astro-template emitter (decision 76c).
  *
- * An `.astro.mx` file is an Astro component whose *template* is MX instead of
+ * An `.amx` file is an Astro component whose *template* is MX instead of
  * Astro's own JSX-shaped markup:
  *
  * ```
@@ -32,7 +32,7 @@
  * `packages/core/README.md` states the rule this follows: "That model is not
  * hidden behind the policy, deliberately... A JSX host (SolidMX, phase 4)
  * replaces the emit layer instead." Astro's template syntax is JSX-shaped, so
- * `.astro.mx` is a JSX host by that rule. (The README's "Astro next" means the
+ * `.amx` is a JSX host by that rule. (The README's "Astro next" means the
  * existing `.mx`-to-string component host, which is unaffected by this file.)
  *
  * So this module uses the core's *other* front door — `parseFragment`, which
@@ -53,7 +53,7 @@ import { parseFragment } from "@mxlang/core";
 type Node = any;
 
 /**
- * A lowering failure, carrying the position in the **enclosing** `.astro.mx`
+ * A lowering failure, carrying the position in the **enclosing** `.amx`
  * file.
  *
  * Mirrors `@mxlang/core`'s `TranslateError` shape (1-based `line`, 0-based
@@ -114,18 +114,18 @@ const VOID_TAGS = new Set([
  * silently renders once and never updates.
  */
 const STATEFUL_TAGS: Record<string, string> = {
-  let: "`<let>` is reactive state and requires a runtime; `.astro.mx` renders static markup at build time",
+  let: "`<let>` is reactive state and requires a runtime; `.amx` renders static markup at build time",
   effect:
-    "`<effect>` is a reactive effect and requires a runtime; `.astro.mx` renders static markup at build time",
+    "`<effect>` is a reactive effect and requires a runtime; `.amx` renders static markup at build time",
   lifecycle:
-    "`<lifecycle>` is a reactive lifecycle hook and requires a runtime; `.astro.mx` renders static markup at build time",
+    "`<lifecycle>` is a reactive lifecycle hook and requires a runtime; `.amx` renders static markup at build time",
   script:
-    "`<script>` as a Marko tag runs client code and requires a runtime; `.astro.mx` renders static markup at build time",
+    "`<script>` as a Marko tag runs client code and requires a runtime; `.amx` renders static markup at build time",
   client:
-    "a `client` block is client-only and requires a runtime; `.astro.mx` renders static markup at build time",
-  id: "`<id>` allocates an identifier for the reactive runtime; `.astro.mx` renders static markup at build time",
+    "a `client` block is client-only and requires a runtime; `.amx` renders static markup at build time",
+  id: "`<id>` allocates an identifier for the reactive runtime; `.amx` renders static markup at build time",
   await:
-    "`<await>` needs a suspense-capable renderer; `.astro.mx` renders static markup at build time",
+    "`<await>` needs a suspense-capable renderer; `.amx` renders static markup at build time",
   return:
     "`<return>` hands a value to a parent template; an Astro component has no parent template to return to",
 };
@@ -201,7 +201,7 @@ function collector(): Emit & { done(): string } {
  * The nodes come from Marko's own Babel instance, so they are printed by
  * slicing the original source rather than by running a second generator over
  * them — `parseFragment` has already shifted `loc.*.index` into the enclosing
- * file, so the slice is taken against the whole `.astro.mx` text.
+ * file, so the slice is taken against the whole `.amx` text.
  *
  * Slicing, not generating, is what keeps the author's own spelling (and hence
  * the column positions Astro's own source map will later compose with) intact.
@@ -229,7 +229,7 @@ function paramsOf(source: string, node: Node): string[] {
 /**
  * Lowers an MX template body to Astro template syntax.
  *
- * `source` is the **whole** `.astro.mx` file (fence included), because
+ * `source` is the **whole** `.amx` file (fence included), because
  * `parseFragment` reports positions against it and `sourceOf` slices it.
  */
 export function emitTemplate(
@@ -310,7 +310,7 @@ function emitTag(
 
   if (name === "") {
     fail(
-      "a dynamic tag name (`<${expr}>`) is not supported in an `.astro.mx` template; Astro resolves component names statically",
+      "a dynamic tag name (`<${expr}>`) is not supported in an `.amx` template; Astro resolves component names statically",
       node,
     );
   }
@@ -331,7 +331,7 @@ function emitTag(
   }
   if (name === "define") {
     fail(
-      "`<define>` declares a reusable template block; an Astro template has no local component form — extract it into its own `.astro.mx` file and import it",
+      "`<define>` declares a reusable template block; an Astro template has no local component form — extract it into its own `.amx` file and import it",
       node,
     );
   }
@@ -604,13 +604,13 @@ function emitAttrs(source: string, node: Node, tagName: string): string {
     // construct. Both are tested.
     if (attr.arguments || attr.value?.type === "FunctionExpression") {
       fail(
-        `attribute method \`${attr.name}(...)\` is an event handler and requires a runtime; \`.astro.mx\` renders static markup at build time`,
+        `attribute method \`${attr.name}(...)\` is an event handler and requires a runtime; \`.amx\` renders static markup at build time`,
         attr,
       );
     }
     if (attr.bound) {
       fail(
-        "`:=` is a two-way binding and requires a reactive runtime; `.astro.mx` renders static markup at build time",
+        "`:=` is a two-way binding and requires a reactive runtime; `.amx` renders static markup at build time",
         attr,
       );
     }
@@ -619,7 +619,7 @@ function emitAttrs(source: string, node: Node, tagName: string): string {
       // `class:active` before this emitter ever runs, so this can only be
       // reached by a modifier Marko does accept.
       fail(
-        `attribute modifier \`${attr.name}:${attr.modifier}\` is not supported in an \`.astro.mx\` template`,
+        `attribute modifier \`${attr.name}:${attr.modifier}\` is not supported in an \`.amx\` template`,
         attr,
       );
     }
@@ -673,7 +673,7 @@ export interface LowerResult {
 }
 
 /**
- * Splits an `.astro.mx` file into its fence and its MX template, and lowers
+ * Splits an `.amx` file into its fence and its MX template, and lowers
  * the template.
  *
  * The fence is copied through **byte for byte**, including its `---`
@@ -690,7 +690,7 @@ export function lowerAstroMx(source: string, filename: string): LowerResult {
 
   // Everything before the template is the fence, so the template's own
   // positions shift by exactly its length: `parseFragment` then reports every
-  // node against the real `.astro.mx` file rather than against the substring.
+  // node against the real `.amx` file rather than against the substring.
   const baseOffset = fence.length;
   const baseLine = fence ? fence.split("\n").length - 1 : 0;
 

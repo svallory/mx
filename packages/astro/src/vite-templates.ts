@@ -1,5 +1,5 @@
 /**
- * The Vite plugin that feeds a lowered `.astro.mx` file to Astro's own
+ * The Vite plugin that feeds a lowered `.amx` file to Astro's own
  * compiler (decision 76c).
  *
  * ## The mechanism, and why it is the only one
@@ -24,7 +24,7 @@
  * ```
  *
  * Both gates require the id to end in `.astro`. So an `enforce: "pre"`
- * transform on the real `.astro.mx` id cannot work — Astro's plugin never
+ * transform on the real `.amx` id cannot work — Astro's plugin never
  * matches it, and the lowered source would simply be handed to rolldown as
  * plain JS. The only mechanism that reaches Astro's compiler is to make the
  * module id itself end in `.astro`: `resolveId` appends the suffix, and `load`
@@ -49,15 +49,21 @@ import type { Plugin } from "vite";
 import { AstroTemplateError, lowerAstroMx } from "./astro-template.ts";
 
 /**
- * The extension an MX-templated Astro component is written with.
+ * The extension an MX-templated Astro component is written with (decision 78).
  *
  * A single constant, referenced everywhere this extension is matched (here and
- * in the Zed language definition), so moving to a different spelling is a
- * one-line change. Decision 1 on the page question is still open — Astro's
- * router cannot register a multi-dot page extension (`path.extname` returns
- * only the last segment), so a single-dot spelling may replace this.
+ * in the Zed language definition), so a change of spelling is a one-line edit.
+ *
+ * **Single-dot, deliberately.** The obvious spelling was `.astro.mx`, and it
+ * works for components — but not for pages: Astro's route collection keys on
+ * `path.extname(basename)`, which returns only the **last** extension, so
+ * `.astro.mx` can never be registered with `addPageExtension`. Measured against
+ * `astro@7.3.2`: a `page.astro.mx` under `src/pages` is skipped entirely, or —
+ * once `.mx` is registered as a page extension — routed to `/page.astro/`,
+ * with a literal `.astro` in the URL. `.amx` has one extension segment, so
+ * components, layouts and pages all work from the same spelling.
  */
-export const ASTRO_MX_EXT = ".astro.mx";
+export const ASTRO_MX_EXT = ".amx";
 
 /**
  * Appended to the resolved path so Astro's own plugin claims the module.
@@ -82,7 +88,7 @@ function splitId(id: string): [path: string, suffix: string] {
   return index === -1 ? [id, ""] : [id.slice(0, index), id.slice(index)];
 }
 
-/** `/a/Base.astro.mx.astro` -> `/a/Base.astro.mx`, or undefined. */
+/** `/a/Base.amx.astro` -> `/a/Base.amx`, or undefined. */
 function sourcePath(path: string): string | undefined {
   if (!path.endsWith(ASTRO_SUFFIX)) return undefined;
   const real = path.slice(0, -ASTRO_SUFFIX.length);
@@ -105,12 +111,12 @@ export function codeFrame(
 }
 
 /**
- * Lowers `.astro.mx` files to Astro template syntax, ahead of Astro's own
+ * Lowers `.amx` files to Astro template syntax, ahead of Astro's own
  * plugin.
  *
  * `enforce: "pre"` so `resolveId` runs before Vite's default resolution
  * settles the id. Astro's own plugin is also `enforce: "pre"`, but the two
- * never contend: this one owns `.astro.mx`, and hands Astro an id ending in
+ * never contend: this one owns `.amx`, and hands Astro an id ending in
  * `.astro`, which is the only thing Astro's plugin looks at.
  */
 export function mxTemplates(): Plugin {
@@ -171,9 +177,9 @@ export function mxTemplates(): Plugin {
       const real = sourcePath(path);
       if (real === undefined) return null;
 
-      // A real `Foo.astro.mx.astro` checked into a project is a different
+      // A real `Foo.amx.astro` checked into a project is a different
       // module and must not be shadowed: only claim the id when the
-      // un-suffixed `.astro.mx` file is the one that actually exists.
+      // un-suffixed `.amx` file is the one that actually exists.
       if (!existsSync(real)) return null;
 
       const source = readFileSync(real, "utf8");
@@ -183,7 +189,7 @@ export function mxTemplates(): Plugin {
         if (!(error instanceof AstroTemplateError)) throw error;
 
         // Re-raise with the shape Vite's overlay reads, so the reported
-        // position is the `.astro.mx` source line rather than a position
+        // position is the `.amx` source line rather than a position
         // inside text the author never wrote. `parseFragment` has already
         // shifted the position past the fence, so the line is the real one.
         const wrapped = error as AstroTemplateError & {

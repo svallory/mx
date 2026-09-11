@@ -4,7 +4,7 @@ import { AstroTemplateError, lowerAstroMx } from "./astro-template.ts";
 /** Lowers a template with an empty fence, returning just the template half. */
 function lower(template: string): string {
   const source = `---\nconst x = 1;\n---\n${template}`;
-  return lowerAstroMx(source, "Test.astro.mx").code.replace(
+  return lowerAstroMx(source, "Test.amx").code.replace(
     "---\nconst x = 1;\n---\n",
     "",
   );
@@ -24,7 +24,7 @@ function errorFor(template: string): AstroTemplateError {
 describe("lowerAstroMx", () => {
   it("copies the fence through byte for byte", () => {
     const source = `---\nimport Card from "./Card.astro";\nconst n = 1;\n---\n<p>hi</p>`;
-    const { code } = lowerAstroMx(source, "Test.astro.mx");
+    const { code } = lowerAstroMx(source, "Test.amx");
 
     expect(
       code.startsWith(
@@ -34,7 +34,7 @@ describe("lowerAstroMx", () => {
   });
 
   it("lowers a file with no fence at all", () => {
-    const { code } = lowerAstroMx("<p>hi</p>", "Test.astro.mx");
+    const { code } = lowerAstroMx("<p>hi</p>", "Test.amx");
     expect(code).toBe("<p>hi</p>");
   });
 });
@@ -230,7 +230,7 @@ describe("unsupported constructs", () => {
 
   it("rejects <define>, pointing at a separate file", () => {
     expect(errorFor("<define/Row><p>x</p></define>").message).toMatch(
-      /extract it into its own `\.astro\.mx` file/,
+      /extract it into its own `\.amx` file/,
     );
   });
 
@@ -254,7 +254,7 @@ describe("error positions", () => {
     // which is the whole reason this host uses that front door.
     const source = `---\nconst x = 1;\n---\n<let/count=1/>`;
     try {
-      lowerAstroMx(source, "Test.astro.mx");
+      lowerAstroMx(source, "Test.amx");
       throw new Error("expected a failure");
     } catch (error) {
       expect(error).toBeInstanceOf(AstroTemplateError);
