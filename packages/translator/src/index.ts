@@ -17,7 +17,12 @@ import {
 } from "@mxlang/core";
 import markoTaglib from "../taglib/marko.json" with { type: "json" };
 import { emitModule } from "./emitter.ts";
-import { emitProgram, policy, strictPolicy } from "./translate.ts";
+import {
+  escapeFrom,
+  finalizeModule,
+  policy,
+  strictPolicy,
+} from "./translate.ts";
 
 export { escape } from "@mxlang/core";
 export { policy, strictPolicy, TranslateError } from "./translate.ts";
@@ -31,7 +36,7 @@ export type { CompileResult, RawSourceMap };
  * import — one of the things that makes this a host for *stock* Marko syntax
  * rather than for a dialect.
  *
- * `postEmit` is `translate.ts`'s `emitProgram` wrapper, which appends the
+ * `postEmit` is `translate.ts`'s `finalizeModule` wrapper, which appends the
  * `classValue`/`styleValue`/`escapeComment`/`renderDynamic` helpers a template
  * actually calls. It reaches the core as a hook rather than being folded into
  * the core's emitter because *which* helpers exist is this host's business.
@@ -88,8 +93,8 @@ export function compile(
       // appends the helpers a template actually calls and brands the default
       // export, both of which are properties of this target rather than of
       // the core.
-      emitIr: (ir) => emitModule(ir, policy.escapeFrom),
-      postEmit: (code) => emitProgram(code),
+      emitIr: (ir) => emitModule(ir, escapeFrom),
+      postEmit: (code) => finalizeModule(code),
     },
   );
 }

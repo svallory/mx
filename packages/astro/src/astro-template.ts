@@ -115,7 +115,6 @@ const declarations: HostDeclarations = {
   isElement: (name) => !isComponentName(name),
   isComponent: (name) => isComponentName(name),
   keepComments: true,
-  escapeFrom: "@mxlang/core",
   claimsTag: (name) => name === DYNAMIC_TAG,
   resolveHostTag: (name, node, ctx): HostTagData => {
     if (name !== DYNAMIC_TAG) {

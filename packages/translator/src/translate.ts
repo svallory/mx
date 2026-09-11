@@ -451,7 +451,6 @@ export const policy: Policy = {
   isElement,
   isComponent,
   checkBinding: rejectInputShadowing,
-  escapeFrom: "@mxlang/translator",
   claimsTag,
   resolveHostTag,
   // The resolver offers the host first refusal on each of these so the
@@ -462,6 +461,9 @@ export const policy: Policy = {
   rejectComponentTag,
   rejectUnknownTag,
 };
+
+/** Runtime import used by this host's emitted modules. */
+export const escapeFrom = "@mxlang/translator";
 
 /**
  * Reactive constructs, rejected by name instead of rendering their initial
@@ -578,7 +580,7 @@ const RENDER_DYNAMIC = `function renderDynamic(target, props) {
 /**
  * The core's emitted default export, as text, for the two rewrites below.
  *
- * Both `emitProgram`'s helper injection and `brandRender` key off this exact
+ * Both `finalizeModule`'s helper injection and `brandRender` key off this exact
  * line, so it is written once rather than twice.
  */
 const DEFAULT_EXPORT = "\nexport default function (input: Input): string {";
@@ -663,7 +665,7 @@ export default render;
  * they are inlined rather than imported, to keep the runtime surface at one
  * `escape` — is a property of this host's target, not of the core.
  */
-export function emitProgram(code: string): string {
+export function finalizeModule(code: string): string {
   // Each helper is emitted only when something calls it, so a template that
   // uses none of them compiles to `escape` and string concatenation alone —
   // which is the claim this package exists to make checkable.

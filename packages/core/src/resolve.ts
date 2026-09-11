@@ -72,8 +72,8 @@ function exprOf(ctx: Ctx, node: Node): Expr {
  *
  * `ctx.prelude` is swapped as the walk enters and leaves a `<define>`, so a
  * `ctx.hoist` from inside one lands on that define's own head rather than the
- * render function's — the same rule `blockFunction` enforced when the walk
- * emitted text.
+ * render function's — the same function-boundary rule the resolver applies to
+ * the template body.
  */
 function withPrelude<T>(ctx: Ctx, run: () => T): [T, string[]] {
   const outer = ctx.prelude;
@@ -448,7 +448,6 @@ function resolveHostTag(ctx: Ctx, node: Node, name: string): IrNode {
       params: paramsOf(ctx, node),
       var: node.var ? declName(ctx, node.var) : null,
       data: ctx.declarations.resolveHostTag?.(name, node, ctx),
-      node,
       loc,
     },
     loc,

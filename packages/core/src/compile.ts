@@ -17,13 +17,8 @@
 
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
-import {
-  type Ctx,
-  emitProgram,
-  type Node,
-  newCtx,
-  type Policy,
-} from "./core.ts";
+import { type Ctx, type Node, newCtx } from "./core.ts";
+import type { Policy } from "./declarations.ts";
 import type { Ir } from "./ir.ts";
 import { resolve } from "./resolve.ts";
 
@@ -46,7 +41,7 @@ export interface CompileResult {
 /** The taglib lookup `@marko/compiler` builds for a translator. */
 export type Lookup = NonNullable<Ctx["lookup"]>;
 
-export interface HostOptions {
+export interface TranslatorOptions {
   /**
    * The taglibs this host registers, in `@marko/compiler`'s own
    * `[id, definition]` form. A host's own core-tag taglib goes here.
@@ -58,21 +53,16 @@ export interface HostOptions {
    * requires explicit imports passes `[]`.
    */
   tagDiscoveryDirs?: string[];
+}
+
+export interface HostOptions extends TranslatorOptions {
   /**
    * A last pass over the emitted module, for a host that appends helpers or
    * rewrites the module shape. Receives and returns the whole module text.
    */
   postEmit?: (code: string) => string;
-  /**
-   * Emits the module from the resolved IR (decision 79).
-   *
-   * A host that supplies this is an *emitter* host: the core resolves the
-   * template to an `Ir` and hands it over, and the core's own string-emitting
-   * walk never runs. A host that omits it still goes through `emitProgram`,
-   * which is what keeps the un-ported hosts working while they are ported one
-   * at a time.
-   */
-  emitIr?: (ir: Ir, ctx: Ctx) => string;
+  /** Emits the module from the resolved IR (decision 79). */
+  emitIr: (ir: Ir, ctx: Ctx) => string;
 }
 
 /**
@@ -91,7 +81,7 @@ let current: {
   policy: Policy;
   lookup?: Lookup;
   postEmit?: (code: string) => string;
-  emitIr?: (ir: Ir, ctx: Ctx) => string;
+  emitIr: (ir: Ir, ctx: Ctx) => string;
 } | null = null;
 
 /**
@@ -115,7 +105,7 @@ function printExpression(node: unknown): string {
  * resolution) has to hand the compiler the same object it later passes to
  * `compileSync`.
  */
-export function createTranslator(host: HostOptions = {}) {
+export function createTranslator(host: TranslatorOptions = {}) {
   return {
     taglibs: host.taglibs ?? [],
     tagDiscoveryDirs: host.tagDiscoveryDirs ?? [],
@@ -125,26 +115,13 @@ export function createTranslator(host: HostOptions = {}) {
         exit(path: { node: { body: Node[] } }) {
           const state = current;
           if (!state) throw new Error("@mxlang/core: no compile in flight");
-          const code = state.emitIr
-            ? (() => {
-                // The IR path: resolve to a host-independent tree, then let
-                // the host's own emitter turn it into a module. The core's
-                // string walk is not involved at all.
-                const ctx = newCtx(
-                  state.source,
-                  printExpression,
-                  state.policy,
-                  state.lookup,
-                );
-                return state.emitIr(resolve(ctx, path.node.body), ctx);
-              })()
-            : emitProgram(
-                path.node.body,
-                state.source,
-                printExpression,
-                state.policy,
-                state.lookup,
-              );
+          const ctx = newCtx(
+            state.source,
+            printExpression,
+            state.policy,
+            state.lookup,
+          );
+          const code = state.emitIr(resolve(ctx, path.node.body), ctx);
           state.code = state.postEmit ? state.postEmit(code) : code;
           path.node.body = [];
         },
@@ -165,7 +142,7 @@ export function compileSource(
   source: string,
   filename: string,
   policy: Policy,
-  host: HostOptions = {},
+  host: HostOptions,
 ): CompileResult {
   // Required lazily and by CJS: `@marko/compiler` is a large dependency and
   // only this function needs it, so importing the type surface stays free.

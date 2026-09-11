@@ -59,9 +59,9 @@ export interface HostDeclarations {
    * `HostTag` node's `data` slot.
    *
    * Called once per claimed tag, during resolve, with the Marko node still in
-   * hand. Without it a host's emitter would have to re-inspect `tag.node` to
-   * recover its own decision — walking Marko nodes at emit time, which is the
-   * thing the IR exists to stop.
+   * hand. Without it a host's emitter would have no resolved record of the
+   * decision; the original Marko node is deliberately absent from `HostTag`,
+   * so emission cannot fall back to walking parser nodes.
    *
    * Also the seam decision 80's user-tag macros need: a user-defined tag with
    * compile-time meaning hands its resolved form to every host through this
@@ -131,6 +131,7 @@ export interface HostDeclarations {
    * comment; MX keeps `<!-- -->` and treats `//` as author-only.
    */
   keepComments?: boolean;
-  /** The `import` specifier the emitted module's `escape` comes from. */
-  escapeFrom: string;
 }
+
+/** Backwards-compatible name for a host's resolver declarations. */
+export type Policy = HostDeclarations;

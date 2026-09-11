@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { compileSource } from "./compile.ts";
-import type { Ctx, Node, Policy } from "./core.ts";
+import type { Ctx, Node } from "./core.ts";
 import { newCtx } from "./core.ts";
+import type { Policy } from "./declarations.ts";
 import type { Ir, IrNode } from "./ir.ts";
 import { resolve } from "./resolve.ts";
 
@@ -36,10 +37,6 @@ function fakeDeclarations(overrides: Partial<Policy> = {}): Policy {
     tags: {},
     isElement: () => true,
     isComponent: (name, ctx) => ctx.defines.has(name),
-    emitComponent: () => {
-      throw new Error("unused");
-    },
-    escapeFrom: "@mxlang/core",
     ...overrides,
   };
 }
@@ -55,12 +52,8 @@ function resolveSource(source: string, policy = fakeDeclarations()): Ir {
   let ir: Ir | null = null;
   let thrown: unknown = null;
 
-  const host = {
-    postEmit: (code: string) => code,
-  };
-
-  // The core's own front door runs `emitProgram`; this test needs `resolve`
-  // over the same body. `newCtx` plus the compiler's parse is the seam: a
+  // This helper needs `resolve` over the compiler's real parsed body.
+  // `newCtx` plus the compiler's parse is the seam: a
   // translator whose Program visitor resolves instead of emitting.
   const translator = {
     taglibs: [] as Array<[string, unknown]>,
@@ -87,8 +80,6 @@ function resolveSource(source: string, policy = fakeDeclarations()): Ir {
     output: "html",
     writeVersionComment: false,
   });
-  void host;
-
   if (thrown) throw thrown;
   if (!ir) throw new Error("resolver produced no IR");
   return ir;
@@ -541,15 +532,19 @@ describe("errors keep their message and position", () => {
 });
 
 describe("the resolver runs under the real front door", () => {
-  it("compiles a template end to end without the IR changing behaviour", () => {
-    // The emitting walk is still what `compileSource` drives; this pins that
-    // adding the resolver alongside it changed nothing about that path.
+  it("requires and drives a host emitter after resolving", () => {
     const { code } = compileSource(
       "<p>hi</p>\n",
       "/tmp/mx-core-test/probe.mx",
       fakeDeclarations(),
+      {
+        emitIr: (ir) => {
+          const first = ir.body[0];
+          return first?.kind === "Element" ? first.name : "missing";
+        },
+      },
     );
-    expect(code).toContain('out += "<p>hi</p>"');
+    expect(code).toBe("p");
   });
 });
 

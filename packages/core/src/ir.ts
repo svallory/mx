@@ -145,10 +145,10 @@ export interface HostTag<Data = unknown> extends IrBase {
    * This is also the seam decision 80's user-tag macros will need: a
    * user-defined tag that carries compile-time meaning has to hand its
    * resolved form to every host through exactly this channel, since the core
-   * cannot know what the macro decided.
+   * cannot know what the macro decided. The original Marko node is deliberately
+   * absent: emission must consume the IR and `data`, never re-walk parser nodes.
    */
   data: Data;
-  node: Node;
 }
 
 /** `<@name>body</@name>` — a prop of the component call it sits inside. */
