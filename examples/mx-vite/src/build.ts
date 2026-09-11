@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import renderAbout from "./pages/about.marko";
-import renderHome from "./pages/home.marko";
+import renderAbout from "./pages/about.mx";
+import renderHome from "./pages/home.mx";
 
 const outDir = join(import.meta.dirname, "..", "dist");
 mkdirSync(outDir, { recursive: true });

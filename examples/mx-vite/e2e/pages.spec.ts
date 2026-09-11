@@ -68,7 +68,7 @@ afterAll(async () => {
 });
 
 describe("mx-vite static build", () => {
-  it("/ renders the home page compiled from a .marko template", async () => {
+  it("/ renders the home page compiled from a .mx template", async () => {
     const response = await page.goto(baseUrl, { waitUntil: "networkidle" });
     expect(response?.status()).toBe(200);
     const html = await response?.text();
@@ -78,7 +78,7 @@ describe("mx-vite static build", () => {
     expect(html).toContain('<a href="/about.html">About</a>');
   });
 
-  it("/about.html renders the second .marko page", async () => {
+  it("/about.html renders the second .mx page", async () => {
     const response = await page.goto(`${baseUrl}/about.html`, {
       waitUntil: "networkidle",
     });

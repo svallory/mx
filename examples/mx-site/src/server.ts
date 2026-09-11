@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { pageData } from "./data.ts";
-import renderForm from "./pages/form.marko";
-import renderIndex from "./pages/index.marko";
-import renderList from "./pages/list.marko";
-import renderMixins from "./pages/mixins.marko";
-import renderRaw from "./pages/raw.marko";
+import renderForm from "./pages/form.mx";
+import renderIndex from "./pages/index.mx";
+import renderList from "./pages/list.mx";
+import renderMixins from "./pages/mixins.mx";
+import renderRaw from "./pages/raw.mx";
 
 const app = new Hono();
 
