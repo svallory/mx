@@ -1,79 +1,109 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-// biome-ignore lint/suspicious/noShadowRestrictedNames: the compiled templates call `escape` by this name
-import { compile, escape } from "@mxlang/translator";
+import {
+  cpSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative } from "node:path";
+import { compileFile } from "@mxlang/translator";
 
 /**
- * Renders a stock `.marko` fixture through `@mxlang/translator`.
+ * Renders a stock `.marko` fixture through `@mxlang/translator`, by actually
+ * loading the emitted module rather than reconstructing its shape.
  *
- * The emitted module is TypeScript with ESM imports, which cannot be `eval`ed
- * directly, so both are stripped and the body run with `new Function` —
- * `escape` and any imported component passed in as parameters.
+ * Mirrors `marko-compile-stock.ts`'s approach for the real Marko toolchain:
+ * copy the whole fixture directory (`tags/` included, so tag discovery finds
+ * the same components), compile every `.marko`/`.mx` file in place to a
+ * sibling `.ts`, rewrite each file's own `from "./X.marko"` imports to point
+ * at the compiled `.ts` siblings, then `import()` the compiled entry point
+ * and call its default export. No parsing of the emitted module's prologue —
+ * a change to the import line, the `Input` interface, or the brand no longer
+ * breaks this harness the way text-matching the exact shape did (a prologue
+ * change to `postEmit` previously reported every fixture as a translator
+ * bug).
  *
- * A `tags/`-discovered component reaches the emitted module as a call to a
- * bare identifier with no import to rewrite, so the discovered `.marko` files
- * beside the fixture are bound by name too.
+ * The emitted `escape` import (`from "@mxlang/translator"`, a bare workspace
+ * specifier) is rewritten to the package's resolved absolute entry point: a
+ * bare specifier resolves by walking up from the *importing file* to a
+ * `node_modules`, and the scratch copy lives under the OS tmpdir, outside
+ * this repo's `node_modules` ancestry, so it would otherwise fail to
+ * resolve. Only the specifier is touched — a plain string substitution on
+ * one known import, not a regex over the module's shape.
  */
-export function renderTranslator(
+export async function renderTranslator(
   dir: string,
   filename: string,
   input: unknown,
-): string {
-  const { code } = compile(readFileSync(filename, "utf8"), filename);
+): Promise<string> {
+  const escapeEntry = require.resolve("@mxlang/translator");
+  const scratch = mkdtempSync(join(tmpdir(), "mx-oracle-translator-"));
+  try {
+    cpSync(dir, scratch, { recursive: true });
 
-  const names: string[] = [];
-  const fns: Array<(props: Record<string, unknown>) => string> = [];
+    for (const file of markoFiles(scratch)) {
+      const { code } = compileFile(file);
+      const rewritten = code
+        .replace(
+          /(from\s+")(\.[^"]+)\.(?:marko|mx)(")/g,
+          (_match, prefix, path, suffix) => `${prefix}${path}.ts${suffix}`,
+        )
+        .replace(
+          'from "@mxlang/translator"',
+          `from ${JSON.stringify(escapeEntry)}`,
+        );
 
-  // A stock Marko author may or may not end the statement with a semicolon,
-  // and the emitted module reproduces whichever they wrote.
-  const importRe = /^import\s+(\w+)\s+from\s+"(\.[^"]+\.marko)";?$/gm;
-  for (const match of code.matchAll(importRe)) {
-    const [, name, relative] = match as unknown as [string, string, string];
-    const componentPath = join(dir, relative);
-    names.push(name);
-    fns.push((props) => renderTranslator(dir, componentPath, props));
+      // A `tags/`-discovered component is called by bare identifier with no
+      // import of its own — that is the whole point of tag discovery — so
+      // one is synthesized here for each discovered tag the emitted code
+      // actually calls, pointing at that tag's own compiled sibling.
+      const imports = discoveredTags(dirname(file))
+        .filter((name) => new RegExp(`\\b${name}\\(`).test(rewritten))
+        .map(
+          (name) =>
+            `import ${name} from ${JSON.stringify(withTsExtension(join(dirname(file), "tags", `${name}.marko`)))};\n`,
+        )
+        .join("");
+
+      writeFileSync(withTsExtension(file), imports + rewritten);
+    }
+
+    const entry = withTsExtension(join(scratch, relative(dir, filename)));
+    const mod = (await import(`${entry}?t=${Date.now()}`)) as {
+      default: (input: unknown) => string;
+    };
+    return mod.default(input);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
   }
-
-  // Tags discovered from `tags/` are called by bare name; bind each one that
-  // the emitted code actually calls.
-  for (const name of discoveredTags(dir)) {
-    if (names.includes(name)) continue;
-    if (!new RegExp(`\\b${name}\\(`).test(code)) continue;
-    const componentPath = join(dir, "tags", `${name}.marko`);
-    names.push(name);
-    fns.push((props) => renderTranslator(dir, componentPath, props));
-  }
-
-  // The emitted module's default export is a *named* `render` function that is
-  // branded and then exported (`@mxlang/translator`'s `brandRender`, so an
-  // Astro-style host can identify an MX component by
-  // `Symbol.for("mx.component")`). Both trailing statements go, along with the
-  // function's own opener and closing brace, leaving just the body for
-  // `new Function`.
-  const body = code
-    .replace(/^import\s.*$/gm, "")
-    .replace(/^export interface Input \{[\s\S]*?\}$/gm, "")
-    .replace(/^export default render;\s*$/m, "")
-    .replace(/^Object\.defineProperty\(render,[^\n]*$/m, "")
-    .replace(/^function render\(input: Input\): string \{$/m, "")
-    .replace(/\}\s*$/, "");
-
-  const fn = new Function(
-    "escape",
-    ...names,
-    "input",
-    `${body}\nreturn out;`,
-  ) as (escapeFn: typeof escape, ...rest: unknown[]) => string;
-
-  return fn(escape, ...fns, input);
 }
 
+/** Every `.marko`/`.mx` file under `dir`, including `tags/`. */
+function markoFiles(dir: string): string[] {
+  const results: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      results.push(...markoFiles(full));
+    } else if (/\.(?:marko|mx)$/.test(entry)) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+function withTsExtension(file: string): string {
+  return file.replace(/\.(?:marko|mx)$/, ".ts");
+}
+
+/** Tag names discoverable from a `tags/` directory beside `dir`, if any. */
 function discoveredTags(dir: string): string[] {
   try {
-    const { readdirSync } = require("node:fs") as typeof import("node:fs");
     return readdirSync(join(dir, "tags"))
-      .filter((f) => f.endsWith(".marko"))
-      .map((f) => f.slice(0, -".marko".length));
+      .filter((f) => /\.(?:marko|mx)$/.test(f))
+      .map((f) => f.replace(/\.(?:marko|mx)$/, ""));
   } catch {
     return [];
   }

@@ -137,7 +137,7 @@ export async function runStockTable(): Promise<{
       }
       let translatorThrew: string | null = null;
       try {
-        renderTranslator(dir, join(dir, "input.marko"), input);
+        await renderTranslator(dir, join(dir, "input.marko"), input);
       } catch (err) {
         translatorThrew = (err as Error).message;
       }
@@ -185,7 +185,7 @@ export async function runStockTable(): Promise<{
     let translatorStatus: string;
     try {
       translatorStatus = htmlEquals(
-        renderTranslator(dir, join(dir, "input.marko"), input),
+        await renderTranslator(dir, join(dir, "input.marko"), input),
         expected,
       )
         ? "pass"
