@@ -22,19 +22,17 @@ jobs:
           bun-version: "1.3.14"
       - run: bun install --frozen-lockfile
 
-      # bun run verify (typecheck, lint, build, test) does NOT reach
-      # packages/tree-sitter-solidmx's own `bun run test` — root `test` is a
-      # bare `vitest run` over vitest's `projects: ["packages/*"]`, and that
-      # package has no vitest project (it's a C/JS tree-sitter grammar,
-      # tested with bash scripts, not vitest). Confirmed by reading both
-      # configs, not assumed: a package glob resolving to a directory with no
-      # vitest project is silently skipped, not an error. So it gets its own
-      # step below rather than being (wrongly) assumed covered by `verify`.
-      - run: bun run verify
+      # verify's test:grammar step runs tree-sitter-solidmx's real test
+      # (scripts/test.sh) via `moon run tree-sitter-solidmx:test` — moon
+      # itself isn't bundled with setup-bun, so install the pinned version.
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: false
 
-      - name: tree-sitter-solidmx grammar checks (not reached by bun run verify)
-        working-directory: packages/tree-sitter-solidmx
-        run: bun run test
+      # bun run verify includes a final step (scripts/verify-coverage.ts) that
+      # lists every package and its test wiring, and exits non-zero if any
+      # package has no fresh evidence its tests ran in this invocation.
+      - run: bun run verify
 
       - run: bun run oracle -- --strict
       - run: bun run oracle:marko -- --strict

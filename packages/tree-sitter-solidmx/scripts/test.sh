@@ -41,3 +41,8 @@ echo "==> compile src/ from a clean clone of HEAD, as Zed's dev install does"
 
 echo
 echo "all grammar checks passed"
+
+# Evidence for scripts/verify-coverage.ts: this file only exists once every
+# step above has exited 0, and its mtime proves *this* invocation ran it
+# (deleted before each verify run, gitignored, never committed).
+date -u +%s > .test-ran

@@ -12,11 +12,55 @@ Run either via bun directly or through moon:
 bun run typecheck   # or: moon run :typecheck
 bun run test        # or: moon run :test
 bun run lint        # or: moon run :lint
-bun run verify      # or: moon run :verify   -- typecheck, then lint, then build, then test; stops on first failure
+bun run verify      # or: moon run :verify   -- delegates straight to `bun run verify`, see below
 bun run build       # or: moon run mx-parser:build -- builds packages/mx-parser to dist/
 ```
 
-moon's root `typecheck`/`test` tasks are thin aggregates (`deps: ["^:typecheck"]` / `["^:test"]`) that fan out to each package's own task; `lint` runs once at the root over the whole tree via biome. `bun run typecheck`/`test` take the other layer — a single shell loop/vitest run at the root — so pick one command style (bun or moon) per invocation rather than mixing them.
+moon's root `typecheck`/`test` tasks are thin aggregates (`deps: ["^:typecheck"]` / `["^:test"]`) that fan out to each package's own task; `lint` runs once at the root over the whole tree via biome. `bun run typecheck`/`test` take the other layer — a single shell loop/vitest run at the root — so pick one command style (bun or moon) per invocation rather than mixing them. `verify` is the one exception: moon's `verify` task is a single `bun run verify` command, not a `deps` list, because `bun run verify`'s own chain (pre-verify must run before test; the coverage script must run last, after everything else) isn't expressible as an unordered `deps` set — delegating keeps the two entry points from silently drifting into two different definitions of "verified".
+
+## Test Coverage Verification (decision 64)
+
+`verify` (`bun run verify` / `moon run :verify`) proves every non-exception
+package's tests actually **ran in that invocation** — not merely that some
+test wiring exists for it. The chain is:
+
+```
+scripts/pre-verify.ts && typecheck && lint && build && test && test:bun && test:grammar && scripts/verify-coverage.ts
+```
+
+- `scripts/pre-verify.ts` deletes any evidence left over from a previous run
+  (`vitest-results.json`, `packages/tree-sitter-solidmx/.test-ran`) and writes
+  `.verify-start` with the current time. All three are gitignored.
+- `bun run test` runs vitest (over the root `projects: ["packages/*"]`
+  config, which auto-discovers a project per package with test files) with
+  `--reporter=json --outputFile=vitest-results.json`.
+- `bun run test:grammar` runs `moon run tree-sitter-solidmx:test --force`
+  (`tree-sitter-solidmx`'s real test is `scripts/test.sh`, not vitest, so it
+  can never appear in the JSON report). `scripts/test.sh` writes
+  `.test-ran` as its last step, only on success; `--force` bypasses moon's
+  own task cache so a cached "already ran, nothing changed" result can't be
+  mistaken for evidence from *this* run.
+- `scripts/verify-coverage.ts` (the last step) enumerates all workspace
+  packages (`packages/*`, `examples/*`), and for each non-exception package
+  reads the evidence directly: a package name parsed out of
+  `vitest-results.json`'s test file paths, or (for `tree-sitter-solidmx`
+  only) the `.test-ran` marker. Every evidence file's mtime must be `>=`
+  `.verify-start`'s timestamp, or it's treated as stale and the package
+  fails — there is no code path that marks a package as tested without
+  reading its evidence file. Prints a table: package | test wiring | ran,
+  and exits non-zero if any non-exception package has no fresh evidence.
+
+Exception packages (no unit test wiring required; verified elsewhere):
+- `examples/counter-app` — e2e only
+- `examples/mx-site` — e2e only
+- `examples/mx-vite` — e2e only
+- `examples/todomvc` — e2e only
+- `packages/zed-extension` — grammar only, build verified in CI
+
+Any new package without test wiring must be added to the exception list with
+a documented reason, or get a vitest project (a package under `packages/*`
+or `examples/*` with its own test files) that emits into
+`vitest-results.json`.
 
 ## Edit check hook
 

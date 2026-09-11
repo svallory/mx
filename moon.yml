@@ -23,13 +23,13 @@ tasks:
       - "packages/*/src/**/*"
       - "biome.json"
 
+  # A single command, not a `deps` list: `bun run verify`'s own chain
+  # (pre-verify, typecheck, lint, build, test, test:bun, test:grammar,
+  # coverage check) has an ordering moon's `deps` can't express as cleanly —
+  # pre-verify must run before test, and the coverage script must run last,
+  # reading evidence the earlier steps wrote. Delegating to the exact same
+  # script keeps `moon run :verify` and `bun run verify` from silently
+  # drifting into two different definitions of "verified".
   verify:
-    command: "echo"
-    args: "verify passed"
-    deps:
-      - "typecheck"
-      - "lint"
-      - "test"
-      - "mx-html:test-bun"
-    options:
-      runDepsInParallel: false
+    command: "bun"
+    args: ["run", "verify"]

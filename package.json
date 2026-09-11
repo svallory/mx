@@ -9,10 +9,11 @@
   ],
   "scripts": {
     "typecheck": "for d in packages/*/ examples/*/; do (cd \"$d\" && echo \"[typecheck] $d\" && bunx tsc --noEmit) || exit 1; done",
-    "test": "vitest run",
+    "test": "vitest run --reporter=default --reporter=json --outputFile=vitest-results.json",
     "test:bun": "cd packages/mx-html && bun run test:bun",
+    "test:grammar": "moon run tree-sitter-solidmx:test --force",
     "lint": "biome check .",
-    "verify": "bun run typecheck && bun run lint && bun run build && bun run test && bun run test:bun",
+    "verify": "bun run scripts/pre-verify.ts && bun run typecheck && bun run lint && bun run build && bun run test && bun run test:bun && bun run test:grammar && bun run scripts/verify-coverage.ts",
     "build": "cd packages/mx-parser && bun run build",
     "oracle": "bun run packages/oracle/src/report.ts",
     "oracle:marko": "bun run --tsconfig-override=tsconfig.base.json packages/oracle/src/report-marko.ts"
