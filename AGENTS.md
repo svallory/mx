@@ -533,14 +533,28 @@ builds before it tests.
 
 ## `@mxlang/core`: the Marko-node consumer
 
-`packages/core` (`@mxlang/core`, decisions 70 to 72) is the half every MX host
-shares: it consumes Marko's AST through `@marko/compiler`, applies the
+`packages/core` (`@mxlang/core`, decisions 70 to 72, 79) is the half every MX
+host shares: it consumes Marko's AST through `@marko/compiler`, applies the
 structural lowerings (`<if>`/`<else>`, every `<for>` form, `<define>`,
-`<const>`, statement tags, the field and inert-shape guards) and asks a
-`Policy` for everything host-specific. `@mxlang/translator` is the first host;
-SolidMX and Astro follow. `packages/core/README.md` documents the Policy
-members one line each, the hooks and the front doors — read it before adding
-either.
+`<const>`, statement tags, the field and inert-shape guards) and **resolves
+them into a host-independent IR** (decision 79). A host then *emits* from that
+IR and never walks a Marko node. `packages/core/README.md` documents the IR
+kinds, what a host implements in order, the hooks and the front doors — read it
+before adding either.
+
+The three pieces: `src/ir.ts` (the node kinds, a position on every one),
+`src/resolve.ts` (Marko AST in, `Ir` out, carrying every validation and every
+error message the emitting walk had), and `src/emit.ts` (`Emitter<Out>`, one
+method per kind, plus the `drive`/`emit` driver). `src/declarations.ts` holds
+`HostDeclarations` — the questions the resolver asks — and `Policy` is defined
+as `HostDeclarations &` the emitting members, so the declaration half exists in
+exactly one place and the two views cannot drift.
+
+A host opts in with `HostOptions.emitIr`. `@mxlang/translator` is ported
+(`packages/translator/src/emitter.ts`, the worked example). **`@mxlang/astro`'s
+`.amx` emitter is still a node-walker** with its own parallel walk over
+`parseFragment`'s output; porting it is the follow-up task `astro-ir-port`, and
+it is why `emitProgram` and the emitting half of `Policy` are still present.
 
 Four facts worth knowing before editing it:
 
