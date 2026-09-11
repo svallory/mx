@@ -31,6 +31,7 @@ const NO_TEST_EXCEPTIONS: Record<string, string> = {
   todomvc: "e2e only",
   "zed-extension":
     "grammar and Rust extension, both build-verified in CI (zed-compile-check, zed-extension-compile-check)",
+  docs: "docs site: built in verify",
 };
 
 // The one package whose real test (packages/tree-sitter-solidmx/scripts/test.sh,

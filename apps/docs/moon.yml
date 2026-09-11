@@ -1,0 +1,15 @@
+# https://moonrepo.dev/docs/config/project
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "typescript"
+
+tasks:
+  build:
+    command: "bun"
+    args: ["run", "build"]
+    inputs:
+      - "docs/**/*"
+      - "assets/**/*"
+      - "docmd.config.json"
+    outputs:
+      - "site"

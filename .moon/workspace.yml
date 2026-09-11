@@ -4,6 +4,7 @@ $schema: "https://moonrepo.dev/schemas/workspace.json"
 projects:
   - "."
   - "packages/*"
+  - "apps/*"
 
 vcs:
   # "origin/main", not "main": actions/checkout@v4 checks out a detached

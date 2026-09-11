@@ -25,3 +25,7 @@ packages/zed-extension/grammars/
 /packages/tree-sitter-solidmx/.test-ran
 /.verify-start
 .astro/
+
+# docs site build output (apps/docs); the build is the verify check, the
+# output is not committed
+apps/docs/site/
