@@ -11,3 +11,12 @@ declare module "*.marko" {
   const render: (input: any) => string;
   export default render;
 }
+
+/**
+ * `.mx` is the official extension (decision 72); `.marko` above is the
+ * accepted alias, identical treatment. Same shape, same reason.
+ */
+declare module "*.mx" {
+  const render: (input: any) => string;
+  export default render;
+}

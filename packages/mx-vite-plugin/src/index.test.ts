@@ -403,20 +403,10 @@ describe("mx()", () => {
     ])(
       "routes a longer extension correctly regardless of extensions order (given %j)",
       async (...order) => {
-        // Neither of the plugin's two real, live extensions is a string
-        // suffix of the other any more (".marko" is not a suffix of
-        // ".solid.mx", unlike the retired ".mx"/".solid.mx" pair this test
-        // used to collide on) — so exercising the longest-first sort at
-        // index.ts:177-179 needs a caller-supplied pair that still collides
-        // the way a real one used to. ".marko" is a genuine string suffix of
-        // the synthetic ".solid.marko" here, and `suffixFor` only special-
-        // cases the literal string ".marko" (-> .ts; everything else -> the
-        // JSX suffix), so misrouting is directly observable in the resolved
-        // id's own suffix — unlike ".mx", whose transform behavior no longer
-        // differs from ".solid.mx"'s, which is why a collision built on the
-        // now-dead ".mx" extension can no longer prove anything (see the
-        // "with the sort removed" note this test's introduction cites in the
-        // PR).
+        // ".marko" is a genuine string suffix of the synthetic ".solid.marko"
+        // here, and `suffixFor` only special-cases the literal strings
+        // ".marko"/".mx" (-> .ts; everything else -> the JSX suffix), so
+        // misrouting is directly observable in the resolved id's own suffix.
         //
         // Removing the `.sort(...)` at index.ts:177-179 makes the
         // `[".marko", ".solid.marko"]` order in this test fail: `matchExt`
@@ -443,6 +433,40 @@ describe("mx()", () => {
         // suffix) — proves the longer ".solid.marko" extension won
         // regardless of extensions order.
         expect(resolved).toBe("/root/src/Counter.solid.marko.tsx");
+      },
+    );
+
+    it.each([
+      [".solid.mx", ".mx", ".marko"],
+      [".mx", ".marko", ".solid.mx"],
+      [".marko", ".solid.mx", ".mx"],
+    ])(
+      "routes .solid.mx correctly regardless of extensions order, with .mx in the mix (given %j)",
+      async (...order) => {
+        // ".mx" is a real string suffix of ".solid.mx" again (decision 72:
+        // ".mx" is the official extension, restored alongside ".marko" as an
+        // alias) — this is the live collision the longest-first sort at
+        // index.ts:177-179 exists for, not a synthetic stand-in.
+        const plugin = mx({ extensions: order });
+
+        const resolveId = resolveIdOf(plugin);
+        const resolvedSolidMx = await resolveId.call(
+          makeContext(),
+          "./Counter.solid.mx",
+          "/root/src/index.tsx",
+        );
+        // .tsx (the JSX/print() suffix), not .ts (the .mx-specific suffix) —
+        // proves ".solid.mx" won over ".mx" regardless of extensions order.
+        expect(resolvedSolidMx).toBe("/root/src/Counter.solid.mx.tsx");
+
+        const resolvedMx = await resolveId.call(
+          makeContext(),
+          "./greeting.mx",
+          "/root/src/index.tsx",
+        );
+        // .ts, not .tsx: ".mx" alone (not ".solid.mx") routes through
+        // compile(), same as ".marko".
+        expect(resolvedMx).toBe("/root/src/greeting.mx.ts");
       },
     );
   });

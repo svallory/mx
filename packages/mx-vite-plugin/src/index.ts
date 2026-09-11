@@ -40,25 +40,26 @@ async function compileMarko(
 
 export interface MxPluginOptions {
   /**
-   * File extensions handled by the plugin. Defaults to `.solid.mx` and
-   * `.marko`.
+   * File extensions handled by the plugin. Defaults to `.solid.mx`, `.mx`,
+   * and `.marko`.
    */
   extensions?: string[];
 }
 
-const DEFAULT_EXTENSIONS = [".solid.mx", ".marko"];
+const DEFAULT_EXTENSIONS = [".solid.mx", ".mx", ".marko"];
 
 /**
  * Appended to the resolved path so the rest of the pipeline sees a JS-family
  * module. See the note on `resolveId` below for why this is necessary.
  *
- * `.solid.mx` prints to JSX text (`print()`), so it needs `.tsx`; `.marko`
- * compiles to a string-returning function with no JSX (`compile()`), so `.ts`
- * is enough and keeps rolldown/esbuild from running a JSX transform over code
+ * `.solid.mx` prints to JSX text (`print()`), so it needs `.tsx`; `.mx`
+ * (the official extension, decision 72) and its `.marko` alias both compile
+ * to a string-returning function with no JSX (`compile()`), so `.ts` is
+ * enough and keeps rolldown/esbuild from running a JSX transform over code
  * that has none.
  */
 function suffixFor(ext: string): string {
-  return ext === ".marko" ? ".ts" : ".tsx";
+  return ext === ".marko" || ext === ".mx" ? ".ts" : ".tsx";
 }
 
 /** `suffixFor(".solid.mx")`, kept as a named export for existing callers/tests. */
@@ -265,7 +266,7 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
       const source = sourcePath(path, ext);
 
       try {
-        if (ext === ".marko") {
+        if (ext === ".marko" || ext === ".mx") {
           // `compile()`'s map is presently an identity placeholder (no AST
           // is printed on this path), so there is nothing real to hand Vite
           // — returning it would claim a mapping that does not exist.

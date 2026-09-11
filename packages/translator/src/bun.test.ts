@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import markoPlugin from "./bun.ts";
@@ -30,6 +30,35 @@ describe("@markox/translator/bun", () => {
     // loader wiring: the plugin claims `.marko`, compiles it, and the
     // dynamically imported module runs and renders the given input.
     expect(render(input)).toContain(input.value);
+  });
+
+  test("Bun.plugin also claims .mx, the official extension (decision 72)", async () => {
+    Bun.plugin(markoPlugin);
+
+    const fixtureDir = join(
+      import.meta.dirname,
+      "..",
+      "fixtures-marko",
+      "attributes",
+    );
+    const input = JSON.parse(
+      readFileSync(join(fixtureDir, "input.json"), "utf8"),
+    ) as { value: string };
+    const source = readFileSync(join(fixtureDir, "input.marko"), "utf8");
+
+    // Written alongside input.marko, not a bare tmpdir: the emitted module
+    // imports `escape` from "@markox/translator" by bare specifier, which
+    // Bun resolves via node_modules lookup from the file's own directory —
+    // a tmpdir outside the package tree can't resolve it.
+    const path = join(fixtureDir, "input.mx");
+    writeFileSync(path, source);
+    try {
+      const mod = await import(path);
+      const render = mod.default as (input: unknown) => string;
+      expect(render(input)).toContain(input.value);
+    } finally {
+      rmSync(path);
+    }
   });
 
   test("does not claim a .solid.mx path", async () => {

@@ -14,8 +14,13 @@ import { compile } from "./index.ts";
  * import time) and at runtime (`import markoPlugin from "@markox/translator/bun";
  * Bun.plugin(markoPlugin)`, which registers the same plugin object again;
  * `Bun.plugin` is idempotent for an already-registered plugin object).
+ *
+ * `.mx` is the official extension (decision 72), `.marko` an accepted alias
+ * with identical treatment. `.solid.mx` is a different file kind (TSX with
+ * MX regions, handled by `@markox/vite-plugin`) and must not match here —
+ * the negative lookbehind excludes it despite ending in `.mx`.
  */
-const MARKO_FILTER = /\.marko$/;
+const MARKO_FILTER = /(?<!\.solid)\.(?:mx|marko)$/;
 
 const markoPlugin: BunPlugin = {
   name: "markox-translator",
