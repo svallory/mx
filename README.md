@@ -1,6 +1,6 @@
 # MX
 
-MX: Marko's syntax with pluggable host-language expressions. SolidMX (codename "Fluid"): the first target, MX in JSX's position inside Solid component files.
+MX (Markup eXtended) is a template language born from Marko. It takes Marko's syntax and brings it to wherever JSX lives today, letting each **host** decide what state, reactivity, and output mean. MX 1.0 is a strict subset of Marko: every MX file is a valid Marko file, which is what lets MX borrow Marko's whole toolchain (language server, `prettier-plugin-marko`, tree-sitter grammar, `@marko/compiler`) on day one, by aliasing alone. `.mx` is the official extension; `.marko` is accepted everywhere with identical treatment, so porting a Marko component is a rename or nothing. SolidMX (codename "Fluid", `.solid.mx`) is the Solid host: MX in JSX's position inside Solid component files.
 
 ## Packages
 
@@ -13,7 +13,7 @@ MX: Marko's syntax with pluggable host-language expressions. SolidMX (codename "
 | `packages/mx-vscode` | `@markox/vscode` | TextMate grammar + `typescriptServerPlugins` manifest |
 | `packages/eslint-plugin-mx` | `@markox/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
 | `packages/mx-vite-plugin` | `@markox/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
-| `packages/translator` | `@markox/translator` | Stock **`.marko`** files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`: a working expressions-only mode for Marko, no fork. There is no `.mx` dialect (decision 68) — this is Marko syntax, unmodified. |
+| `packages/translator` | `@markox/translator` | The vanilla MX host: `.mx` (official) and `.marko` (alias) files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`. MX 1.0 is a strict subset of Marko syntax (decision 72), so this is Marko syntax, unmodified — no fork. |
 
 **Naming TODO**: the `@markox/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
 
@@ -105,12 +105,14 @@ chromium` once). The e2e suite is not part of the root `bun run test` — it
 needs a browser — so it stays behind the example's own script.
 
 `examples/mx-site` is a different kind of example: a Hono-on-Bun server
-rendering stock `.marko` templates to HTML strings with `@markox/translator`,
-no client runtime, no Solid. It imports `.marko` files directly via
-`@markox/translator/bun` (no prebuild step). See `examples/mx-site/README.md`.
+rendering MX (`.mx`) templates to HTML strings with `@markox/translator`, no
+client runtime, no Solid — one partial (`partials/callout.marko`) is kept as
+the `.marko` alias to exercise it end to end. It imports these files
+directly via `@markox/translator/bun` (no prebuild step). See
+`examples/mx-site/README.md`.
 
-`examples/mx-vite` is a minimal static-site build: two `.marko` pages
-compiled by `@markox/vite-plugin`'s `.marko` handling, bundled by `vite build`
+`examples/mx-vite` is a minimal static-site build: two `.mx` pages compiled
+by `@markox/vite-plugin`'s `.mx`/`.marko` handling, bundled by `vite build`
 to an SSR entry, then run once to write `dist/*.html`.
 
 `@markox/translator` needs no app at all — it renders a fixture to stdout,

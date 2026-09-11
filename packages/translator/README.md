@@ -1,8 +1,16 @@
 # @markox/translator
 
-Compiles a **stock `.marko` template** to a pure function: a JS/TS module whose
-default export is `(input) => string`, with no runtime beyond an `escape`
-helper. No scheduler, no signals, no hydration, no resume markers.
+MX (Markup eXtended) is a template language born from Marko: it takes
+Marko's syntax and brings it to wherever JSX lives today, MX 1.0 being a
+strict subset of Marko so every borrowed Marko tool keeps working by
+aliasing alone. `.mx` is MX's official extension; `.marko` is accepted
+everywhere with identical treatment, so porting a Marko component is a
+rename or nothing.
+
+`@markox/translator` compiles an MX (`.mx`, or its `.marko` alias) template
+to a pure function: a JS/TS module whose default export is `(input) =>
+string`, with no runtime beyond an `escape` helper. No scheduler, no
+signals, no hydration, no resume markers.
 
 ```ts
 import { compile } from "@markox/translator";
@@ -66,20 +74,28 @@ bun run example                  # renders the `class-object` fixture
 bun run example nested-layout    # or any other fixture name
 ```
 
-## There is no `.mx` dialect
+## `.mx` is official, not a retired dialect (decision 72)
 
-Decision 68: `.mx` (the standalone MX dialect, formerly `@markox/html`) is
-retired. This package is the only string-emitting host, and `.marko` is the
-only extension it compiles — stock Marko syntax, unmodified, as described
-above. `packages/mx-html` no longer exists; its lowering core (`core.ts`) and
-its `escape` runtime moved here.
+Decision 68 retired the old `.mx` dialect (required explicit imports,
+`<fragment>`, required `export interface Input`, lowercase-by-scope) — that
+dialect stays dead. Decision 72 re-establishes `.mx` as MX's own *identity*,
+not a revival of the dialect: MX 1.0 is a strict subset of Marko syntax with
+no conventions of its own layered on top, so every `.mx` file is also a
+valid `.marko` file with the same meaning. This package is the vanilla host:
+it compiles both extensions identically, through the same `compile()`/
+`compileFile()`/`build()` entry points and the same policy table below.
+`packages/mx-html` no longer exists; its lowering core (`core.ts`) and its
+`escape` runtime live here.
 
 ## Loaders
 
-Two loaders make `import page from "./page.marko"` resolve, one per runtime:
+Two loaders make `import page from "./page.mx"` (or `"./page.marko"`)
+resolve, one per runtime:
 
-- **Bun**: `@markox/translator/bun` is a `BunPlugin` that intercepts `.marko`
-  imports and compiles them on the fly. Register it once via `bunfig.toml`:
+- **Bun**: `@markox/translator/bun` is a `BunPlugin` that intercepts `.mx`
+  and `.marko` imports and compiles them on the fly (`.solid.mx` is excluded
+  — a different file kind, handled by `@markox/vite-plugin`). Register it
+  once via `bunfig.toml`:
 
   ```toml
   preload = ["@markox/translator/bun"]
@@ -94,16 +110,70 @@ Two loaders make `import page from "./page.marko"` resolve, one per runtime:
 
   See `examples/mx-site` for a full app built this way.
 
-- **Vite**: `@markox/vite-plugin`'s `mx()` plugin handles `.marko` alongside
-  `.solid.mx` — add it to `plugins` and import `.marko` files as usual. See
+- **Vite**: `@markox/vite-plugin`'s `mx()` plugin handles `.mx` and `.marko`
+  alongside `.solid.mx` (which keeps precedence regardless of extension
+  order) — add it to `plugins` and import `.mx`/`.marko` files as usual. See
   `examples/mx-vite`.
 
-`import page from "./x.marko"` typechecks against the ambient declaration in
-`types/marko.d.ts` (`declare module "*.marko"`, typed `(input: any) => string`
-— per-file `Input` typing needs a virtual-file projection, the phase-3
-language server's job, not something this ambient declaration can derive).
-Reference it from a consumer's `tsconfig.json` `include` (both loaders'
-example apps do this).
+`import page from "./x.mx"` (or `"./x.marko"`) typechecks against the
+ambient declarations in `types/marko.d.ts` (`declare module "*.mx"` and
+`declare module "*.marko"`, both typed `(input: any) => string` — per-file
+`Input` typing needs a virtual-file projection, the phase-3 language
+server's job, not something these ambient declarations can derive).
+Reference the file from a consumer's `tsconfig.json` `include` (both
+loaders' example apps do this).
+
+## Editor and formatter support for `.mx`
+
+No packages ship for these — MX 1.0 being a strict Marko subset (decision
+72) means Marko's own tooling already works by aliasing the extension:
+
+- **VS Code**: map `.mx` to the Marko language so the official Marko
+  extension's syntax highlighting and language server apply:
+
+  ```json
+  {
+    "files.associations": { "*.mx": "marko" }
+  }
+  ```
+
+- **Prettier**: format `.mx` with `prettier-plugin-marko`'s Marko parser:
+
+  ```json
+  {
+    "overrides": [
+      { "files": "*.mx", "options": { "parser": "marko" } }
+    ]
+  }
+  ```
+
+  Verified manually (2026-09-11, scratch dir, `prettier@3.6.2` +
+  `prettier-plugin-marko@4.1.0`): copied
+  `packages/translator/fixtures-marko/attributes/input.marko` to a scratch
+  `input.mx` and ran
+
+  ```
+  bunx prettier --plugin=prettier-plugin-marko --parser=marko input.mx
+  ```
+
+  Output:
+
+  ```
+  <input type="text" value=input.value disabled>
+  <a href=input.url target="_blank">link</a>
+  ```
+
+  Formatted cleanly with no errors — Prettier's `--parser` flag bypasses its
+  own extension-based parser inference entirely, so this proves the
+  `overrides` config above works without needing `prettier`/
+  `prettier-plugin-marko` as devDependencies of this package. No test
+  depends on this, so no dependency was added.
+
+- **Zed**: `packages/zed-extension` ships an `MX` language on Marko's own
+  unmodified tree-sitter grammar (`path_suffixes = ["mx"]`), queries copied
+  verbatim from the official `marko-js/zed` extension. See that package's
+  README for install steps and what you get (no language server of our own —
+  see that README's "What you get in Zed today").
 
 ## The `strict` policy
 

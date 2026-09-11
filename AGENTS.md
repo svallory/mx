@@ -127,22 +127,35 @@ Two syntax decisions are settled and encoded in the lowering table:
   is now the dynamic tag name (`<${x}>`), not an attribute tag.
 - **Tag params (`|a, b|`) come before `=value`.** `<if|u|=user()>`, not `<if=user()|u|>` — the latter parses but folds `|u|` into the condition expression and reports no params, matching `<for|item, i| of=...>`'s own order. `notes/solidmx-spec.md` §5.1 writes `<if=user()|u|>` as loose prose; the real grammar is params-first.
 
-## There is no `.mx` dialect (decision 68)
+## `.mx` is the official extension; `.marko` is an alias (decision 72)
 
-Decision 68 retired standalone MX: `@markox/html` and `packages/mx-html` are
-deleted, and there is no `.mx` extension anywhere in this repo. What remains:
+Decision 68 retired the old `.mx` *dialect* (required explicit imports,
+`<fragment>`, required `export interface Input`, lowercase-by-scope) —
+`@markox/html` and `packages/mx-html` stay deleted, and those conventions do
+not come back. Decision 72 re-establishes `.mx` as MX's own **identity**,
+distinct from that dialect: MX is its own language with Marko as its origin,
+and MX 1.0 is a strict subset of Marko syntax — every MX 1.0 file is a valid
+Marko file with the same meaning for the structural core. `.mx` is the
+official extension; `.marko` is accepted everywhere with identical
+treatment, so porting a Marko component to MX is a rename or nothing.
+`.solid.mx` is unaffected — a different file kind (TSX with MX regions), not
+covered by this alias.
 
 - `parse(source, filename)` in `@markox/parser` — a `.solid.mx` file: a
   TypeScript module in which `<` in expression position opens an MX element,
   lowered to Solid 2 JSX. This is the parser package's only mode; there is no
-  `mxMode` option. Untouched by decision 68 — SolidMX is a separate host, not
-  the retired dialect.
-- `compile(source, filename)` in `@markox/translator` — a whole-file **stock
-  `.marko`** template, no dialect on top of it. `@marko/compiler` parses,
-  validates and supplies the tag registry; the package supplies only a
-  translator (`packages/translator/src/translate.ts`) and its own taglib
+  `mxMode` option. SolidMX is a separate host from the vanilla one below, and
+  is not affected by either the `.mx`/`.marko` alias or decision 68's dialect
+  retirement.
+- `compile(source, filename)` in `@markox/translator` — a whole-file MX
+  template (`.mx` or its `.marko` alias, both stock Marko syntax with no
+  dialect layered on top). `@marko/compiler` parses, validates and supplies
+  the tag registry; the package supplies only a translator
+  (`packages/translator/src/translate.ts`) and its own taglib
   (`packages/translator/taglib/marko.json`). `@markox/parser` is not on this
-  path at all.
+  path at all. The Bun loader (`@markox/translator/bun`) and
+  `@markox/vite-plugin`'s `mx()` both accept `.mx` and `.marko` identically,
+  excluding `.solid.mx`.
 
 Four Marko facts that are easy to get wrong (all measured against
 `@marko/compiler` 5.42.5, all cost real debugging time):
@@ -233,11 +246,33 @@ Goldens live at `packages/translator/fixtures-marko/<name>/` with
 
 ## Zed extension
 
-`packages/zed-extension` (`markox`) ships the `SolidMX` language for Zed. The
-`MX` language it used to also ship (`.mx`) was retired per decision 68 in
-`notes/decisions-2026-09-10.md`: the `.mx` dialect does not exist any more,
-and plain `.marko` files are covered by Zed's official `marko-js/zed`
-extension — install that alongside `markox`.
+`packages/zed-extension` (`markox`) ships two languages for Zed: `MX`
+(`.mx`, restored per decision 72) and `SolidMX` (`.solid.mx`).
+
+`MX` rides Marko's own unmodified tree-sitter grammar (`[grammars.marko]` in
+`extension.toml`, pinned to the same rev the official `marko-js/zed`
+extension pins: `7fb20382b9b0c97c8bdbceee0e0641bea11dd00f`,
+`@marko/tree-sitter` v0.2.0). `languages/mx/*.scm` are the official
+extension's `languages/marko/*.scm` copied **verbatim**, no overlay, no
+edits — MX 1.0 being a strict Marko subset (decision 72) means Marko's own
+queries already apply. `languages/mx/config.toml` is hand-written (`name =
+"MX"`, `path_suffixes = ["mx"]`) since the official file's `name = "Marko"`
+would collide with the official extension's own language if copied as-is.
+`.marko` files are covered by installing Zed's official `marko-js/zed`
+extension directly (its own `Marko` language, unrelated to `MX`); do so
+alongside `markox` for the SolidMX injection to highlight (see below). `MX`
+has no language server of its own: Marko's LS (from the official extension)
+binds to its own `Marko` language, not `MX`, since Zed's
+`[language_servers.*]` binding is per-language-name.
+
+**Zed suffix precedence.** Zed's suffix matcher takes the text after a
+file's *last* dot, then the longest matching `path_suffixes` entry wins.
+`MX` declares `["mx"]`; `SolidMX` declares `["solid.mx"]` — both match
+`Counter.solid.mx`, and `SolidMX`'s longer entry wins, so `.solid.mx` keeps
+resolving to `SolidMX` regardless of `MX` being present. Verified by
+inspection: `languages/solidmx/config.toml` already declared the longer
+`path_suffixes = ["solid.mx"]` before `MX` was added back, so no change was
+needed to preserve this precedence.
 
 `SolidMX` (`.solid.mx`) is backed by `packages/tree-sitter-solidmx`'s grammar
 (a patched `tree-sitter-typescript` tsx dialect with an `mx_element` external
@@ -274,9 +309,10 @@ exists. See `packages/zed-extension/README.md` and `UPSTREAM.md`.
 `base/solidmx/injections.scm` injects a language named `marko` into
 `mx_element` regions (MX and SolidMX share syntax) — the region is a single
 opaque external token, so nothing inside it is captured by SolidMX's own
-queries. Since this package no longer ships its own `marko`-named language,
-that injection only resolves — and only then does the region get any syntax
-highlighting — when Zed's official `marko-js/zed` extension (`name = "Marko"`
+queries. This package's own `MX` language is named `"MX"`, not `"Marko"`, so
+it cannot satisfy the injection despite compiling the same grammar — the
+injection resolves, and only then does the region get any syntax
+highlighting, when Zed's official `marko-js/zed` extension (`name = "Marko"`
 in its `languages/marko/config.toml`, matched case-insensitively) is also
 installed; without it the region stays unhighlighted plain text. This is a
 documented prerequisite, not a bug (see `packages/zed-extension/UPSTREAM.md`
@@ -358,16 +394,20 @@ Two Marko-toolchain facts worth knowing before touching
 `@solidjs/vite-plugin`. Both plugins are `enforce: "pre"`, so their relative
 order is their order in the `plugins` array — `mx()` must come first.
 
-`mx()`'s default `extensions` is `[".solid.mx", ".marko"]`: `.marko` compiles
-through `@markox/translator`'s `compile()` instead of `print()`, to a plain
+`mx()`'s default `extensions` is `[".solid.mx", ".mx", ".marko"]`: `.mx` (the
+official extension, decision 72) and its `.marko` alias both compile through
+`@markox/translator`'s `compile()` instead of `print()`, to a plain
 `(input) => string` module (no JSX, no Solid) — `suffixFor(ext)` picks `.ts`
 for that path and `.tsx` for `.solid.mx`, so rolldown never runs a JSX
 transform over code that has none. `.solid.mx` is otherwise byte-for-byte
-unchanged by this: same suffix, same `print()` call, same source map. The
-`.marko` path returns `map: null` from `transform` — `compile()`'s map is
-presently an identity placeholder (see `packages/translator`'s own doc
-comment: no AST is printed on that path), so there is nothing real to hand
-Vite yet.
+unchanged by this: same suffix, same `print()` call, same source map, and it
+keeps precedence over `.mx` regardless of `extensions` order (`.mx` is a
+literal string suffix of `.solid.mx`, so the longest-first sort at
+`index.ts`'s `matchExt`/`isMxModule` setup matters here the same way it did
+for the old `.marko`/`.solid.marko` collision). The `.mx`/`.marko` path
+returns `map: null` from `transform` — `compile()`'s map is presently an
+identity placeholder (see `packages/translator`'s own doc comment: no AST is
+printed on that path), so there is nothing real to hand Vite yet.
 
 `compileMarko()` inside the plugin dynamically `import()`s
 `@markox/translator` rather than importing it statically at module top level,
@@ -375,7 +415,7 @@ and this is load-bearing, not a style choice: `@markox/translator` has no
 compiled entry (`main` is `src/index.ts`), and its `translate.ts` pulls in
 `@marko/compiler`. A static import would load that dependency the instant
 `vite.config.ts` imports this plugin — including for a `.solid.mx`-only
-project like `examples/counter-app` that never touches `.marko` — and
+project like `examples/counter-app` that never touches `.mx`/`.marko` — and
 previously broke `vite build` for such projects, because Vite's own config
 loader (and, separately, Node's plain `import()`/`require()`) reads
 TypeScript through Node's native strip-only mode, which used to reject a
@@ -566,16 +606,18 @@ The plugin object self-registers at import time (`Bun.plugin(markoPlugin)`
 runs at module scope, in addition to the `export default`): `bunfig.toml`'s
 `preload = ["@markox/translator/bun"]` runs a preloaded module purely for its
 side effects — it does **not** call `Bun.plugin` on a default export
-automatically — so without the self-registration call, `.marko` imports
-silently fall through to Bun's default loader and resolve to the file's path
-string, not a compiled function. `Bun.plugin` is idempotent for an
-already-registered plugin object, so `import markoPlugin from
+automatically — so without the self-registration call, `.mx`/`.marko`
+imports silently fall through to Bun's default loader and resolve to the
+file's path string, not a compiled function. `Bun.plugin` is idempotent for
+an already-registered plugin object, so `import markoPlugin from
 "@markox/translator/bun"; Bun.plugin(markoPlugin)` (the programmatic form)
 still works without double-registering.
 
-`examples/mx-site` uses this loader: `bunfig.toml` preloads it, `.marko`
-pages import each other directly (`import Layout from "./layout.marko"`), and
-`src/server.ts`/`src/build.ts` import pages directly with no prebuild step.
+`examples/mx-site` uses this loader: `bunfig.toml` preloads it, `.mx` pages
+import each other directly (`import Layout from "./layout.mx"`), one partial
+(`partials/callout.marko`) is kept as the `.marko` alias to exercise it end
+to end, and `src/server.ts`/`src/build.ts` import pages directly with no
+prebuild step.
 The compiled-output equality check decision 58 calls for ("cannot paper over
 an emit bug") lives in the e2e suite's own content assertions
 (`e2e/routes.spec.ts`), run against both the dev server and the static
@@ -588,19 +630,19 @@ only), run via `bun run test:bun` in that package. `packages/translator`'s
 own `vitest.config.ts` excludes it from the vitest project so the root
 `bun run test` does not try to load `bun:test` under Node/Vite.
 
-## `.marko` import typing
+## `.mx`/`.marko` import typing
 
-`packages/translator/types/marko.d.ts` declares `declare module "*.marko"`
-typing every `.marko` import as `(input: any) => string`. `any`, not each
-file's real `Input` interface: per-file typing needs a virtual-file
-projection of the compiled module (mirroring `@markox/typescript-plugin`'s
-role for `.solid.mx`), which is the phase-3 language server's job, not
-something an ambient wildcard declaration can derive. A consumer references
-it by adding the file to its own `tsconfig.json` `include` (see
-`examples/mx-site` and `examples/mx-vite`); there is no package-level `types`
-wiring that pulls it in automatically, since a `.solid.mx`-only project (the
-Solid examples) has
-no reason to load it.
+`packages/translator/types/marko.d.ts` declares `declare module "*.mx"` and
+`declare module "*.marko"`, both typing the import as `(input: any) =>
+string`. `any`, not each file's real `Input` interface: per-file typing
+needs a virtual-file projection of the compiled module (mirroring
+`@markox/typescript-plugin`'s role for `.solid.mx`), which is the phase-3
+language server's job, not something an ambient wildcard declaration can
+derive. A consumer references it by adding the file to its own
+`tsconfig.json` `include` (see `examples/mx-site` and `examples/mx-vite`);
+there is no package-level `types` wiring that pulls it in automatically,
+since a `.solid.mx`-only project (the Solid examples) has no reason to load
+it.
 
 ## Examples
 
@@ -651,11 +693,11 @@ component; real per-export types arrive with `@markox/typescript-plugin`'s
 virtual-`.tsx` projection (spec section 7.2).
 
 `examples/mx-site` is a plain-string example: a Hono-on-Bun server and a
-static build both rendering `.marko` templates via `@markox/translator/bun`
-(the Bun loader — see its own section above), no Solid, no client runtime, no
-prebuild step. `src/server.ts` and `src/build.ts` `import renderX from
-"./pages/x.marko"` directly, exactly like any other module; `bunfig.toml`
-preloads the loader.
+static build both rendering MX (`.mx`) templates via
+`@markox/translator/bun` (the Bun loader — see its own section above), no
+Solid, no client runtime, no prebuild step. `src/server.ts` and
+`src/build.ts` `import renderX from "./pages/x.mx"` directly, exactly like
+any other module; `bunfig.toml` preloads the loader.
 
 `packages/translator/tsconfig.json` maps `@markox/parser` to
 `../mx-parser/src/public.d.ts` in its `paths`, for typechecking against the
@@ -674,14 +716,15 @@ itself or in Bun's resolver generally — vitest is unaffected because it does
 not resolve bare specifiers through `tsconfig.json` `paths` the same way.
 
 `examples/mx-vite` is a minimal static-site build exercising
-`@markox/vite-plugin`'s `.marko` handling (not `.solid.mx`): two `.marko`
-pages under `src/pages/`, a tiny `src/build.ts` that imports both and writes
+`@markox/vite-plugin`'s `.mx` handling (not `.solid.mx`): two `.mx` pages
+under `src/pages/`, a tiny `src/build.ts` that imports both and writes
 `dist/*.html`, and a `vite.config.ts` whose `build.ssr` is that script rather
-than a browser entry — `vite build` bundles it through the plugin's `.marko`
-transform, then `bun run dist-ssr/build.js` actually runs it and writes the
+than a browser entry — `vite build` bundles it through the plugin's
+`.mx`/`.marko` transform, then `bun run dist-ssr/build.js` actually runs it
+and writes the
 HTML. `vite.config.ts`'s `ssr.external: ["@markox/translator"]` keeps that
 package's own `import { escape } from "@markox/translator"` (present in
-every compiled `.marko` page) out of the rolldown bundle — left un-external,
+every compiled `.mx` page) out of the rolldown bundle — left un-external,
 rolldown would try to bundle `@markox/translator`'s raw TS source itself,
 pulling in `@marko/compiler`'s transitive syntax the same way the plugin's
 own dynamic `import()` has to route around (see the Vite plugin section
