@@ -37,6 +37,19 @@ describe("lowerAstroMx", () => {
     const { code } = lowerAstroMx("<p>hi</p>", "Test.amx");
     expect(code).toBe("<p>hi</p>");
   });
+
+  it("hoists a template static into the Astro fence", () => {
+    const source = `---\nconst x = 1;\n---\nstatic const y = 2;\n<p>${"${x + y}"}</p>`;
+    expect(lowerAstroMx(source, "Test.amx").code).toBe(
+      `---\nconst x = 1;\nconst y = 2;\n---\n<p>{x + y}</p>`,
+    );
+  });
+
+  it("keeps comments and multiple roots", () => {
+    expect(lower("<!--first--><p>a</p><p>b</p>")).toBe(
+      "<!--first--><p>a</p><p>b</p>",
+    );
+  });
 });
 
 describe("placeholders", () => {

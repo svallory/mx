@@ -78,6 +78,24 @@ export interface HostDeclarations {
    */
   rejectModifier?(attr: Node, on?: "element" | "component"): void;
   /**
+   * Rejects an attribute method in this host's own words.
+   *
+   * Marko represents an attribute method as a `FunctionExpression` value in
+   * some parser paths and through `arguments` in others. The resolver detects
+   * both before constructing an `Attr`; a host may replace the generic
+   * standalone-string diagnostic here.
+   */
+  rejectAttributeMethod?(attr: Node, on?: "element" | "component"): void;
+  /**
+   * Rejects attribute tags attached to an element in this host's own words.
+   *
+   * Attribute tags are represented in the IR only for component calls. A host
+   * whose target has a more specific concept (Astro named slots, for example)
+   * can explain the invalid element case while the Marko node and its precise
+   * position are still available during resolve.
+   */
+  rejectElementAttributeTags?(name: string, node: Node, ctx: Ctx): void;
+  /**
    * Rejects a component call this host will not route, in its own words.
    *
    * Called from `resolveComponent` *before* the `Component` node is built, so

@@ -96,7 +96,8 @@ function resolveAttr(
     return { kind: "spread", value: exprOf(ctx, attr.value), loc };
   }
 
-  if (attr.arguments) {
+  if (attr.arguments || attr.value?.type === "FunctionExpression") {
+    ctx.declarations.rejectAttributeMethod?.(attr, on);
     fail(
       `attribute method \`${attr.name}(...)\` is an event handler and requires a runtime; standalone MX renders once to a string`,
       attr,
@@ -579,6 +580,9 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
     );
   }
 
+  if (node.attributeTags?.length) {
+    ctx.declarations.rejectElementAttributeTags?.(name, node, ctx);
+  }
   rejectUnsupportedFields(ctx, node, `\`<${name}>\``);
 
   const isVoid = VOID_TAGS.has(name);
