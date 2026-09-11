@@ -375,6 +375,17 @@ describe("mx()", () => {
       expect(resolved).toBe("/root/src/greeting.marko.ts");
     });
 
+    // The 20s timeout below: this is the only test in the file that reaches
+    // the `.marko` branch, so it pays for the dynamic
+    // `import("@mxlang/translator")` and, through it, the cold load of
+    // `@marko/compiler` — measured at **1145ms idle**, and at **6117ms**
+    // inside a full `bun run verify` (20 vitest projects in parallel, ~34s of
+    // transform), which overruns vitest's 5000ms default.
+    //
+    // 20s is a little over 3x the worst measured time rather than 4x the idle
+    // one: 4 x 1145ms is 4.6s, still under the default that already fails, so
+    // it would fix nothing. Scoped to this test rather than raised globally,
+    // so a genuinely hung test elsewhere still fails fast.
     it("compiles a .marko module to a string-returning function, unaffected by .solid.mx handling", async () => {
       const path = writeMx("greeting.marko", GREETING);
       const transform = transformOf(mx());
@@ -382,10 +393,42 @@ describe("mx()", () => {
       const result = await transform.call({}, GREETING, `${path}.ts`);
 
       expect(result).not.toBeNull();
-      expect(result?.code).toContain("export default function");
+      expect(result?.code).toContain("export default render;");
       expect(result?.code).toContain("escape(input.name)");
       // No real map yet for this path (see the plugin's own doc comment).
       expect(result?.map).toBeNull();
+    }, 20_000);
+
+    it("passes `strict` through to the translator's strictPolicy", async () => {
+      // The seam `@mxlang/astro` needs: a host with no reactive target selects
+      // `strictPolicy`, so a reactive construct is a compile error naming the
+      // construct rather than markup that renders once and never updates. The
+      // flag is a passthrough — no policy logic lives in this plugin.
+      const STATEFUL = `export interface Input {}
+<let/count=0/>
+<p>\${count}</p>
+`;
+      const path = writeMx("stateful.marko", STATEFUL);
+      const transform = transformOf(mx({ strict: true }));
+
+      await expect(transform.call({}, STATEFUL, `${path}.ts`)).rejects.toThrow(
+        /`<let>` is reactive state/,
+      );
+    });
+
+    it("renders <let>'s initial value when `strict` is not set", async () => {
+      // The default policy is unchanged by the option's existence: decision 65
+      // renders what Marko's own server render emits.
+      const STATEFUL = `export interface Input {}
+<let/count=0/>
+<p>\${count}</p>
+`;
+      const path = writeMx("stateful-default.marko", STATEFUL);
+      const transform = transformOf(mx());
+
+      const result = await transform.call({}, STATEFUL, `${path}.ts`);
+
+      expect(result?.code).toContain("const count = 0;");
     });
 
     it("still handles .solid.mx exactly as before when both extensions are enabled", async () => {

@@ -44,10 +44,18 @@ export function renderTranslator(
     fns.push((props) => renderTranslator(dir, componentPath, props));
   }
 
+  // The emitted module's default export is a *named* `render` function that is
+  // branded and then exported (`@mxlang/translator`'s `brandRender`, so an
+  // Astro-style host can identify an MX component by
+  // `Symbol.for("mx.component")`). Both trailing statements go, along with the
+  // function's own opener and closing brace, leaving just the body for
+  // `new Function`.
   const body = code
     .replace(/^import\s.*$/gm, "")
     .replace(/^export interface Input \{[\s\S]*?\}$/gm, "")
-    .replace(/^export default function \(input: Input\): string \{$/m, "")
+    .replace(/^export default render;\s*$/m, "")
+    .replace(/^Object\.defineProperty\(render,[^\n]*$/m, "")
+    .replace(/^function render\(input: Input\): string \{$/m, "")
     .replace(/\}\s*$/, "");
 
   const fn = new Function(

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compile } from "./index.ts";
+import { brandRender } from "./translate.ts";
 
 /**
  * Per-rule tests for the stock-Marko translator.
@@ -186,7 +187,7 @@ describe("statement blocks", () => {
     const { code } = compile(src(body), file);
     expect(code).toContain("const S = 41 + 1");
     expect(code.indexOf("const S = 41 + 1")).toBeLessThan(
-      code.indexOf("export default function"),
+      code.indexOf("function render(input: Input): string {"),
     );
     expect(code).toContain("escape(S)");
   });
@@ -324,14 +325,66 @@ describe("module shape", () => {
   it("imports escape and default-exports the renderer", () => {
     const { code } = compile(src("<p>hi</p>"), file);
     expect(code).toContain('import { escape } from "@mxlang/translator";');
-    expect(code).toContain("export default function (input: Input): string {");
+    expect(code).toContain("function render(input: Input): string {");
+    expect(code).toContain("export default render;");
+  });
+
+  it("brands the default export so a host's `check()` can recognize it", () => {
+    // A framework host receives a component as an opaque value —
+    // `@mxlang/astro`'s renderer gets `check(Component, props, slots)` and
+    // nothing else — so the compiled function carries a marker rather than
+    // being identified by name (which a minifier may rewrite) or by call
+    // shape (which every `(props) => string` function shares).
+    //
+    // `Symbol.for`, through the global registry: the property is written here
+    // and read from another package, possibly from a different copy of this
+    // one on disk, so the two sides cannot agree by import identity.
+    const { code } = compile(src("<p>hi</p>"), file);
+    expect(code).toContain(
+      'Object.defineProperty(render, Symbol.for("mx.component"), { value: true });',
+    );
+  });
+
+  it("throws rather than silently skipping the brand when the export line drifts", () => {
+    // The brand is injected by matching a literal, so a change to the core's
+    // emitted export line would otherwise make `brandRender` a no-op: the
+    // module compiles, nothing reports a problem, and every `check()` in the
+    // Astro host answers false — a whole host quietly failing to claim its own
+    // components. Decision 61: fail loud at the seam that broke.
+    const drifted = [
+      'import { escape } from "@mxlang/translator";',
+      "",
+      "export interface Input {}",
+      "",
+      "export default function render(input: Input): string {",
+      '  return "";',
+      "}",
+      "",
+    ].join("\n");
+
+    expect(() => brandRender(drifted)).toThrow(
+      /does not contain the expected default export line/,
+    );
+  });
+
+  it("brands the default export when inline helpers are emitted too", () => {
+    // The helper injection and the brand are two rewrites of the same emitted
+    // line, so a template that triggers `classValue` exercises the path where
+    // both apply — the one that would silently lose the brand if the rewrites
+    // were ordered wrongly.
+    const { code } = compile(src("<p class={a: true}>hi</p>"), file);
+    expect(code).toContain("function classValue(value) {");
+    expect(code).toContain(
+      'Object.defineProperty(render, Symbol.for("mx.component"), { value: true });',
+    );
+    expect(code).toContain("export default render;");
   });
 
   it("hoists imports and static blocks above the render function", () => {
     const body = 'static const G = "hi"\n<p>x</p>';
     const { code } = compile(src(body), file);
     expect(code.indexOf('const G = "hi"')).toBeLessThan(
-      code.indexOf("export default function"),
+      code.indexOf("function render(input: Input): string {"),
     );
   });
 });
@@ -358,15 +411,27 @@ describe("the strict policy (decision 68's fold): reactive tags error by name", 
 
   it.each([
     ["<let>", "<let/count=5/>\n<p>${count}</p>", "const count = 5;"],
-    ["<effect>", "<effect() { go() }/>", "export default function"],
+    [
+      "<effect>",
+      "<effect() { go() }/>",
+      "function render(input: Input): string {",
+    ],
     [
       "<lifecycle>",
       "<lifecycle onCreate() { go() }/>",
-      "export default function",
+      "function render(input: Input): string {",
     ],
-    ["<script>", "<script>go()</script>", "export default function"],
-    ["client block", "client\n  const x = 1", "export default function"],
-    ["<id>", "<id/x/>", "export default function"],
+    [
+      "<script>",
+      "<script>go()</script>",
+      "function render(input: Input): string {",
+    ],
+    [
+      "client block",
+      "client\n  const x = 1",
+      "function render(input: Input): string {",
+    ],
+    ["<id>", "<id/x/>", "function render(input: Input): string {"],
   ])(
     "the default policy still renders %s the same as before (unaffected by strict)",
     (_name, body, expectedSubstring) => {

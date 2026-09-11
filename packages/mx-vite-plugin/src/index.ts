@@ -31,11 +31,16 @@ import type { Plugin } from "vite";
 async function compileMarko(
   source: string,
   filename: string,
+  strict: boolean,
 ): Promise<{ code: string }> {
   const { compile } = (await import("@mxlang/translator")) as {
-    compile: (source: string, filename: string) => { code: string };
+    compile: (
+      source: string,
+      filename: string,
+      options?: { strict?: boolean },
+    ) => { code: string };
   };
-  return compile(source, filename);
+  return compile(source, filename, { strict });
 }
 
 export interface MxPluginOptions {
@@ -44,6 +49,20 @@ export interface MxPluginOptions {
    * and `.marko`.
    */
   extensions?: string[];
+  /**
+   * Selects `@mxlang/translator`'s `strictPolicy` for `.mx`/`.marko` files:
+   * reactive constructs (`<let>`, `<effect>`, `<lifecycle>`, `<script>`,
+   * `client` blocks, `<id>`) become compile errors naming the construct
+   * instead of rendering their initial value or compiling away as inert.
+   *
+   * A passthrough rather than a policy of this plugin's own: a host that has
+   * no reactive target (`@mxlang/astro` renders MX to static markup at build
+   * time, decision 71) wants an author's `<let>` to fail the build with a
+   * loc-bearing error rather than silently render once. The flag reaches
+   * `compile()` unchanged; `.solid.mx` is unaffected, since it never goes
+   * through the translator at all.
+   */
+  strict?: boolean;
 }
 
 const DEFAULT_EXTENSIONS = [".solid.mx", ".mx", ".marko"];
@@ -270,7 +289,11 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
           // `compile()`'s map is presently an identity placeholder (no AST
           // is printed on this path), so there is nothing real to hand Vite
           // — returning it would claim a mapping that does not exist.
-          const { code: compiled } = await compileMarko(code, source);
+          const { code: compiled } = await compileMarko(
+            code,
+            source,
+            options.strict ?? false,
+          );
           return { code: compiled, map: null };
         }
 

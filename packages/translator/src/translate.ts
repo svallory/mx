@@ -763,7 +763,87 @@ const RENDER_DYNAMIC = `function renderDynamic(target, props) {
 }`;
 
 /**
- * This host's post-emit pass: appends the helpers the module actually calls.
+ * The core's emitted default export, as text, for the two rewrites below.
+ *
+ * Both `emitProgram`'s helper injection and `brandRender` key off this exact
+ * line, so it is written once rather than twice.
+ */
+const DEFAULT_EXPORT = "\nexport default function (input: Input): string {";
+
+/**
+ * The brand a host's `check()` tests for.
+ *
+ * `Symbol.for`, not a unique symbol: the property is written by the compiled
+ * module and read by a *different* package (`@mxlang/astro`'s renderer), quite
+ * possibly from a different copy of this one on disk, so the two sides must
+ * agree on the symbol by name through the global registry rather than by
+ * identity through a shared import.
+ */
+export const MX_COMPONENT = Symbol.for("mx.component");
+
+/**
+ * Marks the compiled module's default export as an MX component.
+ *
+ * A framework host that receives a component as an opaque value — Astro's
+ * renderer contract hands `check(Component, props, slots)` the function and
+ * nothing else — has no other way to tell an MX template apart from any other
+ * function. Astro's own docs suggest sniffing `Component.name`, which a
+ * minifier is free to rewrite and which any function could collide with; an
+ * explicit brand is exact.
+ *
+ * The core emits the default export anonymously, so the function is given a
+ * name here, branded, and then exported: `export default function (input) {}`
+ * has no binding to hang a property off.
+ *
+ * `Object.defineProperty` rather than `render[Symbol.for(…)] = true`: the
+ * emitted module is TypeScript, and a consumer runs `tsc` over it. Assigning
+ * through a computed symbol key is `TS7053` ("expression of type 'symbol'
+ * can't be used to index type 'typeof render'") under `strict`, which would
+ * make every compiled template a type error in the user's own build. The
+ * defineProperty form needs no index signature, and leaves the brand
+ * non-enumerable besides, so it never shows up in a spread of the function's
+ * own properties.
+ *
+ * **Throws if the core's export line is not found.** Recognising the emitted
+ * module by matching a literal is brittle by construction: if the core's
+ * emitter ever changes that line, a silent `return code` would hand back an
+ * unbranded module, and every `check()` in the Astro host would answer false
+ * with nothing anywhere reporting why — a whole host quietly failing to claim
+ * its own components. Decision 61: fail loud at the seam that broke.
+ *
+ * A plain `Error`, not a `TranslateError`: this runs over emitted text, not
+ * over a Marko node, so there is no source line or column to carry and
+ * inventing one would point the reader at innocent template code.
+ *
+ * The real fix is to stop matching text at all — load the emitted module and
+ * brand the function object — which is the `oracle-shape` follow-up task,
+ * where `packages/oracle/src/translator-render.ts` has the same brittleness.
+ */
+export function brandRender(code: string): string {
+  if (!code.includes(DEFAULT_EXPORT)) {
+    throw new Error(
+      "@mxlang/translator: cannot brand the compiled module — the emitted " +
+        `code does not contain the expected default export line ${JSON.stringify(
+          DEFAULT_EXPORT.trimStart(),
+        )}. The core's emitter has changed shape; update DEFAULT_EXPORT in ` +
+        "translate.ts to match, or an Astro host's `check()` will silently " +
+        "stop recognising MX components.",
+    );
+  }
+
+  return `${code.replace(
+    DEFAULT_EXPORT,
+    "\nfunction render(input: Input): string {",
+  )}
+Object.defineProperty(render, Symbol.for("mx.component"), { value: true });
+
+export default render;
+`;
+}
+
+/**
+ * This host's post-emit pass: appends the helpers the module actually calls,
+ * and brands the default export.
  *
  * Runs over the core's emitted module text (`HostOptions.postEmit`) rather
  * than inside the core's emitter, because *which* helpers exist — and that
@@ -783,12 +863,14 @@ export function emitProgram(code: string): string {
     .filter(([call]) => code.includes(call as string))
     .map(([, source]) => source);
 
-  if (helpers.length === 0) return code;
+  if (helpers.length === 0) return brandRender(code);
 
   // Placed after the author's own hoisted module scope so it cannot shadow a
   // binding they declared.
-  return code.replace(
-    "\nexport default function (input: Input): string {",
-    `\n${helpers.join("\n\n")}\n\nexport default function (input: Input): string {`,
+  return brandRender(
+    code.replace(
+      DEFAULT_EXPORT,
+      `\n${helpers.join("\n\n")}\n${DEFAULT_EXPORT}`,
+    ),
   );
 }
