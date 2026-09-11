@@ -56,7 +56,9 @@ Exception packages (no unit test wiring required; verified elsewhere):
 - `examples/mx-site` — e2e only
 - `examples/mx-vite` — e2e only
 - `examples/todomvc` — e2e only
-- `packages/zed-extension` — grammar only, build verified in CI
+- `packages/zed-extension` — grammar and Rust extension (registers
+  `@mxlang/language-server`), both build-verified in CI
+  (`zed-compile-check`, `zed-extension-compile-check`)
 
 Any new package without test wiring must be added to the exception list with
 a documented reason, or get a vitest project (a package under `packages/*`
@@ -809,6 +811,10 @@ scaffold exists) support the second-server pattern once wired; see the
 package's own `README.md` "Editors" for the concrete snippets, including the
 generic-LSP-client `settings.json` shape for VS Code (which ships no
 dedicated extension from this task, per brief scope).
+
+*(Update, task `zed-ls-registration`, decision 77: the Rust scaffold this
+paragraph names as follow-up now exists — see "Zed extension" above. VS
+Code still ships no dedicated extension.)*
 
 **Tests**: `src/diagnose.test.ts` (direct, no server: `<let>` under strict,
 a valid file, `<let>`'s initial value under the non-strict policy, the
