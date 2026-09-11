@@ -26,6 +26,10 @@
 is unchanged, since the extension id is a publishing identity, not a
 language name.
 
+| Source | Repo | Rev | What's taken |
+|---|---|---|---|
+| Rust extension shape | `marko-js/zed` (`Cargo.toml`, `src/lib.rs`, `extension.toml`) | `dd854edec1fab86d23eb24af9691505dfe3856a6` (repo `main` HEAD at fetch time, via `gh api repos/marko-js/zed/contents/{Cargo.toml,src/lib.rs,extension.toml}` on 2026-09-11 — the same rev already pinned above for the MX queries) | `crate-type = ["cdylib"]`, `zed_extension_api = "0.7.0"` (exact version, matching that `Cargo.toml`'s own unpinned-minor spelling), the `zed::Extension::language_server_command` shape (a `Command` built from a resolved binary path + `--stdio`), and `[language_servers.<key>]`'s `name`/`languages` table shape in `extension.toml`. **Not** taken: marko-js/zed's npm-download machinery (`npm_package_latest_version`/`npm_install_package`, the `did_find_server` cache, the two TS-plugin initialization-options hooks) — decision 77's brief is explicit ("keep it minimal: no settings, no downloads"), so `src/lib.rs` here only resolves a command path (a local worktree install via `Worktree::read_text_file`, then a global install via `Worktree::which`, then `bunx`, then `npx` — no `node_modules/.bin` walk-up, since `Worktree` exposes no such operation and a plain `std::fs`/`Path` walk cannot see worktree paths under Zed's wasm sandbox) and does no installation of its own. |
+
 There is no `scripts/vendor.sh` step for `languages/mx/*.scm` — unlike
 `languages/solidmx/*.scm` (generated from a local sibling package plus a
 base+overlay split), MX's queries are a straight verbatim copy from a

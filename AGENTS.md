@@ -309,9 +309,27 @@ highlights source is local, with no upstream HEAD to drift against, so a
 cannot fail is not a gate. `.github/workflows/upstream-check.yml`'s
 `vendored-files-match` job does the real check instead.
 
-No Rust: the extension has no `Cargo.toml`/`src/lib.rs` and no
-`[language_servers.*]` block — Zed only requires Rust when `Cargo.toml`
-exists. See `packages/zed-extension/README.md` and `UPSTREAM.md`.
+**Rust `lib.rs` registers the MX language server** (decision 77, task
+`zed-ls-registration`): `Cargo.toml` + `src/lib.rs` implement
+`zed::Extension::language_server_command`, and `extension.toml` carries
+`[language_servers.mxlang]` (`languages = ["MX"]` only — `SolidMX`/`AstroMX`
+are not listed since `@mxlang/language-server` does not compile those file
+kinds yet). Minimal by design: no settings, no downloads — command
+resolution checks a local worktree install (via `Worktree::read_text_file`,
+the sandbox-safe check: Zed's wasm sandbox preopens only the extension's own
+working directory, so a plain `std::fs`/`Path` check on a worktree path
+always reports "not found" and cannot be used; there is also no walk-up past
+the worktree root, since `Worktree`'s API has no such operation), else a
+global install via `Worktree::which`, else `bunx @mxlang/language-server
+--stdio`, else `npx`. Built to
+`wasm32-wasip1` by `scripts/zed-extension-compile-check.sh` (a clean-clone
+gate, same shape as `tree-sitter-solidmx`'s own `zed-compile-check.sh`),
+wired into `ci.yml` as its own job (`rustup target add wasm32-wasip1` on the
+runner first — this is the one place in this repo Rust is required; the
+target is a toolchain install, not a repo dependency). See
+`packages/zed-extension/README.md` "Toolchain prerequisite" and "Language
+server", and `UPSTREAM.md` for the pinned `marko-js/zed` commit the `lib.rs`
+shape was read from.
 
 `base/solidmx/injections.scm` injects a language named `marko` into
 `mx_element` regions (MX and SolidMX share syntax) — the region is a single

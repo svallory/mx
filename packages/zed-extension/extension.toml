@@ -10,21 +10,23 @@ repository = "https://github.com/mxlang/mx"
 # no fork, no MX-specific parser. Rev matches the official marko-js/zed
 # extension's own pin (its extension.toml, fetched 2026-09-11): both track
 # @marko/tree-sitter v0.2.0.
-#
-# @mxlang/language-server registration (decision 71/72, task mxlang-ls):
-# NOT added here. Zed's `[language_servers.*]` table only works when this
-# extension implements `zed::Extension::language_server_command` in Rust
-# (confirmed by reading marko-js/zed's own extension.toml + src/lib.rs: its
-# `[language_servers.marko]` entry exists only because that crate's
-# `MarkoExtension` implements the command — the TOML table alone launches
-# nothing). This extension is grammar-only today (no Cargo.toml, see
-# AGENTS.md "No Rust"); adding the Rust scaffold to register
-# @mxlang/language-server is separate follow-up work, not done here for lack
-# of time budget. See packages/language-server/README.md "Editors" > "Zed"
-# and AGENTS.md "@mxlang/language-server" for the full finding.
 [grammars.marko]
 repository = "https://github.com/marko-js/tree-sitter"
 rev = "7fb20382b9b0c97c8bdbceee0e0641bea11dd00f"
+
+# @mxlang/language-server registration (decision 71/77, task
+# zed-ls-registration). Zed's `[language_servers.*]` table only works when
+# this extension implements `zed::Extension::language_server_command` in Rust
+# (confirmed by reading marko-js/zed's own extension.toml + src/lib.rs: its
+# `[language_servers.marko]` entry exists only because that crate's
+# `MarkoExtension` implements the command). `src/lib.rs`/`Cargo.toml` do that
+# here, minimally: no settings, no downloads — see their own doc comments for
+# the command resolution order. `SolidMX`/`AstroMX` are not listed yet: this
+# server does not compile those file kinds (decision 77 names them as
+# "later"). See packages/language-server/README.md "Editors" > "Zed".
+[language_servers.mxlang]
+name = "MX Language Server"
+languages = ["MX"]
 
 [grammars.solidmx]
 # DEV FORM. Zed still requires a committed `rev` even for a `file://`

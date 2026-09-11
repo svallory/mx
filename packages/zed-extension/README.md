@@ -15,9 +15,97 @@ Ships two languages:
   patched `tree-sitter-typescript` tsx dialect with an `mx_element` external
   token in expression position).
 
-Grammar-only extension: no `Cargo.toml`, no `src/lib.rs`, no language server
-of our own (see `UPSTREAM.md` for why; "What you get in Zed today" below for
-what that means in practice).
+Also registers a language server: `src/lib.rs` (a minimal Rust extension,
+`Cargo.toml`) implements `zed::Extension::language_server_command` for
+`@mxlang/language-server` on `MX` — see "Language server" below.
+
+## Toolchain prerequisite: Rust + wasm32-wasip1
+
+Building the extension's Rust to the wasm target Zed itself builds to needs
+the `wasm32-wasip1` target installed:
+
+```
+rustup target add wasm32-wasip1
+```
+
+This is a toolchain install, not a repo dependency (nothing in `bun install`
+provides it). `rustup target list --installed` shows what's already there.
+CI runs this step itself (see `.github/workflows/ci.yml`'s
+`zed-extension-compile-check` job) so a missing target fails loud rather than
+silently skipping the build.
+
+## Language server
+
+`@mxlang/language-server` (decision 71/72/77) is a diagnostics-only LSP
+server; see `packages/language-server/README.md` for what it does and does
+not do. This package's `src/lib.rs` resolves the command to launch it, in
+order:
+
+1. A local install under the worktree: `node_modules/@mxlang/language-server/package.json`
+   readable via `Worktree::read_text_file` (the sandbox-safe check — see the
+   doc comment on `find_local_bin`/`language_server_command` in `src/lib.rs`
+   for why a plain `std::fs`/`Path` check on a worktree path cannot work
+   here: Zed's wasm sandbox preopens only the extension's own working
+   directory, never the worktree root). If found, the command is
+   `<worktree root>/node_modules/.bin/mxlang-language-server` — an absolute
+   host path, spawned on the host, so it doesn't matter that the *check* ran
+   inside the sandbox.
+2. A global install: `Worktree::which("mxlang-language-server")`.
+3. `bunx @mxlang/language-server --stdio`, via `Worktree::which("bunx")`.
+4. `npx @mxlang/language-server --stdio`, via `Worktree::which("npx")`.
+
+No installation, no settings — unlike `marko-js/zed`'s `MarkoExtension` (which
+downloads `@marko/language-server` from npm into the extension's own working
+directory), this extension expects the server to already be reachable one of
+the four ways above. There is no walk-up past the worktree root: `Worktree`'s
+API has no such operation, and no path outside the worktree is readable from
+the sandbox at all — an earlier revision of this extension assumed a
+`node_modules/.bin` walk-up like a Node script would do, which is dead code
+under the sandbox (always "not found," silently falling through to `bunx`).
+
+### Dev install (Zed) — language server
+
+1. Make `@mxlang/language-server`'s built `bin.js` reachable one of the four
+   ways `src/lib.rs` looks for it. Simplest in this monorepo: from the repo
+   root, `bun run build` (builds every package, `language-server` included),
+   then confirm `node_modules/@mxlang/language-server/package.json` and
+   `node_modules/.bin/mxlang-language-server` both exist at the worktree
+   root — bun workspaces symlink a workspace package's `bin` entries into the
+   root `node_modules/.bin` automatically, so no extra linking step is needed
+   once the package is built. If you're testing against a project outside
+   this monorepo instead, install the package there (`bun add
+   @mxlang/language-server` once published, or `bun link` against a built
+   copy) so its own `node_modules` picks it up, or rely on the `bunx`/`npx`
+   fallback.
+2. Command Palette → **"zed: install dev extension"** → select
+   `packages/zed-extension` (same directory as the grammar dev-install
+   above).
+3. Create a small test project with a `package.json` declaring:
+   ```json
+   { "mxlang": { "host": "translator", "strict": true } }
+   ```
+   and an `.mx` file containing a `<let>` tag (rejected under `strict`, per
+   `@mxlang/translator`'s `strictPolicy` — see its own README).
+4. Open that `.mx` file in Zed. Expect one diagnostic (source `mxlang`)
+   naming the `<let>` construct as unsupported under the resolved policy —
+   see `packages/language-server/README.md` "Policy resolution" for exactly
+   how the `#mxlang` field is read.
+5. Check Zed's LSP logs regardless (command palette → **"zed: open language
+   server logs"** → pick the `mxlang` server): expect a line naming the
+   command that was launched, e.g. `mxlang server started with
+   <path-or-bunx-command> --stdio` (exact wording is Zed's own, not this
+   extension's) — confirming which of the four resolution steps fired.
+   **A live Zed check is a manual step** — this task's own verification
+   stopped at `cargo build`/the clean-clone compile-check; nobody has run the
+   extension inside Zed yet, so treat the above as the procedure to follow,
+   not a result already confirmed.
+6. If no diagnostic appears: check the logs first for a spawn failure (none
+   of the four resolution paths found the server) before assuming the
+   diagnostic logic itself is wrong.
+
+Grammar-only extension no longer describes this package (it now also ships a
+language server) — see `UPSTREAM.md` for the Rust provenance and "What you
+get in Zed today" below for what each language gets in practice.
 
 ## Zed suffix precedence: `.mx` vs `.solid.mx`
 
