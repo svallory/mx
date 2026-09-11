@@ -51,6 +51,7 @@ scripts/pre-verify.ts && typecheck && lint && build && test && test:bun && test:
   and exits non-zero if any non-exception package has no fresh evidence.
 
 Exception packages (no unit test wiring required; verified elsewhere):
+- `examples/astro-static` — e2e only
 - `examples/counter-app` — e2e only
 - `examples/mx-site` — e2e only
 - `examples/mx-vite` — e2e only
@@ -642,6 +643,81 @@ through raw, matching Marko's own `_escape_comment`. Filtering placeholders
 out (an earlier bug) turned `<html-comment>build ${input.sha}</html-comment>`
 into `<!--build -->`.
 
+## `@mxlang/astro`: the Astro host
+
+`packages/astro` (`@mxlang/astro`, decisions 70 to 72) renders `.mx`
+components inside an Astro project as **static markup**: no islands, no
+hydration, no client JS from this renderer. Two files and no third —
+`src/index.ts` is the integration, `src/server.ts` the renderer's server
+entrypoint. There is no compile step of its own: the integration adds
+`@mxlang/vite-plugin` through `updateConfig({ vite: { plugins: [...] } })`,
+since an Astro project is a Vite project and that plugin already turns a
+`.mx` file into a plain module.
+
+Four facts worth knowing before editing it:
+
+- **`check` tests a brand, and the brand is emitted by the *translator*.**
+  Astro's renderer contract hands `check(Component, props, slots)` the
+  component as an opaque value with no reserved brand channel, and Astro's own
+  docs suggest sniffing `Component.name` — which a minifier may rewrite and
+  any function could collide with. Instead `@mxlang/translator`'s `postEmit`
+  (`brandRender` in `translate.ts`) names the core's anonymous default export
+  `render`, marks it, and exports it, so every compiled MX module carries
+  `Symbol.for("mx.component")`. `Symbol.for`, through the global registry, not
+  a `unique symbol`: the property is written by a compiled module and read by
+  a different package, possibly from a different copy of the translator on
+  disk, so the two sides cannot agree by import identity. It is written with
+  `Object.defineProperty`, not `render[Symbol.for(…)] = true` — the emitted
+  module is TypeScript a consumer typechecks, and the assignment form is
+  `TS7053` under `strict`, which would make every compiled template a type
+  error in the user's own build.
+- **Slots are strings; MX's children are thunks.** Astro hands slots in as
+  `Record<string, string>` of already-rendered HTML, while MX's compiled
+  modules take children as a `content: () => string` prop and each `<@name>`
+  attribute tag as `name: () => string`. `renderToStaticMarkup` wraps each
+  slot string in a thunk (`default` → `content`, every other key → the
+  attribute tag of the same name). Two limits follow, both Astro's contract
+  rather than MX's: an attribute tag declaring **params** (`<@footer|year|>`)
+  can never receive them from Astro, and is documented rather than detected
+  (the renderer sees a compiled function, not the template); and slot HTML is
+  inserted verbatim, so a template must use `$!{input.content()}`, never
+  `${...}`, or the markup Astro rendered comes out escaped.
+- **The host compiles under `strictPolicy`**, so `<let>`, `<effect>`,
+  `<lifecycle>`, `<script>`, `client` blocks and `<id>` are compile errors
+  naming the construct (decision 71: stateful tags mean whatever the host
+  says, and this host has no reactive target at all). That required the one
+  change to `@mxlang/vite-plugin` this package needed: a `strict?: boolean`
+  option on `MxPluginOptions`, passed straight through to `compile()`. It is a
+  passthrough, not a policy of the plugin's own; `.solid.mx` never goes
+  through the translator and is unaffected.
+- **No `clientEntrypoint`, and the host raises the `client:*` error itself.**
+  `AstroRenderer` declares the field optional, so a hydration-free renderer is
+  a first-class shape. The research note (and this file, before it was
+  measured) claimed `client:*` on such a component raises Astro's own
+  `NoClientEntrypoint`. **It does not, in astro@7.3.2.** That error is defined
+  in `dist/core/errors/errors-data.js` and thrown from nowhere — grepping the
+  whole installed package finds only the definition and its `.d.ts`. The render
+  path is a bare `if (renderer.clientEntrypoint)`
+  (`dist/runtime/server/hydration.js:98`) that skips `renderer-url`,
+  `component-export` and `props` when absent, with no else branch. Left alone
+  the build would succeed and emit an `<astro-island client="load">` whose
+  loader falls back to `Promise.resolve({default:()=>()=>{}})` — an island that
+  silently does nothing, on a host whose claim is shipping no client JS.
+  Decision 70's intent is that the directive is an error, so
+  `renderToStaticMarkup` throws on `metadata.hydrate` (Astro's own fourth
+  argument; `AstroComponentMetadata.hydrate` is
+  `'load'|'idle'|'visible'|'media'|'only'`, and `displayName` names the
+  component). `examples/astro-static/e2e/build-errors.spec.ts` asserts the
+  failing build.
+
+`packages/astro/types/mx.d.ts` declares `*.mx`/`*.marko` as
+`(input: any) => string`, referenced by a consumer from its own `env.d.ts`
+(`/// <reference types="@mxlang/astro/types" />`). `any` for the same reason
+`@mxlang/translator`'s own `types/marko.d.ts` does it: per-file `Input` typing
+needs a virtual-file projection inside tsserver, which is the `astro-ts-plugin`
+task. `@astrojs/ts-plugin` is not reusable for it — it adds `.astro` imports
+*within* `.ts` files, the opposite direction.
+
 ## Bun loader
 
 `packages/translator/src/bun.ts` (`@mxlang/translator/bun`) is the Bun-side
@@ -766,6 +842,30 @@ importing file lives. Work around it with `bun run
 is a property of `translator`'s tsconfig, not a bug in `@mxlang/translator`
 itself or in Bun's resolver generally — vitest is unaffected because it does
 not resolve bare specifiers through `tsconfig.json` `paths` the same way.
+
+`examples/astro-static` is the Astro host's example: an Astro 7.3.2 site
+(`output: "static"`, pinned exact in its own `package.json`) with three pages
+built from `.mx` components — props and a default slot, a named slot, and one
+component composed from another with a `.marko` alias import inside.
+
+```
+cd examples/astro-static
+bun run build      # astro build -> dist/
+bun run e2e        # headless Chromium over dist/, plus the two error builds
+```
+
+Its `e2e/` holds two specs. `pages.spec.ts` builds once, serves `dist/` over a
+bare `node:http` server and asserts the rendered HTML (the same Vitest-driving-
+raw-playwright shape as `examples/mx-vite/e2e/pages.spec.ts`), including that
+no page contains a `<script>` — the host's whole claim. `build-errors.spec.ts`
+asserts the two builds that must fail: `<let>` in an MX component (the strict
+policy) and `client:load` on an MX component (the renderer's own error, since
+Astro raises none — see the package section above). Both pages live in
+`error-fixtures/`, **outside** `src/pages/`, and each is copied in for a single
+build and removed afterwards — a page that is meant to break the build cannot
+also be part of the build every other test depends on.
+`vitest.config.ts` sets `fileParallelism: false`, since each spec runs a real
+`astro build`.
 
 `examples/mx-vite` is a minimal static-site build exercising
 `@mxlang/vite-plugin`'s `.mx` handling (not `.solid.mx`): two `.mx` pages

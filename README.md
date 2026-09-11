@@ -15,6 +15,7 @@ MX (Markup eXtended) is a template language born from Marko. It takes Marko's sy
 | `packages/mx-vite-plugin` | `@mxlang/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
 | `packages/core` | `@mxlang/core` | The Marko-node consumer every MX host is built on: the structural tag lowerings, the `Policy` contract, three stateful-tag hooks (tag handler, hoist, binding registry), and two front doors (`compileSource` through `@marko/compiler`'s `config.translator` seam, `parseFragment` for a substring of a larger file). Depends on `@marko/compiler` alone. |
 | `packages/translator` | `@mxlang/translator` | The vanilla MX host on `@mxlang/core`: `.mx` (official) and `.marko` (alias) files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`. MX 1.0 is a strict subset of Marko syntax (decision 72), so this is Marko syntax, unmodified — no fork. |
+| `packages/astro` | `@mxlang/astro` | The Astro host: an integration plus a renderer that renders `.mx` components to static markup at build time, with no islands and no client JS. Astro's slots (already-rendered HTML strings) map to MX's `content`/attribute-tag thunks; stateful tags are compile errors, since this host has no reactive target (decision 71). |
 
 **Naming TODO**: the `@mxlang/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
 
@@ -127,6 +128,17 @@ cd packages/translator && bun run example nested-layout
 
 ```
 cd examples/mx-vite && bun run build
+```
+
+`examples/astro-static` is the Astro host's example: a three-page Astro site
+whose components are `.mx` (props, a default slot, a named slot, a `.marko`
+alias import, one component composed from another), prerendered with
+`output: "static"` and shipping no client JS at all.
+
+```
+cd examples/astro-static
+bun run build      # astro build -> dist/
+bun run e2e        # headless Chromium over dist/, plus the two error builds
 ```
 
 ## Editors
