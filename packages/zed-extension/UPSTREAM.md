@@ -1,6 +1,6 @@
 # Upstream provenance
 
-`packages/zed-extension` ships two languages for Zed:
+`packages/zed-extension` ships three languages for Zed:
 
 - `MX` (`.mx`, decision 72's official extension; `.marko` is an accepted
   alias with identical treatment), backed by the **unmodified**

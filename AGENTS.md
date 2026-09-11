@@ -255,8 +255,13 @@ Goldens live at `packages/translator/fixtures-marko/<name>/` with
 
 ## Zed extension
 
-`packages/zed-extension` (`mxlang`) ships two languages for Zed: `MX`
-(`.mx`, restored per decision 72) and `SolidMX` (`.solid.mx`).
+`packages/zed-extension` (`mxlang`) ships three languages for Zed: `MX`
+(`.mx`, restored per decision 72), `AstroMX` (`.amx`, decisions 76c/78) and
+`SolidMX` (`.solid.mx`). `AstroMX` rides the same `marko` grammar and the
+same queries as `MX` — an `.amx` file's template half *is* MX — so it adds no
+`[grammars.*]` entry; see the `.amx` subsection under `@mxlang/astro` above,
+and `packages/zed-extension/README.md` for its one limitation (Marko's
+grammar has no `---` frontmatter notion, so the fence highlights as markup).
 
 `MX` rides Marko's own unmodified tree-sitter grammar (`[grammars.marko]` in
 `extension.toml`, pinned to the same rev the official `marko-js/zed`

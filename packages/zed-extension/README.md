@@ -1,6 +1,6 @@
 # `mxlang` — Zed extension
 
-Ships two languages:
+Ships three languages:
 
 - `MX` (`.mx`, the official extension — decision 72) on Marko's own
   unmodified tree-sitter grammar, `[grammars.marko]` pinned to the same rev
