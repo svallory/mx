@@ -289,6 +289,24 @@ build error naming the construct, the reason, and the line in the `.amx` file.
 - **A dynamic tag name** (`<${expr}>`) — Astro resolves component names
   statically.
 
+### Dev notes and known limits
+
+**HMR works in `astro dev`.** The plugin gives Vite a virtual module id
+(`Base.amx` → `Base.amx.astro`), and Vite keys its module graph by that
+resolved id — a path that does not exist on disk. An edit to the real `.amx`
+file would therefore match nothing in the graph, so the plugin carries a
+`handleHotUpdate` hook mapping the changed file back to its virtual module and
+invalidating it. Without that hook the dev server serves the previously
+compiled output until a manual restart; `@mxlang/vite-plugin` carries the same
+hook for `.solid.mx`/`.mx`, for the same reason.
+
+**The fence ends at the first `---` line.** A `---` inside a string, template
+literal or comment in the frontmatter closes the fence early, and the rest of
+the intended TypeScript is then parsed as MX template. This is Astro's own
+frontmatter behaviour, not an MX restriction — a `.astro` file splits the same
+way — but it is worth knowing, because the resulting error points at the
+template rather than at the stray `---`.
+
 ### How it works
 
 `@mxlang/core`'s `Policy` cannot express this target, so this is an emitter
