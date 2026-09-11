@@ -16,6 +16,7 @@ import {
   type RawSourceMap,
 } from "@mxlang/core";
 import markoTaglib from "../taglib/marko.json" with { type: "json" };
+import { emitModule } from "./emitter.ts";
 import { emitProgram, policy, strictPolicy } from "./translate.ts";
 
 export { escape } from "@mxlang/core";
@@ -83,6 +84,11 @@ export function compile(
     options.strict ? strictPolicy : policy,
     {
       ...host,
+      // Decision 79: this host emits from the core's IR. `postEmit` still
+      // appends the helpers a template actually calls and brands the default
+      // export, both of which are properties of this target rather than of
+      // the core.
+      emitIr: (ir) => emitModule(ir, policy.escapeFrom),
       postEmit: (code) => emitProgram(code),
     },
   );

@@ -69,6 +69,15 @@ export interface HostDeclarations {
    */
   resolveHostTag?(name: string, node: Node, ctx: Ctx): unknown;
   /**
+   * Rejects an attribute modifier (`class:active`) in this host's own words.
+   *
+   * Called before the core's generic message, and expected to throw. A
+   * Marko-parity target quotes Marko's own fix-it here, which reads very
+   * differently from "not supported in a standalone template" — the core's
+   * wording is a dialect's vocabulary leaking into a parity target.
+   */
+  rejectModifier?(attr: Node): void;
+  /**
    * Inspects a name a construct is about to bind at *render* scope — a
    * `<let>` or `<const>` name. A host rejects a name that would collide with
    * something the emitted module already binds.

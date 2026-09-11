@@ -29,10 +29,12 @@
 
 import {
   attrByName,
+  type Block,
   blockFunction,
   type Ctx,
   type Disposition,
   DYNAMIC_TAG,
+  type Expr,
   emitChildren,
   emitExpression,
   emitLiteral,
@@ -45,6 +47,7 @@ import {
   push,
   quote,
   rejectUnsupportedFields,
+  resolveChildren,
   sliceLoc,
 } from "@mxlang/core";
 
@@ -214,7 +217,7 @@ function bindingNames(pattern: Node): string[] {
  * is not `escape()`: a comment is not markup, and over-escaping it would put
  * literal `&amp;` in the reader's comment.
  */
-function escapeComment(text: string): string {
+export function escapeComment(text: string): string {
   return text.replace(/>/g, "&gt;");
 }
 
@@ -636,6 +639,136 @@ function orderAttrs(tagName: string, attrs: Node[]): Node[] {
   return [value, ...attrs.slice(0, index), ...attrs.slice(index + 1)];
 }
 
+/**
+ * The sentinel `claimsTag`/`resolveHostTag` see for `<${expr}/>`.
+ *
+ * Re-exported under this package's own name so the emitter matches the same
+ * value the core passes, rather than retyping a sentinel — two hand-typed
+ * copies is exactly the drift that makes one side silently stop matching.
+ */
+export const DYNAMIC = DYNAMIC_TAG;
+
+/**
+ * What `resolveHostTag` decides about a tag this host claims, for its emitter.
+ *
+ * Recorded while the Marko node is still in hand (decision 79's `data` slot),
+ * so the emitter never re-inspects one to recover a decision the resolver
+ * already made.
+ */
+export type HostTagData =
+  /** `<let>`/`<const>`: bind the initial value at render scope. */
+  | { kind: "binding"; init: string }
+  /** A `server` block: hoists and runs, exactly as `static` does. */
+  | { kind: "statement"; code: string }
+  | { kind: "html-comment" }
+  /** `<html-script>`/`<html-style>`: a literal element with a raw-text body. */
+  | { kind: "raw-element"; tag: string }
+  | { kind: "style" }
+  | { kind: "try" }
+  /** `<${expr}/>`: the target expression, and its children as `content`. */
+  | { kind: "dynamic"; expr: Expr; content: Block | null };
+
+/** Tag names this host lowers itself, rather than as a component or element. */
+const CLAIMED = new Set([
+  // `<const>` is deliberately absent: the core's own switch dispatches it to
+  // `resolveConst` before `claimsTag` is ever consulted, so an entry here
+  // would be dead code that reads as though this host owned the tag.
+  "let",
+  "server",
+  "html-comment",
+  "html-script",
+  "html-style",
+  "style",
+  "try",
+  DYNAMIC_TAG,
+]);
+
+function claimsTag(name: string): boolean {
+  return CLAIMED.has(name);
+}
+
+/**
+ * Resolves a claimed tag to the decision its emitter needs.
+ *
+ * Every rejection this host makes for its own tags happens here, during
+ * resolve, so a construct the target cannot express fails with a position
+ * rather than reaching an emitter that would have to re-derive why.
+ */
+function resolveHostTag(name: string, node: Node, ctx: Ctx): HostTagData {
+  if (name === DYNAMIC_TAG) {
+    const children = node.body?.body ?? [];
+    return {
+      kind: "dynamic",
+      expr: { code: expr(ctx, node.name), node: node.name },
+      content: hasContent(children)
+        ? {
+            params: [],
+            children: resolveChildren(ctx, children),
+            loc: {
+              line: node.loc?.start?.line ?? 0,
+              column: node.loc?.start?.column ?? 0,
+            },
+          }
+        : null,
+    };
+  }
+
+  if (name === "let" || name === "const") {
+    if (!node.var) {
+      fail(
+        `\`<${name}>\` without a variable name (write \`<${name}/x=1/>\`)`,
+        node,
+      );
+    }
+    rejectUnsupportedFields(ctx, node, `\`<${name}>\``, { var: true });
+    rejectInputShadowing(node.var, `\`<${name}>\``);
+    const value = attrByName(node, "value") ?? node.attributes?.[0];
+    // `<let/x/>` with no value is a declared-but-unset binding, which Marko
+    // renders as the empty string.
+    return {
+      kind: "binding",
+      init: value?.value ? expr(ctx, value.value) : "undefined",
+    };
+  }
+
+  if (name === "server") {
+    return {
+      kind: "statement",
+      code: sliceLoc(ctx, node.loc)
+        .trim()
+        .replace(/^server\s+/, ""),
+    };
+  }
+
+  if (name === "html-comment") {
+    rejectUnsupportedFields(ctx, node, "`<html-comment>`");
+    return { kind: "html-comment" };
+  }
+
+  if (name === "html-script" || name === "html-style") {
+    rejectUnsupportedFields(ctx, node, `\`<${name}>\``);
+    return { kind: "raw-element", tag: name.slice("html-".length) };
+  }
+
+  if (name === "style") {
+    rejectUnsupportedFields(ctx, node, "`<style>`");
+    return { kind: "style" };
+  }
+
+  // `<try>` with a `<@placeholder>` needs a second render pass over suspended
+  // content, which this target has no way to schedule.
+  const placeholder = (node.attributeTags ?? []).find(
+    (t: Node) => String(t.name?.value) === "@placeholder",
+  );
+  if (placeholder) {
+    fail(
+      "`<try>` with a `<@placeholder>` needs a second render pass over suspended content; a synchronous string render has nowhere to schedule it",
+      placeholder,
+    );
+  }
+  return { kind: "try" };
+}
+
 export const policy: Policy = {
   tags: TAGS,
   isElement,
@@ -648,6 +781,13 @@ export const policy: Policy = {
   orderAttrs,
   escapeFrom: "@mxlang/translator",
   emitSpecial,
+  claimsTag,
+  resolveHostTag,
+  // The resolver offers the host first refusal on a modifier so the
+  // diagnostic quotes Marko's own fix-it rather than the core's
+  // "standalone template" wording, which is `.mx` dialect vocabulary leaking
+  // into a Marko-parity target.
+  rejectModifier: (attr: Node) => emitModifier(undefined as never, attr),
 };
 
 /**

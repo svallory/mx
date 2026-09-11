@@ -109,10 +109,11 @@ function resolveAttr(ctx: Ctx, attr: Node): Attr {
 
   // `class:foo="x"` is a modifier Marko hands over as a base name plus a
   // modifier. Emitting only the base name renders `class="x"` — not a drop but
-  // a *wrong* attribute, which is worse. A host that lowers modifiers rejects
-  // or handles this in its own `resolveHostTag`/emitter; the core has no
-  // lowering for it.
+  // a *wrong* attribute, which is worse. The host gets first refusal so the
+  // diagnostic is in its own vocabulary (a Marko-parity target quotes Marko's
+  // own fix-it); the core's wording is only the fallback.
   if (attr.modifier) {
+    ctx.declarations.rejectModifier?.(attr);
     fail(
       `attribute modifier \`${attr.name}:${attr.modifier}\` is not supported in a standalone template`,
       attr,
@@ -373,7 +374,13 @@ function resolveStatement(ctx: Ctx, node: Node, name: string): IrNode {
   const loc = posOf(node);
 
   if (name === "import") {
-    return { kind: "Import", code: line, bindings: importBindings(line), loc };
+    const bindings = importBindings(line);
+    // Recorded *now*, not in `resolve`'s post-pass: a component call later in
+    // the body asks `isComponent`, which consults `ctx.imports`, so a binding
+    // registered only after the whole body resolved would make every
+    // imported component an unbound capitalized tag.
+    for (const binding of bindings) ctx.imports.add(binding);
+    return { kind: "Import", code: line, bindings, loc };
   }
   if (name === "static") {
     return { kind: "Static", code: line.replace(/^static\s+/, ""), loc };
@@ -633,8 +640,9 @@ export function resolve(ctx: Ctx, body: Node[]): Ir {
   for (const node of nodes) {
     switch (node.kind) {
       case "Import":
+        // The bindings were registered as the statement resolved; this only
+        // places the statement itself at module scope.
         ir.imports.push(node.code);
-        for (const binding of node.bindings) ctx.imports.add(binding);
         break;
       case "Static":
         ir.hoisted.push(node.code);
