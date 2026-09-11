@@ -1,10 +1,16 @@
 name: Zed extension upstream check
 
 on:
-  schedule:
-    # Every Monday at 09:00 UTC.
-    - cron: "0 9 * * 1"
-  workflow_dispatch: {}
+  # MX's weekly upstream drift check (schedule/workflow_dispatch, opening a PR
+  # on drift) was retired with the MX language (decision 68): MX was the only
+  # language here with a networked upstream to drift against. SolidMX's
+  # `vendor.sh` (packages/zed-extension/scripts/vendor.sh) has no `--check`
+  # mode at all — its highlights source is a local sibling package, so
+  # "check for drift" would only ever report success (decision 55: a gate
+  # that cannot fail is not a gate). Every remaining job here is
+  # pull_request-only; `solidmx-vendor-matches` below still calls
+  # packages/tree-sitter-solidmx's own `vendor.sh --check` — a different
+  # script, for a real drift check against that package's upstream pin.
   pull_request:
     paths:
       - "packages/zed-extension/**"
@@ -62,11 +68,10 @@ jobs:
           fi
 
   vendored-files-match:
-    # Regenerates languages/{mx,solidmx}/*.scm (no live upstream HEAD lookup —
-    # just what vendor.sh's normal mode already does) and diffs against
-    # what's committed. Catches a hand-edit of those files, which UPSTREAM.md
-    # says never to do, without depending on network drift state (that's the
-    # separate `check` job below, cron/dispatch only).
+    # Regenerates languages/solidmx/*.scm (no live upstream HEAD lookup — just
+    # what vendor.sh's normal mode already does) and diffs against what's
+    # committed. Catches a hand-edit of those files, which UPSTREAM.md says
+    # never to do.
     #
     # SolidMX's highlights.scm source (packages/tree-sitter-solidmx/queries)
     # is a sibling package in this same checkout, not a network fetch, so
@@ -80,65 +85,9 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./scripts/vendor.sh
       - run: |
-          if ! git diff --exit-code -- languages/mx languages/solidmx; then
-            echo "languages/{mx,solidmx}/*.scm doesn't match what vendor.sh generates." >&2
-            echo "Never hand-edit those files — edit overlay/<lang>/*.scm, base/solidmx/*.scm," >&2
-            echo "or add a patches/*.patch (MX only) and rerun vendor.sh." >&2
+          if ! git diff --exit-code -- languages/solidmx; then
+            echo "languages/solidmx/*.scm doesn't match what vendor.sh generates." >&2
+            echo "Never hand-edit those files — edit overlay/solidmx/*.scm or" >&2
+            echo "base/solidmx/*.scm and rerun vendor.sh." >&2
             exit 1
           fi
-
-  check:
-    if: github.event_name != 'pull_request'
-    permissions:
-      contents: write
-      pull-requests: write
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/zed-extension
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check for upstream drift
-        id: check
-        run: |
-          set +e
-          ./scripts/vendor.sh --check
-          rc=$?
-          set -e
-          if [[ "$rc" -eq 0 ]]; then
-            echo "drift=false" >> "$GITHUB_OUTPUT"
-          elif [[ "$rc" -eq 1 ]]; then
-            echo "drift=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "vendor.sh --check failed (exit $rc) — not a drift result, see logs above." >&2
-            exit 1
-          fi
-
-      - name: Update pins to upstream HEAD
-        if: steps.check.outputs.drift == 'true'
-        run: ./scripts/vendor.sh --update-pins
-
-      - name: Regenerate vendored queries
-        if: steps.check.outputs.drift == 'true'
-        run: ./scripts/vendor.sh
-
-      - name: Open PR on drift
-        if: steps.check.outputs.drift == 'true'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
-        with:
-          commit-message: "chore(zed-extension): vendor upstream MX query/grammar drift"
-          title: "chore(zed-extension): upstream drift detected"
-          body: |
-            `scripts/vendor.sh --check` found the pinned `marko-js/tree-sitter` and/or
-            `marko-js/zed` revs are behind their upstream HEAD. `scripts/vendor.sh
-            --update-pins` bumped `TS_REV`/`ZED_REV` to current upstream HEAD and
-            `scripts/vendor.sh` regenerated `languages/mx/*.scm` from the new pins —
-            review the diff before merging. If the grammar rev moved, also bump
-            `extension.toml`'s `[grammars.marko]` rev to match `TS_REV` before merging.
-
-            See `packages/zed-extension/UPSTREAM.md` "Bump procedure".
-          branch: chore/zed-extension-upstream-bump
-          add-paths: |
-            packages/zed-extension/scripts/vendor.sh
-            packages/zed-extension/languages/mx/*.scm
