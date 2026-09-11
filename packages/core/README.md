@@ -176,6 +176,24 @@ buffer, `blockFunction`'s `() => string` blocks, `VOID_TAGS`, `DYNAMIC_TAG`, and
 the emitted module shape (the `escape` import, the author's hoisted module
 scope, their `Input` interface, one default-exported render function).
 
+`emitStatement`'s statement-tag handling (`import`, `static`, `export
+interface Input`) hoists each to real module scope, verbatim or lightly
+rewritten. **Any top-level `export` statement** — `export const`, `export
+function`, `export class`, `export let`, `export var` — hoists the same way
+`import` does: as a real, verbatim module-scope export of the compiled
+module, not only `export interface Input`. This is a general core capability
+for every host (`@mxlang/translator`'s vanilla string host included, not
+only `@mxlang/astro`), added for `@mxlang/astro`'s page mode (decision 76b):
+a `.mx` file placed under `src/pages` needs `export const getStaticPaths =
+...`/`export const prerender = ...` to reach Astro's router as genuine named
+exports of the compiled module, the same way a `.astro` page's own
+frontmatter does. Verified this is within decision 72's "strict Marko
+subset" rule, not an MX-only extension: real Marko 6 compiles and renders
+`export function`/`export let` at a template's top level identically
+(`packages/translator/fixtures-marko/export-statements`, checked against
+`oracle:marko`). Any *non*-`export` top-level statement tag is still a
+`fail()` naming the construct.
+
 That model is not hidden behind the policy, deliberately. A host that emits
 strings (`@mxlang/translator` today, Astro next) reuses it as is, which is most
 of why a second string host is nearly free. A JSX host (SolidMX, phase 4)

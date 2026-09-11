@@ -131,10 +131,13 @@ cd packages/translator && bun run example nested-layout
 cd examples/mx-vite && bun run build
 ```
 
-`examples/astro-static` is the Astro host's example: a three-page Astro site
-whose components are `.mx` (props, a default slot, a named slot, a `.marko`
-alias import, one component composed from another), prerendered with
-`output: "static"` and shipping no client JS at all.
+`examples/astro-static` is the Astro host's example: an Astro site with `.mx`
+components (props, a default slot, a named slot, a `.marko` alias import, one
+component composed from another) and, per decision 76b, `.mx` files directly
+under `src/pages` as pages — one through a layout with a `static`-block props
+and `<if>`/`<for>`, one with no layout writing its own full document, and a
+dynamic `posts/[slug].mx` with `getStaticPaths`. Every page is prerendered
+with `output: "static"` and ships no client JS at all.
 
 ```
 cd examples/astro-static

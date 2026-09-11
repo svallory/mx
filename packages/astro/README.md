@@ -126,6 +126,75 @@ whose whole claim is shipping no client JS.
 So `renderToStaticMarkup` throws when Astro's `metadata.hydrate` is set.
 `examples/astro-static/e2e/build-errors.spec.ts` asserts the failing build.
 
+## Pages
+
+Decision 76b: an `.mx` file directly under `src/pages` is a **page**, not a
+component. The integration calls Astro's `addPageExtension(".mx")`, so
+`src/pages/about.mx` routes to `/about` the way `about.astro` would.
+`.marko` is **not** registered as a page extension — it stays a
+component-only alias, so a `.marko` file placed under `src/pages` is invisible
+to Astro's router rather than half-page, half-component.
+
+```mx
+// src/pages/hello.mx
+export const layout = "../layouts/Base.astro";
+export const title = "Hello";
+
+static const items = ["one", "two"];
+
+<h1>${title}</h1>
+<ul>
+  <for|item, i| of=items>
+    <li>${i}: ${item}</li>
+  </for>
+</ul>
+```
+
+**What `input` receives**: `{ ...props, params, url }` — the page's own
+Astro props (from `getStaticPaths`'s `props`, or the parent route's props for
+a nested page), plus `Astro.params` and `Astro.url` merged in under those
+names. A dynamic route reads `input.params.slug` the same way a `.astro` page
+reads `Astro.params.slug`.
+
+**`layout`**: `export const layout = "../layouts/Base.astro";` in the page's
+TypeScript section (a plain string literal; Marko allows a top-level
+`export`, mirrored here for exactly this one purpose). When present, the
+page's rendered HTML becomes the layout's default slot, and the layout
+receives `{ frontmatter, url, params }` as props — `frontmatter` being every
+other top-level `export const NAME = ...;` the page declares, mirroring
+Markdown's own `layout` behaviour (`astro/dist/vite-plugin-markdown`: the
+content becomes the layout's slot, frontmatter keys become
+`Astro.props.frontmatter`). Without `layout`, the rendered HTML is used as-is
+— the page writes its own `<html>` or composes through an ordinary MX
+`content` prop.
+
+**Named exports pass through.** `getStaticPaths`, `prerender`, and any other
+top-level `export` in the page's TypeScript section reach Astro's router
+unchanged — `@mxlang/core`'s `emitStatement` hoists any `export` (not only
+`export interface Input`) to real module scope, so a dynamic route works the
+same way it would in a `.astro` file:
+
+```mx
+// src/pages/posts/[slug].mx
+export const getStaticPaths = () => [
+  { params: { slug: "first" }, props: { title: "First post" } },
+  { params: { slug: "second" }, props: { title: "Second post" } },
+];
+
+export const prerender = true;
+
+<h1>${input.title}</h1>
+```
+
+**Strict policy applies here too.** A page compiles under the same
+`strictPolicy` as components: `<let>` (and the rest of the stateful tags) in
+a page is a build error naming the construct and the file, exactly as in a
+component.
+
+**Limits**: a page has no `Astro.slots` — nothing renders a page inside
+another component's slot — and, like components, `client:*` on a page-mode
+MX file fails the build for the same reason (nothing to hydrate).
+
 ## Typing `.mx` imports
 
 Add the ambient declarations to your project's `src/env.d.ts`:
@@ -145,10 +214,12 @@ language service exists follows decision 62's precedent.
 
 ## Example
 
-`examples/astro-static` is a three-page Astro site built entirely from `.mx`
-components: props, a default slot, a named slot, a `.marko` alias import, and
-one component composed from another. Its e2e suite asserts the rendered HTML
-and, separately, that both expected-to-fail builds fail for the right reason.
+`examples/astro-static` is an Astro site built from `.mx`: components (props,
+a default slot, a named slot, a `.marko` alias import, one component composed
+from another) and pages (a layout page with a `static`-block and
+`<if>`/`<for>`, a page with no layout, and a dynamic `posts/[slug].mx` with
+`getStaticPaths`). Its e2e suite asserts the rendered HTML for every page and,
+separately, that both expected-to-fail builds fail for the right reason.
 
 ```
 cd examples/astro-static

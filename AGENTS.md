@@ -932,9 +932,13 @@ itself or in Bun's resolver generally — vitest is unaffected because it does
 not resolve bare specifiers through `tsconfig.json` `paths` the same way.
 
 `examples/astro-static` is the Astro host's example: an Astro 7.3.2 site
-(`output: "static"`, pinned exact in its own `package.json`) with three pages
-built from `.mx` components — props and a default slot, a named slot, and one
-component composed from another with a `.marko` alias import inside.
+(`output: "static"`, pinned exact in its own `package.json`) with `.mx`
+components — props and a default slot, a named slot, and one component
+composed from another with a `.marko` alias import inside — and, per decision
+76b, `.mx` **pages** directly under `src/pages`: `mx-page.mx` (a `layout`
+export, props from a `static` block, `<if>`, `<for>`), `no-layout.mx` (no
+`layout`, writes its own full document), and `posts/[slug].mx` (`getStaticPaths`
+returning two entries, `prerender = true`).
 
 ```
 cd examples/astro-static
@@ -944,16 +948,57 @@ bun run e2e        # headless Chromium over dist/, plus the two error builds
 
 Its `e2e/` holds two specs. `pages.spec.ts` builds once, serves `dist/` over a
 bare `node:http` server and asserts the rendered HTML (the same Vitest-driving-
-raw-playwright shape as `examples/mx-vite/e2e/pages.spec.ts`), including that
-no page contains a `<script>` — the host's whole claim. `build-errors.spec.ts`
-asserts the two builds that must fail: `<let>` in an MX component (the strict
-policy) and `client:load` on an MX component (the renderer's own error, since
-Astro raises none — see the package section above). Both pages live in
-`error-fixtures/`, **outside** `src/pages/`, and each is copied in for a single
-build and removed afterwards — a page that is meant to break the build cannot
-also be part of the build every other test depends on.
-`vitest.config.ts` sets `fileParallelism: false`, since each spec runs a real
-`astro build`.
+raw-playwright shape as `examples/mx-vite/e2e/pages.spec.ts`) for every
+component page and every `.mx` page (layout applied, static-block props,
+`<if>`/`<for>`, both `getStaticPaths` entries, `input.params.slug` reaching
+the dynamic route), including that no page contains a `<script>` — the host's
+whole claim. `build-errors.spec.ts` asserts the two builds that must fail:
+`<let>` in an MX component (the strict policy) and `client:load` on an MX
+component (the renderer's own error, since Astro raises none — see the
+package section above). Both pages live in `error-fixtures/`, **outside**
+`src/pages/`, and each is copied in for a single build and removed afterwards
+— a page that is meant to break the build cannot also be part of the build
+every other test depends on. `vitest.config.ts` sets `fileParallelism: false`,
+since each spec runs a real `astro build`.
+
+**`.mx` pages** (decision 76b, `packages/astro/src/index.ts` +
+`packages/astro/src/vite-pages.ts`): the integration calls Astro's
+`addPageExtension(".mx")` — `.marko` is deliberately not registered as a page
+extension, staying a component-only alias. A second Vite plugin (`mxPages`,
+`enforce: "post"`, scoped to `<srcDir>/pages/`) runs after
+`@mxlang/vite-plugin`'s own `.mx` → TS compile in the *same* transform pass
+and rewrites the already-compiled module — by the time this stage runs the
+bundler has already stripped TypeScript types from the code (measured: no
+`: Input`/`: string` annotations survive), so the rewrite injects plain JS,
+not TS. It matches `@mxlang/translator`'s exact branded tail (`function
+render(input) {...}; Object.defineProperty(render,
+Symbol.for("mx.component"), ...); export default render;` — see
+`translate.ts`'s `brandRender`) and replaces it with an Astro
+`createComponent` factory built with Astro's own
+`renderTemplate`/`renderComponent`/`unescapeHTML` runtime helpers
+(`astro/runtime/server/index.js`), never a hand-rolled factory invocation —
+`renderComponent` is the same helper a compiled `.astro` template uses to
+call a nested component, so this stays correct if Astro's factory-calling
+convention changes shape. `input` is `{ ...props, params: astro.params, url:
+astro.url }`, `astro` obtained via `result.createAstro(props, slots)`
+(verified against `astro/dist/types/public/internal.d.ts`). A page's `export
+const layout = "...";` (a string literal, matched and stripped from the
+compiled module) is turned into a real `import` of that `.astro` file, and
+every other top-level `export const NAME = ...;` the page declares becomes a
+`frontmatter` key passed to the layout, mirroring Markdown's own `layout`
+behaviour (`astro/dist/vite-plugin-markdown`).
+
+This rewrite is possible at all only because `@mxlang/core`'s `emitStatement`
+(`packages/core/src/core.ts`) now hoists **any** `export` statement — not
+only `export interface Input` — to real module scope verbatim, the same way
+it already hoists `import`. Before this change, an MX file's TypeScript
+section could only ever `export interface Input`; any other top-level
+`export` was a hard compile error ("a standalone template may only `export
+interface Input`..."). This was a shared-core change (not `translate.ts`'s
+`brandRender`, which `oracle-shape` owns) needed so a page's `export const
+getStaticPaths = ...`/`export const prerender = ...` can reach Astro's router
+as real named exports of the compiled module, exactly as a `.astro` page's
+own frontmatter does.
 
 `examples/mx-vite` is a minimal static-site build exercising
 `@mxlang/vite-plugin`'s `.mx` handling (not `.solid.mx`): two `.mx` pages
