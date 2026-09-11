@@ -186,8 +186,15 @@ export type Disposition =
  * stops implementing them.
  */
 export type Policy = HostDeclarations & {
-  /** Emits a call to a component (an import, a `<define>`, or a discovered tag). */
-  emitComponent(ctx: Ctx, node: Node, name: string): void;
+  /**
+   * Emits a call to a component (an import, a `<define>`, or a discovered tag).
+   *
+   * Optional because a host on the IR path (`HostOptions.emitIr`) never
+   * reaches this walk at all — its own `Emitter.component` does the work. A
+   * host still using the string walk must supply it, and `emitTag` fails
+   * loudly rather than dropping the call if it does not.
+   */
+  emitComponent?(ctx: Ctx, node: Node, name: string): void;
   /** Handles `class:foo="x"`-style attribute modifiers, or rejects them. */
   emitModifier?(ctx: Ctx, attr: Node): boolean;
   /**
@@ -1104,7 +1111,16 @@ function emitTag(ctx: Ctx, node: Node): void {
   }
 
   if (ctx.policy.isComponent(name, ctx)) {
-    ctx.policy.emitComponent(ctx, node, name);
+    // Bound to a local before the guard: a second property access is a fresh
+    // expression TypeScript does not keep narrowed.
+    const emitComponent = ctx.policy.emitComponent;
+    if (!emitComponent) {
+      fail(
+        `\`<${name}>\` is a component call, but this host supplies no \`emitComponent\` for the string-emit walk; a host that resolves to the IR should compile through \`HostOptions.emitIr\` instead`,
+        node,
+      );
+    }
+    emitComponent(ctx, node, name);
     return;
   }
 

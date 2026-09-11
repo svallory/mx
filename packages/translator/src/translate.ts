@@ -30,22 +30,15 @@
 import {
   attrByName,
   type Block,
-  blockFunction,
   type Ctx,
   type Disposition,
   DYNAMIC_TAG,
   type Expr,
-  emitChildren,
-  emitExpression,
-  emitLiteral,
   expr,
   fail,
   hasContent,
   type Node,
   type Policy,
-  propKey,
-  push,
-  quote,
   rejectUnsupportedFields,
   resolveChildren,
   sliceLoc,
@@ -143,35 +136,6 @@ const TAGS: Record<string, Disposition> = {
 };
 
 /**
- * `<let>` and `<const>` bind a value at render scope.
- *
- * `<let>` is reactive state in full Marko, but its *initial value* is an
- * ordinary expression that Marko's own server render evaluates and renders
- * (`<let/count=5/>` then `${count}` emits `5`). Since there is no update path
- * in a one-shot render, binding it as a `const` reproduces Marko's output
- * exactly. This is decision 65's "evaluate initial value" row.
- */
-function emitBinding(ctx: Ctx, node: Node, name: string): boolean {
-  if (name !== "let" && name !== "const") return false;
-  if (!node.var) {
-    fail(
-      `\`<${name}>\` without a variable name (write \`<${name}/x=1/>\`)`,
-      node,
-    );
-  }
-  rejectUnsupportedFields(ctx, node, `\`<${name}>\``, { var: true });
-  rejectInputShadowing(node.var, `\`<${name}>\``);
-  const value = attrByName(node, "value") ?? node.attributes?.[0];
-  // `<let/x/>` with no value is a declared-but-unset binding, which Marko
-  // renders as the empty string. `<const/x/>` never reaches here — the core
-  // switch dispatches `const` to `emitConst`, which requires a value, and
-  // Marko itself refuses a valueless `<const>` ("requires a value").
-  const init = value?.value ? expr(ctx, value.value) : "undefined";
-  push(ctx, `const ${expr(ctx, node.var)} = ${init};`);
-  return true;
-}
-
-/**
  * Rejects a binding that would shadow the render function's `input` parameter.
  *
  * The emitted module is `function (input: Input)`, so `<let/input=1/>` lowers
@@ -219,287 +183,6 @@ function bindingNames(pattern: Node): string[] {
  */
 export function escapeComment(text: string): string {
   return text.replace(/>/g, "&gt;");
-}
-
-/**
- * A component call, with Marko's own props convention.
- *
- * Attribute tags become *renderables*: `<@header>x</@header>` reaches the
- * component as `input.header`, and the component renders it with
- * `<${input.header}/>`. A renderable is represented here as a
- * `() => string` — the same shape `<${expr}/>` calls — so the two sides
- * agree. A *repeated* attribute tag becomes an array of them, which is what
- * Marko does and what lets a component write
- * `<for|it| of=input.item><${it}/></for>`.
- *
- * Ordinary children become `content`, not `children`: that is the prop name
- * Marko's own `<${input.content}/>` reads.
- */
-function emitComponent(ctx: Ctx, node: Node, name: string): void {
-  if (
-    (ctx.defines.has(name) || ctx.imports.has(name)) &&
-    !/^[A-Z]/.test(name)
-  ) {
-    fail(
-      `Local variables must be in a dynamic tag unless they are PascalCase. Use \`<\${${name}}/>\` or rename to \`${name[0]?.toUpperCase()}${name.slice(1)}\`.`,
-      node,
-    );
-  }
-
-  rejectUnsupportedFields(ctx, node, `\`<${name}>\``, {
-    attributeTags: true,
-    args: true,
-  });
-
-  const props = new Map<string, string>();
-  const spreads: string[] = [];
-
-  for (const attr of node.attributes ?? []) {
-    if (attr.type === "MarkoSpreadAttribute") {
-      spreads.push(expr(ctx, attr.value));
-      continue;
-    }
-    if (attr.arguments) {
-      fail(
-        `attribute method \`${attr.name}(...)\` is an event handler; it configures behaviour after render and has no place in a string render, but it is passed to the component untouched only when the component is a real Marko component — this target cannot`,
-        attr,
-      );
-    }
-    if (attr.bound) {
-      // `:=` binds two ways in full Marko. A one-shot render has no update
-      // path, so the *initial* value is what reaches the component — the
-      // "evaluate initial value" row of decision 65.
-      props.set(attr.name, expr(ctx, attr.value));
-      continue;
-    }
-    if (attr.modifier) {
-      fail(
-        `attribute modifier \`${attr.name}:${attr.modifier}\` on a component call is not supported`,
-        attr,
-      );
-    }
-    const value = attr.value;
-    if (value?.type === "BooleanLiteral" && value.value === true) {
-      props.set(attr.name, "true");
-    } else if (value?.type === "StringLiteral") {
-      props.set(attr.name, quote(value.value));
-    } else {
-      props.set(attr.name, expr(ctx, value));
-    }
-  }
-
-  // A repeated attribute tag is an array, exactly as Marko does it.
-  const blocks = new Map<string, string[]>();
-  for (const block of node.attributeTags ?? []) {
-    if (block.type !== "MarkoTag") continue;
-    const blockName = String(block.name.value).replace(/^@/, "");
-    const params = (block.body?.params ?? [])
-      .map((p: Node) => expr(ctx, p))
-      .join(", ");
-    const fn = blockFunction(ctx, block.body?.body ?? [], params);
-    const existing = blocks.get(blockName);
-    if (existing) existing.push(fn);
-    else blocks.set(blockName, [fn]);
-  }
-  for (const [blockName, fns] of blocks) {
-    props.set(
-      blockName,
-      fns.length === 1 ? (fns[0] as string) : `[${fns.join(", ")}]`,
-    );
-  }
-
-  const children = node.body?.body ?? [];
-  if (hasContent(children)) {
-    props.set("content", blockFunction(ctx, children));
-  }
-
-  const defineParams = ctx.defines.get(name);
-  if (defineParams) {
-    if (spreads.length > 0) {
-      fail(
-        `spreading into \`<${name}>\` is not supported: a <define> is called positionally, and a spread's keys are only known at run time`,
-        node,
-      );
-    }
-    // `<Row(input.a)/>` — Marko's tag-argument form, and the ordinary way to
-    // call a `<define>` that declares params. The arguments are positional and
-    // already parsed, so they pass straight through. Falling back to the
-    // named-prop lookup keeps `<Row it=x/>` working for the same define.
-    const args =
-      node.arguments && node.arguments.length > 0
-        ? node.arguments.map((argument: Node) => expr(ctx, argument))
-        : defineParams.map((param) => props.get(param) ?? "undefined");
-    push(ctx, `out += ${name}(${args.join(", ")});`);
-    return;
-  }
-
-  const parts = [
-    ...spreads.map((s) => `...${s}`),
-    ...[...props].map(([key, value]) => `${propKey(key)}: ${value}`),
-  ];
-  push(ctx, `out += ${name}({ ${parts.join(", ")} });`);
-}
-
-/**
- * `<${expr}/>` — Marko's dynamic tag, and how a renderable is rendered.
- *
- * The value may be a component function, a renderable block, or a tag *name*
- * as a string. All three are resolved at run time by `renderDynamic`, which
- * is emitted into the module rather than imported, keeping the runtime
- * surface at exactly one helper (`escape`).
- */
-function emitDynamicTag(ctx: Ctx, node: Node): void {
-  const target = expr(ctx, node.name);
-  const props = new Map<string, string>();
-  for (const attr of node.attributes ?? []) {
-    if (attr.type === "MarkoSpreadAttribute") continue;
-    const value = attr.value;
-    if (value?.type === "BooleanLiteral" && value.value === true) {
-      props.set(attr.name, "true");
-    } else if (value?.type === "StringLiteral") {
-      props.set(attr.name, quote(value.value));
-    } else {
-      props.set(attr.name, expr(ctx, value));
-    }
-  }
-  const children = node.body?.body ?? [];
-  if (hasContent(children)) {
-    props.set("content", blockFunction(ctx, children));
-  }
-  const parts = [...props].map(([key, value]) => `${propKey(key)}: ${value}`);
-  push(ctx, `out += renderDynamic(${target}, { ${parts.join(", ")} });`);
-}
-
-/**
- * `<html-comment>text</html-comment>` -> a real HTML comment.
- *
- * Marko's plain `<!-- -->` comments are stripped from the output; this tag is
- * how a Marko author emits one that survives, so it lowers to the comment
- * itself.
- */
-function emitSpecial(ctx: Ctx, node: Node, name: string): boolean {
-  if (name === DYNAMIC_TAG) {
-    emitDynamicTag(ctx, node);
-    return true;
-  }
-  if (emitBinding(ctx, node, name)) return true;
-
-  // A hyphenated name with no taglib entry is Marko's failed custom-element
-  // lookup ("Unable to find entry point for custom tag `<my-widget>`",
-  // verified against `@marko/compiler` 5.42.5 / `marko@6.3.51`; see fixture
-  // `unknown-element`), not literal HTML. Checked ahead of `isComponent`/
-  // `isElement` so it fires before the generic "unknown tag" message, which
-  // is this dialect's own wording rather than Marko's.
-  if (
-    name.includes("-") &&
-    !ctx.defines.has(name) &&
-    !ctx.imports.has(name) &&
-    ctx.lookup?.getTag(name) === undefined
-  ) {
-    fail(`Unable to find entry point for custom tag \`<${name}>\`.`, node);
-  }
-
-  // A `server` block is server-side code, and this *is* the server render, so
-  // it runs. Verified against Marko: `server const S = 41 + 1` followed by
-  // `${S}` renders `42`. It hoists to module scope exactly as `static` does —
-  // classifying it as inert (an earlier reading) would have silently dropped
-  // a binding the rest of the template reads.
-  if (name === "server") {
-    const line = sliceLoc(ctx, node.loc).trim();
-    ctx.hoisted.push(line.replace(/^server\s+/, ""));
-    return true;
-  }
-
-  if (name === "html-comment") {
-    rejectUnsupportedFields(ctx, node, "`<html-comment>`");
-    emitLiteral(ctx, "<!--");
-    for (const child of node.body?.body ?? []) {
-      if (child.type === "MarkoText") {
-        // A static run is escaped at compile time by the same rule, and
-        // merged into the surrounding literal so a fully static comment stays
-        // one `out +=`.
-        emitLiteral(ctx, escapeComment(child.value));
-      } else if (child.type === "MarkoPlaceholder") {
-        // Filtering placeholders out (the previous behaviour) silently dropped
-        // `<html-comment>build ${input.sha}</html-comment>` down to
-        // `<!--build -->`. Marko lowers them, through its own
-        // `_escape_comment`.
-        push(ctx, `out += escapeComment(${expr(ctx, child.value)});`);
-      } else if (child.type !== "MarkoComment") {
-        fail(
-          "`<html-comment>` takes only text and placeholders; a comment cannot contain markup",
-          child,
-        );
-      }
-    }
-    emitLiteral(ctx, "-->");
-    return true;
-  }
-
-  // `<html-script>`/`<html-style>` are Marko's spelling of a literal
-  // `<script>`/`<style>` element, since the bare names are core tags.
-  if (name === "html-script" || name === "html-style") {
-    const tag = name.slice("html-".length);
-    rejectUnsupportedFields(ctx, node, `\`<${name}>\``);
-    push(ctx, `out += ${quote(`<${tag}>`)};`);
-    for (const child of node.body?.body ?? []) {
-      if (child.type === "MarkoText")
-        push(ctx, `out += ${quote(child.value)};`);
-      else if (child.type === "MarkoPlaceholder") {
-        emitExpression(ctx, expr(ctx, child.value), child.escape);
-      }
-    }
-    push(ctx, `out += ${quote(`</${tag}>`)};`);
-    return true;
-  }
-
-  // `<style>` is a core tag in Marko (scoped styles); its body is raw text.
-  if (name === "style") {
-    rejectUnsupportedFields(ctx, node, "`<style>`");
-    const text = (node.body?.body ?? [])
-      .filter((c: Node) => c.type === "MarkoText")
-      .map((c: Node) => c.value)
-      .join("");
-    push(ctx, `out += ${quote(`<style>${text}</style>`)};`);
-    return true;
-  }
-
-  // `<try>` without a `<@placeholder>` is a plain try/catch: the body renders,
-  // and `<@catch>` renders instead if it throws. A `<@placeholder>` needs a
-  // second render pass over suspended content, which this target has no way to
-  // schedule.
-  if (name === "try") {
-    const tags: Node[] = node.attributeTags ?? [];
-    const placeholder = tags.find(
-      (t: Node) => String(t.name?.value) === "@placeholder",
-    );
-    if (placeholder) {
-      fail(
-        "`<try>` with a `<@placeholder>` needs a second render pass over suspended content; a synchronous string render has nowhere to schedule it",
-        placeholder,
-      );
-    }
-    const katch = tags.find((t: Node) => String(t.name?.value) === "@catch");
-    push(ctx, "try {");
-    ctx.indent++;
-    emitChildren(ctx, node.body?.body ?? []);
-    ctx.indent--;
-    if (katch) {
-      const params = (katch.body?.params ?? [])
-        .map((p: Node) => expr(ctx, p))
-        .join(", ");
-      push(ctx, `} catch (${params || "_error"}) {`);
-      ctx.indent++;
-      emitChildren(ctx, katch.body?.body ?? []);
-      ctx.indent--;
-      push(ctx, "}");
-    } else {
-      push(ctx, "} catch {}");
-    }
-    return true;
-  }
-
-  return false;
 }
 
 /**
@@ -552,40 +235,6 @@ function isComponent(name: string, ctx: Ctx): boolean {
 }
 
 /**
- * `class` and `style` take structured values in Marko, and render as a joined
- * string rather than as the value's own `String()` form.
- *
- * `class={a: true, b: false}` renders `class="a"`; `class=["x", {y: true}]`
- * renders `class="x y"`; `style={color: "red", top: 0}` renders
- * `style="color:red;top:0"`. All three measured against Marko's own server
- * render. Interpolating the raw value instead would emit `[object Object]` —
- * a silently wrong attribute rather than a visible failure.
- */
-function attrValue(
-  _ctx: Ctx,
-  name: string,
-  source: string,
-): string | undefined {
-  if (name === "class") return `classValue(${source})`;
-  if (name === "style") return `styleValue(${source})`;
-  return undefined;
-}
-
-/**
- * `value:=expr` binds two ways in full Marko: the initial value renders, and
- * later edits write back through the binding. A one-shot render has no write
- * path, so the initial value is the whole of it — decision 65's "evaluate
- * initial value" row, and exactly what Marko's own server render emits.
- */
-function emitBoundAttr(ctx: Ctx, attr: Node): boolean {
-  const source = attrValue(ctx, attr.name, expr(ctx, attr.value));
-  emitLiteral(ctx, ` ${attr.name}="`);
-  emitExpression(ctx, source ?? expr(ctx, attr.value), true);
-  emitLiteral(ctx, '"');
-  return true;
-}
-
-/**
  * `class:foo` / `style:foo` — rejected, with this dialect's own message.
  *
  * The brief asked for these to lower to Marko's semantics. Marko 5.42.5 /
@@ -615,28 +264,6 @@ function emitModifier(_ctx: Ctx, attr: Node): boolean {
     `\`${attr.name}:${attr.modifier}\` is not a valid attribute; Marko rejects this form too — write \`${attr.name}={ ${attr.modifier}: condition }\``,
     attr,
   );
-}
-
-/**
- * `<input value=…>` emits `value` before every other attribute, as Marko does.
- *
- * Not cosmetic and not Marko being arbitrary: a browser parsing
- * `<input type="checkbox" value="x">` applies `type` first, and for some
- * types that resets or reinterprets a `value` seen afterwards. Marko hoists
- * `value` so the parsed result matches the author's intent, and matching
- * Marko byte-for-byte is this package's whole claim, so the same hoist
- * happens here. Verified against Marko's own render:
- * `<input type="text" value=input.v disabled>` emits
- * `<input value=hello type=text disabled>`.
- */
-function orderAttrs(tagName: string, attrs: Node[]): Node[] {
-  if (tagName !== "input") return attrs;
-  const index = attrs.findIndex(
-    (a: Node) => a.type === "MarkoAttribute" && a.name === "value",
-  );
-  if (index <= 0) return attrs;
-  const value = attrs[index] as Node;
-  return [value, ...attrs.slice(0, index), ...attrs.slice(index + 1)];
 }
 
 /**
@@ -773,14 +400,8 @@ export const policy: Policy = {
   tags: TAGS,
   isElement,
   isComponent,
-  emitComponent,
-  attrValue,
   checkBinding: rejectInputShadowing,
-  emitBoundAttr,
-  emitModifier,
-  orderAttrs,
   escapeFrom: "@mxlang/translator",
-  emitSpecial,
   claimsTag,
   resolveHostTag,
   // The resolver offers the host first refusal on a modifier so the
