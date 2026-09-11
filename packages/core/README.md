@@ -23,7 +23,7 @@ It depends on `@marko/compiler` and nothing else.
 | The two front doors (`compileSource`, `parseFragment`) | Stateful tags (`<let>`, `<effect>`, `:=`), through the three hooks |
 | `escape` | Its own integration: a Vite plugin, a Bun loader, a TypeScript plugin |
 
-`@mxlang/translator` is the first host (vanilla HTML strings); SolidMX and
+`@mxlang/html` is the first host (vanilla HTML strings); SolidMX and
 Astro follow.
 
 ## The HostDeclarations contract
@@ -129,7 +129,7 @@ second Babel dependency:
   from the same instance anyway.
 - **The alternative is worse.** Adding `@babel/parser` + `@babel/traverse` as
   real dependencies buys a second copy of Babel, a second version to keep in
-  step, and the cross-instance problem above. `@mxlang/translator` used to reach
+  step, and the cross-instance problem above. `@mxlang/html` used to reach
   for `@mxlang/parser` (the *SolidMX parser* package, a vendored `@babel/parser`
   fork) for exactly one `parse` call; dropping that is what leaves this package
   with a single dependency.
@@ -154,7 +154,7 @@ enclosing file. The consumer is a host whose MX lives inside another language
 (SolidMX's `.solid.mx`). This is the stopgap
 `notes/research/marko-seam-spikes.md` spike 1 measured, not a fix: the fix is an
 additive base-position parameter upstream, which MX still intends to send.
-SolidMX's own bridge (`packages/mx-parser/src/mx/bridge.ts`) is untouched until
+SolidMX's own bridge (`packages/parser/src/mx/bridge.ts`) is untouched until
 phase 4 switches it over. Documented limits:
 
 - Marko's own nodes (`MarkoTag`, `MarkoAttribute`, …) carry **no** numeric
@@ -230,7 +230,7 @@ is an `ObjectExpression` test, not a string test.
 4. **Wire it.** Pass the required `emitIr` in `HostOptions`; the core resolves
    and hands your emitter the `Ir`.
 
-**The string worked example is `@mxlang/translator`** (`src/emitter.ts`): the vanilla
+**The string worked example is `@mxlang/html`** (`src/emitter.ts`): the vanilla
 HTML host, an `Emitter<string[]>` that accumulates `out +=` lines. It is the
 one to read, because it reproduces its predecessor's output byte for byte —
 including two details that look accidental and are not: literals merge across

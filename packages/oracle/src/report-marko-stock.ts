@@ -7,7 +7,7 @@ import { renderTranslator } from "./translator-render";
 
 /**
  * `oracle:marko`'s one table (decisions 66, 68): parity between Marko's own
- * toolchain and `@mxlang/translator` for the stock `.marko` fixture set.
+ * toolchain and `@mxlang/html` for the stock `.marko` fixture set.
  *
  * There is no dialect to compare it against any more (decision 68 retired
  * `.mx` and `@mxlang/html`), so this asks a single, narrow question: for
@@ -220,7 +220,7 @@ export async function runStockTable(): Promise<{
 
   const nameWidth = Math.max(8, ...rows.map((r) => r.fixture.length));
   console.log("");
-  console.log("=== stock .marko fixtures (@mxlang/translator) ===");
+  console.log("=== stock .marko fixtures (@mxlang/html) ===");
   console.log(
     `${"fixture".padEnd(nameWidth)}  marko            translator       verdict`,
   );

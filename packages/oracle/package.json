@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@mxlang/parser": "workspace:*",
-    "@mxlang/translator": "workspace:*"
+    "@mxlang/html": "workspace:*"
   },
   "devDependencies": {
     "@marko/compiler": "5.42.5",

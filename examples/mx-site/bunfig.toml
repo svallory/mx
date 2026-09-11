@@ -1,1 +1,1 @@
-preload = ["@mxlang/translator/bun"]
+preload = ["@mxlang/html/bun"]

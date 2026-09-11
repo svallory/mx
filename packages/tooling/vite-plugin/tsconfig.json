@@ -1,0 +1,13 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@mxlang/parser": ["../parser/src/public.d.ts"]
+    }
+  },
+  "include": ["src"]
+}

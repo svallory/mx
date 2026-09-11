@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@mxlang/astro": "workspace:*",
-    "@mxlang/translator": "workspace:*"
+    "@mxlang/html": "workspace:*"
   },
   "devDependencies": {
     "astro": "7.3.2",

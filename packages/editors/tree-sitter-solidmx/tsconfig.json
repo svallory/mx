@@ -1,0 +1,8 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "//": "This package has no TypeScript sources: it is a tree-sitter grammar (grammar.js, C scanner, generated src/, shell scripts). `files: []` makes the root `bun run typecheck` loop's `tsc --noEmit` a clean no-op here; an `include` that matches nothing would instead fail with TS18003.",
+  "files": []
+}

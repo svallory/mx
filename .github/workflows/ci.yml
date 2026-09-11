@@ -42,7 +42,7 @@ jobs:
       # Zed-compile-check step can run — vendor/ is gitignored (a build
       # input, not committed), so nothing else in this job creates it.
       - name: vendor tree-sitter-typescript
-        working-directory: packages/tree-sitter-solidmx
+        working-directory: packages/editors/tree-sitter-solidmx
         run: ./scripts/vendor.sh
 
       # bun run verify includes a final step (scripts/verify-coverage.ts) that
@@ -55,7 +55,7 @@ jobs:
 
   zed-compile-check:
     # Reproduces Zed's own grammar compile step against a clean clone of
-    # HEAD (see packages/tree-sitter-solidmx/scripts/zed-compile-check.sh).
+    # HEAD (see packages/editors/tree-sitter-solidmx/scripts/zed-compile-check.sh).
     # This is its own job, not folded into `verify` above, so a missing wasm
     # toolchain here can never be masked by `bun run test`'s own success —
     # see the ZED_COMPILE_CHECK_FORCE_FALLBACK note below for why runners
@@ -89,16 +89,16 @@ jobs:
       # a gate that goes silently green when its toolchain is missing is
       # exactly the defect class this whole check exists to catch.
       - name: "zed-compile-check.sh (forced fallback: tree-sitter build --wasm --docker)"
-        working-directory: packages/tree-sitter-solidmx
+        working-directory: packages/editors/tree-sitter-solidmx
         env:
           ZED_COMPILE_CHECK_FORCE_FALLBACK: "1"
           ZED_COMPILE_CHECK_WASM_BUILD_ARGS: "--docker"
         run: ./scripts/zed-compile-check.sh
 
-  zed-extension-compile-check:
+  zed-compile-check:
     # Reproduces Zed's own Rust extension build (cargo build --release
     # --target wasm32-wasip1) against a clean clone of HEAD (see
-    # packages/zed-extension/scripts/zed-extension-compile-check.sh). Its own
+    # packages/editors/zed/scripts/zed-compile-check.sh). Its own
     # job, same rationale as zed-compile-check above: a missing wasm target
     # here must never be masked by another job's success.
     runs-on: ubuntu-latest
@@ -106,6 +106,6 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: rustup target add wasm32-wasip1
         run: rustup target add wasm32-wasip1
-      - name: zed-extension-compile-check.sh
-        working-directory: packages/zed-extension
-        run: ./scripts/zed-extension-compile-check.sh
+      - name: zed-compile-check.sh
+        working-directory: packages/editors/zed
+        run: ./scripts/zed-compile-check.sh

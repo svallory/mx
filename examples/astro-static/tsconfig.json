@@ -5,5 +5,10 @@
     "allowImportingTsExtensions": true,
     "types": ["node"]
   },
-  "include": ["src", "e2e", "astro.config.mjs", "../../packages/astro/types"]
+  "include": [
+    "src",
+    "e2e",
+    "astro.config.mjs",
+    "../../packages/hosts/astro/types"
+  ]
 }

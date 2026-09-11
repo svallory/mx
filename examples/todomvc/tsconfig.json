@@ -7,7 +7,7 @@
     "types": ["node", "vite/client"],
     "allowImportingTsExtensions": true,
     "paths": {
-      "@mxlang/vite-plugin": ["../../packages/mx-vite-plugin/src/index.ts"]
+      "@mxlang/vite-plugin": ["../../packages/tooling/vite-plugin/src/index.ts"]
     }
   },
   "include": ["src", "e2e", "vite.config.ts"]

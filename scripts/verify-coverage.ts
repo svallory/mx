@@ -13,7 +13,10 @@ import { join } from "node:path";
 
 const root = `${import.meta.dir}/../`;
 const vitestJsonPath = join(root, "vitest-results.json");
-const grammarMarkerPath = join(root, "packages/tree-sitter-solidmx/.test-ran");
+const grammarMarkerPath = join(
+  root,
+  "packages/editors/tree-sitter-solidmx/.test-ran",
+);
 const verifyStartPath = join(root, ".verify-start");
 
 interface Package {
@@ -29,12 +32,11 @@ const NO_TEST_EXCEPTIONS: Record<string, string> = {
   "mx-site": "e2e only",
   "mx-vite": "e2e only",
   todomvc: "e2e only",
-  "zed-extension":
-    "grammar and Rust extension, both build-verified in CI (zed-compile-check, zed-extension-compile-check)",
+  zed: "grammar and Rust extension, both build-verified in CI (zed-compile-check, zed-compile-check)",
   docs: "docs site: built in verify",
 };
 
-// The one package whose real test (packages/tree-sitter-solidmx/scripts/test.sh,
+// The one package whose real test (packages/editors/tree-sitter-solidmx/scripts/test.sh,
 // run via `moon run tree-sitter-solidmx:test`) is not vitest and so can never
 // appear in vitest-results.json — it's checked against its own marker file.
 const GRAMMAR_MARKER_PACKAGE = "tree-sitter-solidmx";
@@ -57,24 +59,35 @@ async function getPackages(): Promise<Package[]> {
   const workspaceDirs = new Set<string>();
 
   for (const pattern of workspaces) {
-    const base =
-      pattern === "packages/*"
-        ? "packages"
-        : pattern === "examples/*"
-          ? "examples"
-          : null;
+    const isPackages = pattern.startsWith("packages/");
+    const base = isPackages
+      ? "packages"
+      : pattern.startsWith("examples/")
+        ? "examples"
+        : null;
     if (!base) continue;
     const dir = join(root, base);
     if (!existsSync(dir)) continue;
-    const entries = await readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (
-        entry.isDirectory() &&
-        existsSync(join(dir, entry.name, "package.json"))
-      ) {
-        workspaceDirs.add(join(base, entry.name));
+
+    const findWorkspaces = async (
+      currentDir: string,
+      relBase: string,
+      depth: number,
+    ) => {
+      if (depth > 2) return;
+      const entries = await readdir(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const fullPath = join(currentDir, entry.name);
+        const relPath = join(relBase, entry.name);
+        if (existsSync(join(fullPath, "package.json"))) {
+          workspaceDirs.add(relPath);
+        } else {
+          await findWorkspaces(fullPath, relPath, depth + 1);
+        }
       }
-    }
+    };
+    await findWorkspaces(dir, base, 1);
   }
 
   for (const relPath of Array.from(workspaceDirs).sort()) {
@@ -129,7 +142,7 @@ function getTestedPackagesFromVitest(verifyStart: number): Set<string> {
   for (const result of content.testResults) {
     const fullPath = result.name;
     const pkgMatch =
-      fullPath.match(/\/packages\/([^/]+)\//) ||
+      fullPath.match(/\/packages\/(?:hosts\/|tooling\/|editors\/)?([^/]+)\//) ||
       fullPath.match(/\/examples\/([^/]+)\//);
     if (pkgMatch && result.assertionResults?.length > 0) {
       tested.add(pkgMatch[1]);

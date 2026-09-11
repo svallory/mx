@@ -13,12 +13,12 @@
       "!**/fixtures/**/*.solid.mx",
       "!**/fixtures-marko",
       "!**/.probe*",
-      "!packages/mx-parser/src/babel",
-      "!packages/mx-parser/dist",
-      "!packages/tree-sitter-solidmx/vendor",
-      "!packages/tree-sitter-solidmx/src",
-      "!packages/tree-sitter-solidmx/test/corpus",
-      "!packages/tree-sitter-solidmx/fixtures"
+      "!packages/parser/src/babel",
+      "!packages/parser/dist",
+      "!packages/editors/tree-sitter-solidmx/vendor",
+      "!packages/editors/tree-sitter-solidmx/src",
+      "!packages/editors/tree-sitter-solidmx/test/corpus",
+      "!packages/editors/tree-sitter-solidmx/fixtures"
     ]
   },
   "formatter": {
@@ -59,16 +59,16 @@
     },
     {
       "includes": [
-        "packages/astro/src/astro-template.test.ts",
-        "packages/astro/src/astro-template.ts",
-        "packages/astro/src/server.test.ts",
-        "packages/astro/src/vite-pages.test.ts",
-        "packages/astro/src/vite-pages.ts",
+        "packages/hosts/astro/src/astro-template.test.ts",
+        "packages/hosts/astro/src/astro-template.ts",
+        "packages/hosts/astro/src/server.test.ts",
+        "packages/hosts/astro/src/vite-pages.test.ts",
+        "packages/hosts/astro/src/vite-pages.ts",
         "packages/core/src/compile.ts",
         "packages/core/src/core.ts",
         "packages/core/src/emit-statement.test.ts",
         "packages/core/src/hooks.test.ts",
-        "packages/translator/scripts/consumer-check.ts"
+        "packages/hosts/html/scripts/consumer-check.ts"
       ],
       "linter": {
         "rules": {
@@ -86,7 +86,7 @@
       }
     },
     {
-      "includes": ["packages/translator/src/translate.test.ts"],
+      "includes": ["packages/hosts/html/src/translate.test.ts"],
       "linter": {
         "rules": {
           "suspicious": { "noTemplateCurlyInString": "info" }

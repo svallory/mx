@@ -8,10 +8,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import { compileFile } from "@mxlang/translator";
+import { compileFile } from "@mxlang/html";
 
 /**
- * Renders a stock `.marko` fixture through `@mxlang/translator`, by actually
+ * Renders a stock `.marko` fixture through `@mxlang/html`, by actually
  * loading the emitted module rather than reconstructing its shape.
  *
  * Mirrors `marko-compile-stock.ts`'s approach for the real Marko toolchain:
@@ -25,7 +25,7 @@ import { compileFile } from "@mxlang/translator";
  * change to `postEmit` previously reported every fixture as a translator
  * bug).
  *
- * The emitted `escape` import (`from "@mxlang/translator"`, a bare workspace
+ * The emitted `escape` import (`from "@mxlang/html"`, a bare workspace
  * specifier) is rewritten to the package's resolved absolute entry point: a
  * bare specifier resolves by walking up from the *importing file* to a
  * `node_modules`, and the scratch copy lives under the OS tmpdir, outside
@@ -38,7 +38,7 @@ export async function renderTranslator(
   filename: string,
   input: unknown,
 ): Promise<string> {
-  const escapeEntry = require.resolve("@mxlang/translator");
+  const escapeEntry = require.resolve("@mxlang/html");
   const scratch = mkdtempSync(join(tmpdir(), "mx-oracle-translator-"));
   try {
     cpSync(dir, scratch, { recursive: true });
@@ -50,10 +50,7 @@ export async function renderTranslator(
           /(from\s+")(\.[^"]+)\.(?:marko|mx)(")/g,
           (_match, prefix, path, suffix) => `${prefix}${path}.ts${suffix}`,
         )
-        .replace(
-          'from "@mxlang/translator"',
-          `from ${JSON.stringify(escapeEntry)}`,
-        );
+        .replace('from "@mxlang/html"', `from ${JSON.stringify(escapeEntry)}`);
 
       // A `tags/`-discovered component is called by bare identifier with no
       // import of its own — that is the whole point of tag discovery — so

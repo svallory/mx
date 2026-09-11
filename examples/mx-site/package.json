@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mxlang/translator": "workspace:*",
+    "@mxlang/html": "workspace:*",
     "hono": "4.6.20"
   },
   "devDependencies": {

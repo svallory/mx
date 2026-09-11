@@ -7,7 +7,7 @@
  * plus an `Emitter`.
  *
  * This file previously served two dialects — `@mxlang/html`'s retired `.mx`
- * dialect, alongside `@mxlang/translator`'s stock `.marko` — until decision
+ * dialect, alongside `@mxlang/html`'s stock `.marko` — until decision
  * 68 retired `.mx` and deleted `@mxlang/html` entirely. Two things that were
  * true while both existed, kept here because they still explain choices this
  * core makes:

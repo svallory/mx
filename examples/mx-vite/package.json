@@ -9,7 +9,7 @@
     "e2e": "vitest run --config e2e/vitest.config.ts"
   },
   "dependencies": {
-    "@mxlang/translator": "workspace:*"
+    "@mxlang/html": "workspace:*"
   },
   "devDependencies": {
     "@mxlang/vite-plugin": "workspace:*",

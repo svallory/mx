@@ -104,7 +104,7 @@ way to silence an unexplained failure.
 `__golden__/twin.<backend>.<variant>.js` pins the normalized output of
 `twin.tsx` alone (no MX involved). Purpose: catch a Solid 2 pin bump
 (`@solidjs/babel-plugin`, `@solidjs/compiler`, `solid-js`, `@solidjs/web`)
-that silently changes generated output, independent of whether `mx-parser`
+that silently changes generated output, independent of whether `parser`
 exists yet.
 
 - Written automatically the first time a fixture is compared, if missing.
@@ -180,10 +180,10 @@ Decision 68 retired the `.mx` dialect and `@mxlang/html`, so there is one
 dialect (stock Marko) and one table. `bun run oracle:marko`
 (`packages/oracle/src/report-marko.ts`, delegating to
 `report-marko-stock.ts`) renders every fixture under
-`packages/translator/fixtures-marko/<name>/` (`input.marko`, `input.json`,
+`packages/hosts/html/fixtures-marko/<name>/` (`input.marko`, `input.json`,
 `expected.html`, plus any sibling component or `tags/` directory) two ways —
 through the real Marko 6 toolchain (`@marko/compiler` + `marko/translator`)
-and through `@mxlang/translator`'s own `compile()` — and compares both
+and through `@mxlang/html`'s own `compile()` — and compares both
 against that fixture's `expected.html` for **semantic** equality —
 `htmlEquals()` (`packages/oracle/src/normalize-html.ts`) parses both sides
 with `parse5` and compares decoded tag names, attribute names/values, text
@@ -194,7 +194,7 @@ confirm whether an unescaped character was a genuine escaping gap or a safe
 alternate spelling); parsing decodes both the same way a browser would, so a
 match there means the same rendered output. Before comparison, a trailing
 Marko resume/hydration marker (`<!--M_$…--><script>…</script>`) is stripped —
-hydration plumbing with no `@mxlang/translator` equivalent, not template
+hydration plumbing with no `@mxlang/html` equivalent, not template
 content, and its id/script body is randomly generated per compile so it could
 never byte-match regardless. Not compared: attribute quote character, entity
 spelling, void self-closing spelling, or inter-tag whitespace (all collapsed
@@ -217,7 +217,7 @@ This asks a narrow, strict question: for a template an ordinary Marko user
 would write, does the expressions-only translator emit what Marko's own
 server render emits? **Every fixture is expected to pass**, and a skip needs a
 decision-65 reason — *this target cannot*, never *my code cannot*. See
-`packages/translator/README.md`'s policy table (decision 65) for what "this
+`packages/hosts/html/README.md`'s policy table (decision 65) for what "this
 target cannot" means in practice, and the script's own footer for the current
 pass/skip/bug count — the authoritative number, not one retyped here.
 
@@ -234,7 +234,7 @@ that two of our own opinions agree.
 ### `meta.json`: the Marko column's skip/divergence marker
 
 An optional `meta.json` in a fixture directory classifies why that fixture's
-real-Marko rendering does not match `@mxlang/translator`'s:
+real-Marko rendering does not match `@mxlang/html`'s:
 
 ```json
 { "marko": "skip", "reason": "why this fixture is never compiled by Marko" }

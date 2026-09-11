@@ -42,7 +42,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@mxlang/astro": "workspace:*",
-        "@mxlang/translator": "workspace:*",
+        "@mxlang/html": "workspace:*",
       },
       "devDependencies": {
         "astro": "7.3.2",
@@ -71,7 +71,7 @@
       "name": "@mxlang/example-mx-site",
       "version": "0.0.0",
       "dependencies": {
-        "@mxlang/translator": "workspace:*",
+        "@mxlang/html": "workspace:*",
         "hono": "4.6.20",
       },
       "devDependencies": {
@@ -86,7 +86,7 @@
       "name": "@mxlang/example-mx-vite",
       "version": "0.0.0",
       "dependencies": {
-        "@mxlang/translator": "workspace:*",
+        "@mxlang/html": "workspace:*",
       },
       "devDependencies": {
         "@mxlang/vite-plugin": "workspace:*",
@@ -115,22 +115,6 @@
         "vitest": "3.2.7",
       },
     },
-    "packages/astro": {
-      "name": "@mxlang/astro",
-      "version": "0.0.0",
-      "dependencies": {
-        "@mxlang/core": "workspace:*",
-        "@mxlang/translator": "workspace:*",
-        "@mxlang/vite-plugin": "workspace:*",
-      },
-      "devDependencies": {
-        "astro": "7.3.2",
-      },
-    },
-    "packages/babel-plugin-mx": {
-      "name": "@mxlang/babel-plugin",
-      "version": "0.0.0",
-    },
     "packages/core": {
       "name": "@mxlang/core",
       "version": "0.0.0",
@@ -138,57 +122,51 @@
         "@marko/compiler": "5.42.5",
       },
     },
-    "packages/eslint-plugin-mx": {
-      "name": "@mxlang/eslint-plugin",
+    "packages/editors/tree-sitter-solidmx": {
+      "name": "@mxlang/tree-sitter-solidmx",
+      "version": "0.0.0",
+      "devDependencies": {
+        "tree-sitter-cli": "0.26.9",
+        "tree-sitter-javascript": "0.23.1",
+      },
+    },
+    "packages/editors/vscode": {
+      "name": "@mxlang/vscode",
       "version": "0.0.0",
     },
-    "packages/language-server": {
-      "name": "@mxlang/language-server",
-      "version": "0.1.0",
-      "bin": {
-        "mxlang-language-server": "dist/bin.js",
-      },
+    "packages/editors/zed": {
+      "name": "@mxlang/zed",
+      "version": "0.0.0",
+    },
+    "packages/hosts/astro": {
+      "name": "@mxlang/astro",
+      "version": "0.0.0",
       "dependencies": {
         "@mxlang/core": "workspace:*",
-        "@mxlang/translator": "workspace:*",
-        "vscode-languageserver": "10.1.1",
-        "vscode-languageserver-textdocument": "1.0.14",
+        "@mxlang/html": "workspace:*",
+        "@mxlang/vite-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "astro": "7.3.2",
+      },
+    },
+    "packages/hosts/html": {
+      "name": "@mxlang/html",
+      "version": "0.1.0",
+      "dependencies": {
+        "@marko/compiler": "5.42.5",
+        "@mxlang/core": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "1.4.2",
-        "vscode-jsonrpc": "9.0.2",
       },
-    },
-    "packages/mx-parser": {
-      "name": "@mxlang/parser",
-      "version": "0.0.0",
-    },
-    "packages/mx-tsc": {
-      "name": "@mxlang/tsc",
-      "version": "0.0.0",
-    },
-    "packages/mx-typescript-plugin": {
-      "name": "@mxlang/typescript-plugin",
-      "version": "0.0.0",
-    },
-    "packages/mx-vite-plugin": {
-      "name": "@mxlang/vite-plugin",
-      "version": "0.0.0",
-      "dependencies": {
-        "@mxlang/parser": "workspace:*",
-        "@mxlang/translator": "workspace:*",
-      },
-    },
-    "packages/mx-vscode": {
-      "name": "@mxlang/vscode",
-      "version": "0.0.0",
     },
     "packages/oracle": {
       "name": "@mxlang/oracle",
       "version": "0.0.0",
       "dependencies": {
+        "@mxlang/html": "workspace:*",
         "@mxlang/parser": "workspace:*",
-        "@mxlang/translator": "workspace:*",
       },
       "devDependencies": {
         "@marko/compiler": "5.42.5",
@@ -197,28 +175,50 @@
         "parse5": "7.3.0",
       },
     },
-    "packages/translator": {
-      "name": "@mxlang/translator",
+    "packages/parser": {
+      "name": "@mxlang/parser",
+      "version": "0.0.0",
+    },
+    "packages/tooling/babel-plugin": {
+      "name": "@mxlang/babel-plugin",
+      "version": "0.0.0",
+    },
+    "packages/tooling/eslint-plugin": {
+      "name": "@mxlang/eslint-plugin",
+      "version": "0.0.0",
+    },
+    "packages/tooling/language-server": {
+      "name": "@mxlang/language-server",
       "version": "0.1.0",
+      "bin": {
+        "mxlang-language-server": "dist/bin.js",
+      },
       "dependencies": {
-        "@marko/compiler": "5.42.5",
         "@mxlang/core": "workspace:*",
+        "@mxlang/html": "workspace:*",
+        "vscode-languageserver": "10.1.1",
+        "vscode-languageserver-textdocument": "1.0.14",
       },
       "devDependencies": {
         "@types/bun": "1.4.2",
+        "vscode-jsonrpc": "9.0.2",
       },
     },
-    "packages/tree-sitter-solidmx": {
-      "name": "@mxlang/tree-sitter-solidmx",
+    "packages/tooling/tsc": {
+      "name": "@mxlang/tsc",
       "version": "0.0.0",
-      "devDependencies": {
-        "tree-sitter-cli": "0.26.9",
-        "tree-sitter-javascript": "0.23.1",
-      },
     },
-    "packages/zed-extension": {
-      "name": "@mxlang/zed-extension",
+    "packages/tooling/typescript-plugin": {
+      "name": "@mxlang/typescript-plugin",
       "version": "0.0.0",
+    },
+    "packages/tooling/vite-plugin": {
+      "name": "@mxlang/vite-plugin",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mxlang/html": "workspace:*",
+        "@mxlang/parser": "workspace:*",
+      },
     },
   },
   "packages": {
@@ -526,15 +526,15 @@
 
     "@marko/runtime-tags": ["@marko/runtime-tags@6.3.51", "", { "dependencies": { "@marko/compiler": "^5.42.5", "csstype": "^3.2.3", "fastest-levenshtein": "^1.0.16", "magic-string": "^0.30.21" } }, "sha512-IivshvS+qXjtUH8PYqZbYdLpXn3A36rjcIvcZRN/YkI1ydtd1iG5mHv2S6ZpHmTlxEMPOpL/JfhUhK24aa+olQ=="],
 
-    "@mxlang/astro": ["@mxlang/astro@workspace:packages/astro"],
+    "@mxlang/astro": ["@mxlang/astro@workspace:packages/hosts/astro"],
 
-    "@mxlang/babel-plugin": ["@mxlang/babel-plugin@workspace:packages/babel-plugin-mx"],
+    "@mxlang/babel-plugin": ["@mxlang/babel-plugin@workspace:packages/tooling/babel-plugin"],
 
     "@mxlang/core": ["@mxlang/core@workspace:packages/core"],
 
     "@mxlang/docs": ["@mxlang/docs@workspace:apps/docs"],
 
-    "@mxlang/eslint-plugin": ["@mxlang/eslint-plugin@workspace:packages/eslint-plugin-mx"],
+    "@mxlang/eslint-plugin": ["@mxlang/eslint-plugin@workspace:packages/tooling/eslint-plugin"],
 
     "@mxlang/example-astro-static": ["@mxlang/example-astro-static@workspace:examples/astro-static"],
 
@@ -546,25 +546,25 @@
 
     "@mxlang/example-todomvc": ["@mxlang/example-todomvc@workspace:examples/todomvc"],
 
-    "@mxlang/language-server": ["@mxlang/language-server@workspace:packages/language-server"],
+    "@mxlang/html": ["@mxlang/html@workspace:packages/hosts/html"],
+
+    "@mxlang/language-server": ["@mxlang/language-server@workspace:packages/tooling/language-server"],
 
     "@mxlang/oracle": ["@mxlang/oracle@workspace:packages/oracle"],
 
-    "@mxlang/parser": ["@mxlang/parser@workspace:packages/mx-parser"],
+    "@mxlang/parser": ["@mxlang/parser@workspace:packages/parser"],
 
-    "@mxlang/translator": ["@mxlang/translator@workspace:packages/translator"],
+    "@mxlang/tree-sitter-solidmx": ["@mxlang/tree-sitter-solidmx@workspace:packages/editors/tree-sitter-solidmx"],
 
-    "@mxlang/tree-sitter-solidmx": ["@mxlang/tree-sitter-solidmx@workspace:packages/tree-sitter-solidmx"],
+    "@mxlang/tsc": ["@mxlang/tsc@workspace:packages/tooling/tsc"],
 
-    "@mxlang/tsc": ["@mxlang/tsc@workspace:packages/mx-tsc"],
+    "@mxlang/typescript-plugin": ["@mxlang/typescript-plugin@workspace:packages/tooling/typescript-plugin"],
 
-    "@mxlang/typescript-plugin": ["@mxlang/typescript-plugin@workspace:packages/mx-typescript-plugin"],
+    "@mxlang/vite-plugin": ["@mxlang/vite-plugin@workspace:packages/tooling/vite-plugin"],
 
-    "@mxlang/vite-plugin": ["@mxlang/vite-plugin@workspace:packages/mx-vite-plugin"],
+    "@mxlang/vscode": ["@mxlang/vscode@workspace:packages/editors/vscode"],
 
-    "@mxlang/vscode": ["@mxlang/vscode@workspace:packages/mx-vscode"],
-
-    "@mxlang/zed-extension": ["@mxlang/zed-extension@workspace:packages/zed-extension"],
+    "@mxlang/zed": ["@mxlang/zed@workspace:packages/editors/zed"],
 
     "@napi-rs/lzma-linux-x64-gnu": ["@napi-rs/lzma-linux-x64-gnu@1.5.1", "", { "os": "linux", "cpu": "x64" }, "sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ=="],
 

@@ -5,7 +5,7 @@ description: "Compile .mx and .marko templates to a plain (input) => string func
 
 # HTML host
 
-The HTML host — currently published as `@mxlang/translator` (soon `@mxlang/html`) — is the vanilla MX host. It compiles an `.mx` file (or its `.marko` alias) to a pure function: a JS/TS module whose default export is `(input) => string`, with no runtime beyond an `escape` helper. No scheduler, no signals, no hydration, no resume markers.
+The HTML host — currently published as `@mxlang/html` (soon `@mxlang/html`) — is the vanilla MX host. It compiles an `.mx` file (or its `.marko` alias) to a pure function: a JS/TS module whose default export is `(input) => string`, with no runtime beyond an `escape` helper. No scheduler, no signals, no hydration, no resume markers.
 
 The generic half of the work — consuming Marko's AST, applying the structural lowerings, the string-emit model — lives in the shared core. This host supplies the policy on top of it: which tags are inert and which are compile errors, component-versus-element resolution, structured `class`/`style` values, and its own integrations (a Bun loader, the `escape` runtime, a taglib).
 
@@ -19,7 +19,7 @@ Because MX 1.0 is a strict subset of Marko syntax, this host compiles **stock Ma
 compiles to:
 
 ```typescript
-import { escape } from "@mxlang/translator";
+import { escape } from "@mxlang/html";
 
 export interface Input {}
 
@@ -40,13 +40,13 @@ export default function (input: Input): string {
 ## Install
 
 ```bash
-bun add @mxlang/translator
+bun add @mxlang/html
 ```
 
 ## API
 
 ```typescript
-import { compile } from "@mxlang/translator";
+import { compile } from "@mxlang/html";
 
 const { code } = compile(source, "greeting.mx");
 ```
@@ -61,7 +61,7 @@ The package is also a plain `@marko/compiler` translator, so the compiler's own 
 
 ```typescript
 import { compileSync } from "@marko/compiler";
-import translator from "@mxlang/translator";
+import translator from "@mxlang/html";
 
 compileSync(source, filename, { translator, output: "html" });
 ```
@@ -70,17 +70,17 @@ compileSync(source, filename, { translator, output: "html" });
 
 Two loaders make `import page from "./page.mx"` (or `"./page.marko"`) resolve, one per runtime.
 
-**Bun** — `@mxlang/translator/bun` is a plugin that intercepts `.mx` and `.marko` imports and compiles them on the fly (`.solid.mx` is excluded; that is a different file kind handled separately). Register it once:
+**Bun** — `@mxlang/html/bun` is a plugin that intercepts `.mx` and `.marko` imports and compiles them on the fly (`.solid.mx` is excluded; that is a different file kind handled separately). Register it once:
 
 ```toml
 # bunfig.toml
-preload = ["@mxlang/translator/bun"]
+preload = ["@mxlang/html/bun"]
 ```
 
 or at runtime:
 
 ```typescript
-import markoPlugin from "@mxlang/translator/bun";
+import markoPlugin from "@mxlang/html/bun";
 Bun.plugin(markoPlugin);
 ```
 

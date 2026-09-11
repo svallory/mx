@@ -4,24 +4,24 @@ on:
   # MX's weekly upstream drift check (schedule/workflow_dispatch, opening a PR
   # on drift) was retired with the MX language (decision 68): MX was the only
   # language here with a networked upstream to drift against. SolidMX's
-  # `vendor.sh` (packages/zed-extension/scripts/vendor.sh) has no `--check`
+  # `vendor.sh` (packages/editors/zed/scripts/vendor.sh) has no `--check`
   # mode at all — its highlights source is a local sibling package, so
   # "check for drift" would only ever report success (decision 55: a gate
   # that cannot fail is not a gate). Every remaining job here is
   # pull_request-only; `solidmx-vendor-matches` below still calls
-  # packages/tree-sitter-solidmx's own `vendor.sh --check` — a different
+  # packages/editors/tree-sitter-solidmx's own `vendor.sh --check` — a different
   # script, for a real drift check against that package's upstream pin.
   pull_request:
     paths:
-      - "packages/zed-extension/**"
-      - "packages/tree-sitter-solidmx/**"
+      - "packages/editors/zed/**"
+      - "packages/editors/tree-sitter-solidmx/**"
 
 permissions:
   contents: read
 
 jobs:
   solidmx-vendor-matches:
-    # packages/tree-sitter-solidmx vendors tree-sitter-typescript at a pinned
+    # packages/editors/tree-sitter-solidmx vendors tree-sitter-typescript at a pinned
     # sha and reapplies patches/*.patch on top. `vendor.sh --check` re-fetches
     # the pin into a temp dir, reapplies the patches, and diffs against
     # vendor/ — so a hand-edit to vendor/ that was never captured as a patch
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/tree-sitter-solidmx
+        working-directory: packages/editors/tree-sitter-solidmx
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/tree-sitter-solidmx
+        working-directory: packages/editors/tree-sitter-solidmx
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -68,7 +68,7 @@ jobs:
       - run: |
           if ! git diff --exit-code -- src; then
             echo "src/ doesn't match what 'tree-sitter generate' produces from grammar.js + vendor/." >&2
-            echo "Run 'bun run generate' in packages/tree-sitter-solidmx and commit the result." >&2
+            echo "Run 'bun run generate' in packages/editors/tree-sitter-solidmx and commit the result." >&2
             exit 1
           fi
 
@@ -78,14 +78,14 @@ jobs:
     # committed. Catches a hand-edit of those files, which UPSTREAM.md says
     # never to do.
     #
-    # SolidMX's highlights.scm source (packages/tree-sitter-solidmx/queries)
+    # SolidMX's highlights.scm source (packages/editors/tree-sitter-solidmx/queries)
     # is a sibling package in this same checkout, not a network fetch, so
     # this job needs no extra setup for it beyond running vendor.sh.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/zed-extension
+        working-directory: packages/editors/zed
     steps:
       - uses: actions/checkout@v4
       - run: ./scripts/vendor.sh

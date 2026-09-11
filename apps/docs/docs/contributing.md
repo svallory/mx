@@ -11,12 +11,12 @@ The repository is a Bun workspace with two workspace globs, `packages/*` and `ex
 
 | Package | Purpose |
 |---|---|
-| `packages/mx-parser` | A `@babel/parser` fork: MX in expression position lowers to JSX, for the SolidMX host. |
+| `packages/parser` | A `@babel/parser` fork: MX in expression position lowers to JSX, for the SolidMX host. |
 | `packages/core` | The Marko-node consumer every MX host is built on: structural lowerings, the `Policy` contract, three stateful-tag hooks, two front doors. |
-| `packages/translator` | The HTML host: `.mx`/`.marko` compile to a pure `(input) => string` function. |
-| `packages/astro` | The Astro host: components, pages, and `.amx` templates, all rendered to static markup. |
-| `packages/language-server` | A diagnostics-only LSP server for MX hosts. |
-| `packages/zed-extension` | The Zed editor extension (three languages plus the language server registration). |
+| `packages/hosts/html` | The HTML host: `.mx`/`.marko` compile to a pure `(input) => string` function. |
+| `packages/hosts/astro` | The Astro host: components, pages, and `.amx` templates, all rendered to static markup. |
+| `packages/tooling/language-server` | A diagnostics-only LSP server for MX hosts. |
+| `packages/editors/zed` | The Zed editor extension (three languages plus the language server registration). |
 | `packages/oracle` | The parity-checking harness described below. |
 
 Each package publishes its own README with install instructions, API surface, and implementation notes specific to that package — the pages under [Hosts](/hosts/html/) and [Editors](/editors/zed/) summarize the parts a consumer needs; the READMEs go deeper for a contributor.

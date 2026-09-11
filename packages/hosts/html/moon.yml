@@ -1,0 +1,34 @@
+# https://moonrepo.dev/docs/config/project
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "typescript"
+
+tasks:
+  typecheck:
+    command: "tsc"
+    args: ["--noEmit"]
+    inputs:
+      - "src/**/*"
+      - "tsconfig.json"
+
+  test:
+    command: "vitest"
+    args: ["run", "--root", "../..", "--project", "@mxlang/html"]
+    inputs:
+      - "src/**/*"
+      - "fixtures-marko/**/*"
+      - "/vitest.config.ts"
+
+  test-bun:
+    command: "bun"
+    args:
+      [
+        "--tsconfig-override=../../../tsconfig.base.json",
+        "test",
+        "src/bun.test.ts",
+      ]
+    inputs:
+      - "src/bun.ts"
+      - "src/bun.test.ts"
+      - "src/index.ts"
+      - "fixtures-marko/attributes/**/*"

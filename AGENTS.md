@@ -13,7 +13,7 @@ bun run typecheck   # or: moon run :typecheck
 bun run test        # or: moon run :test
 bun run lint        # or: moon run :lint
 bun run verify      # or: moon run :verify   -- delegates straight to `bun run verify`, see below
-bun run build       # or: moon run mx-parser:build -- builds packages/mx-parser to dist/
+bun run build       # or: moon run parser:build -- builds packages/parser to dist/
 ```
 
 moon's root `typecheck`/`test` tasks are thin aggregates (`deps: ["^:typecheck"]` / `["^:test"]`) that fan out to each package's own task; `lint` runs once at the root over the whole tree via biome. `bun run typecheck`/`test` take the other layer — a single shell loop/vitest run at the root — so pick one command style (bun or moon) per invocation rather than mixing them. `verify` is the one exception: moon's `verify` task is a single `bun run verify` command, not a `deps` list, because `bun run verify`'s own chain (pre-verify must run before test; the coverage script must run last, after everything else) isn't expressible as an unordered `deps` set — delegating keeps the two entry points from silently drifting into two different definitions of "verified".
@@ -29,7 +29,7 @@ scripts/pre-verify.ts && typecheck && lint && build && test && test:bun && test:
 ```
 
 - `scripts/pre-verify.ts` deletes any evidence left over from a previous run
-  (`vitest-results.json`, `packages/tree-sitter-solidmx/.test-ran`) and writes
+  (`vitest-results.json`, `packages/editors/tree-sitter-solidmx/.test-ran`) and writes
   `.verify-start` with the current time. All three are gitignored.
 - `bun run test` runs vitest (over the root `projects: ["packages/*"]`
   config, which auto-discovers a project per package with test files) with
@@ -56,9 +56,9 @@ Exception packages (no unit test wiring required; verified elsewhere):
 - `examples/mx-site` — e2e only
 - `examples/mx-vite` — e2e only
 - `examples/todomvc` — e2e only
-- `packages/zed-extension` — grammar and Rust extension (registers
+- `packages/editors/zed` — grammar and Rust extension (registers
   `@mxlang/language-server`), both build-verified in CI
-  (`zed-compile-check`, `zed-extension-compile-check`)
+  (`zed-compile-check`, `zed-compile-check`)
 
 Any new package without test wiring must be added to the exception list with
 a documented reason, or get a vitest project (a package under `packages/*`
@@ -78,7 +78,7 @@ or `examples/*` with its own test files) that emits into
   translator source/test files listed in `biome.json`. Those strings
   intentionally contain Marko `${...}` syntax or generated JavaScript
   template source and must remain ordinary string literals.
-- `packages/translator/src/translate.test.ts` keeps
+- `packages/hosts/html/src/translate.test.ts` keeps
   `noTemplateCurlyInString` enabled at info severity because its existing
   occurrence-level suppressions would become stale if the rule were disabled.
   Biome 2.5.12 does not expose `suppressions/unused` as a configurable rule.
@@ -90,7 +90,7 @@ or `examples/*` with its own test files) that emits into
 
 ## Exact-pin policy
 
-All dependencies in the root `package.json` are pinned to an exact version (no `^`/`~`). `mx-parser`'s output must be byte-reproducible wire format across the parser, the Babel plugin, and the TS plugin's virtual-file generator; an unpinned transitive bump in Babel or TypeScript could silently change AST shape or emitted output. See `README.md` "Pinned versions" for the current set and rationale.
+All dependencies in the root `package.json` are pinned to an exact version (no `^`/`~`). `parser`'s output must be byte-reproducible wire format across the parser, the Babel plugin, and the TS plugin's virtual-file generator; an unpinned transitive bump in Babel or TypeScript could silently change AST shape or emitted output. See `README.md` "Pinned versions" for the current set and rationale.
 
 ## Solid 2 target and pin policy
 
@@ -110,12 +110,12 @@ Conventional commits: `type(scope): summary`.
 
 ## MX parser
 
-`packages/mx-parser` vendors `@babel/parser` 7.29.8 and forks one method of its JSX plugin so `<` in expression position is parsed as MX. Entry points:
+`packages/parser` vendors `@babel/parser` 7.29.8 and forks one method of its JSX plugin so `<` in expression position is parsed as MX. Entry points:
 
 - `parse(source, filename, options?)` — parses `.solid.mx`, returns a Babel `File` of standard node types only (MX facts go in `node.extra.mx`).
 - `parseBabel` / `parseBabelExpression` — the untouched vendored `@babel/parser` surface, for plain `.ts`/`.tsx`.
 
-MX parsing is opt-in through the `mx` parser option, which `parse` sets. Without it the vendored parser is byte-equivalent to npm `@babel/parser` — `src/vendored.test.ts` pins that, so keep those tests on `parseBabel` rather than `parse`. `packages/mx-parser/UPSTREAM.md` "Local modifications" records exactly what the fork changed.
+MX parsing is opt-in through the `mx` parser option, which `parse` sets. Without it the vendored parser is byte-equivalent to npm `@babel/parser` — `src/vendored.test.ts` pins that, so keep those tests on `parseBabel` rather than `parse`. `packages/parser/UPSTREAM.md` "Local modifications" records exactly what the fork changed.
 
 Consumers typecheck against `src/public.d.ts`, not `src/index.ts`: the vendored tree needs tsconfig relaxations that must not leak into packages that merely call `parse`.
 
@@ -169,13 +169,13 @@ covered by this alias.
   `mxMode` option. SolidMX is a separate host from the vanilla one below, and
   is not affected by either the `.mx`/`.marko` alias or decision 68's dialect
   retirement.
-- `compile(source, filename)` in `@mxlang/translator` — a whole-file MX
+- `compile(source, filename)` in `@mxlang/html` — a whole-file MX
   template (`.mx` or its `.marko` alias, both stock Marko syntax with no
   dialect layered on top). `@marko/compiler` parses, validates and supplies
   the tag registry; the package supplies only a translator
-  (`packages/translator/src/translate.ts`) and its own taglib
-  (`packages/translator/taglib/marko.json`). `@mxlang/parser` is not on this
-  path at all. The Bun loader (`@mxlang/translator/bun`) and
+  (`packages/hosts/html/src/translate.ts`) and its own taglib
+  (`packages/hosts/html/taglib/marko.json`). `@mxlang/parser` is not on this
+  path at all. The Bun loader (`@mxlang/html/bun`) and
   `@mxlang/vite-plugin`'s `mx()` both accept `.mx` and `.marko` identically,
   excluding `.solid.mx`.
 
@@ -203,7 +203,7 @@ Four Marko facts that are easy to get wrong (all measured against
   Marko strips comment delimiters too, which is why an HTML comment and a `//`
   line comment are told apart by re-reading the source at the node's `loc`.
 
-`@mxlang/translator`'s translator (`translate.ts`'s dispatch) decides
+`@mxlang/html`'s translator (`translate.ts`'s dispatch) decides
 component-vs-HTML dispatch by **in-scope binding, not case**: a tag name
 matching an `import`, a `<define>`, or a tag Marko discovered via taglib/
 `tags/` is a component call whatever its case; anything else is an HTML
@@ -230,7 +230,7 @@ entry for package @mxlang/parser" (the oracle fails the same way). `bun run
 verify` builds before it tests, so this only bites when running one package's
 tests directly.
 
-`packages/tree-sitter-solidmx/vendor/` is gitignored, so a fresh worktree has
+`packages/editors/tree-sitter-solidmx/vendor/` is gitignored, so a fresh worktree has
 none — `scripts/test.sh` now runs `scripts/vendor.sh` itself when
 `vendor/tree-sitter-typescript` is missing (printing one line saying so), so
 `bun run verify` and `bun run test:grammar` pass from a clone with no manual
@@ -241,7 +241,7 @@ Per-package vitest runs need the root config: `bunx vitest run --root ../..
 fails with "No projects were found", because `projects: ["packages/*"]` is
 resolved relative to the root.
 
-`packages/translator` (`@mxlang/translator`) holds the string target:
+`packages/hosts/html` (`@mxlang/html`) holds the string target:
 
 - `escape(value)` — the *entire* runtime. Escapes `& < > " '`; `null` and
   `undefined` render as `""`, not their names.
@@ -267,19 +267,19 @@ Marko's own `onText` already applies the same decision-33 rule before the
 translator sees a `MarkoText` (see the four Marko facts above), so calling
 `normalizeText()` there would collapse twice.
 
-Goldens live at `packages/translator/fixtures-marko/<name>/` with
+Goldens live at `packages/hosts/html/fixtures-marko/<name>/` with
 `input.marko`, `input.json` and `expected.html`, and are asserted on
 **rendered HTML**, not on emitted code, so the emitter stays free to improve.
 `biome.json` ignores `**/fixtures-marko`.
 
 ## Zed extension
 
-`packages/zed-extension` (`mxlang`) ships three languages for Zed: `MX`
+`packages/editors/zed` (`mxlang`) ships three languages for Zed: `MX`
 (`.mx`, restored per decision 72), `AstroMX` (`.amx`, decisions 76c/78) and
 `SolidMX` (`.solid.mx`). `AstroMX` rides the same `marko` grammar and the
 same queries as `MX` — an `.amx` file's template half *is* MX — so it adds no
 `[grammars.*]` entry; see the `.amx` subsection under `@mxlang/astro` above,
-and `packages/zed-extension/README.md` for its one limitation (Marko's
+and `packages/editors/zed/README.md` for its one limitation (Marko's
 grammar has no `---` frontmatter notion, so the fence highlights as markup).
 
 `MX` rides Marko's own unmodified tree-sitter grammar (`[grammars.marko]` in
@@ -307,22 +307,22 @@ inspection: `languages/solidmx/config.toml` already declared the longer
 `path_suffixes = ["solid.mx"]` before `MX` was added back, so no change was
 needed to preserve this precedence.
 
-`SolidMX` (`.solid.mx`) is backed by `packages/tree-sitter-solidmx`'s grammar
+`SolidMX` (`.solid.mx`) is backed by `packages/editors/tree-sitter-solidmx`'s grammar
 (a patched `tree-sitter-typescript` tsx dialect with an `mx_element` external
 token in expression position). Its grammar is a **`file://` dependency during
 development** (`extension.toml`'s `[grammars.solidmx]`, with
-`path = "packages/tree-sitter-solidmx"` since the grammar lives inside this
+`path = "packages/editors/tree-sitter-solidmx"` since the grammar lives inside this
 monorepo rather than at a repo's own root) — swapped to a real GitHub URL at
 publish time. Even `file://` still requires a **committed sha**: Zed's
 `checkout_repo` runs `git init` + `git fetch --depth 1 origin <rev>` +
 `git checkout <rev>` regardless of scheme, so uncommitted changes under
-`packages/tree-sitter-solidmx` are invisible to Zed. The dev loop is commit,
+`packages/editors/tree-sitter-solidmx` are invisible to Zed. The dev loop is commit,
 then bump `rev` in `extension.toml`, then reinstall — see
-`packages/zed-extension/README.md`.
+`packages/editors/zed/README.md`.
 
 `languages/solidmx/*.scm` are generated by `scripts/vendor.sh`:
 `highlights.scm` is copied from
-`packages/tree-sitter-solidmx/queries/highlights.scm` (a local sibling
+`packages/editors/tree-sitter-solidmx/queries/highlights.scm` (a local sibling
 package, not a network fetch); `injections.scm`/`brackets.scm`/`outline.scm`
 have no upstream reference extension to copy from (no `marko-js/zed`
 equivalent exists for this grammar), so their base content is hand-authored
@@ -348,12 +348,12 @@ always reports "not found" and cannot be used; there is also no walk-up past
 the worktree root, since `Worktree`'s API has no such operation), else a
 global install via `Worktree::which`, else `bunx @mxlang/language-server
 --stdio`, else `npx`. Built to
-`wasm32-wasip1` by `scripts/zed-extension-compile-check.sh` (a clean-clone
+`wasm32-wasip1` by `scripts/zed-compile-check.sh` (a clean-clone
 gate, same shape as `tree-sitter-solidmx`'s own `zed-compile-check.sh`),
 wired into `ci.yml` as its own job (`rustup target add wasm32-wasip1` on the
 runner first — this is the one place in this repo Rust is required; the
 target is a toolchain install, not a repo dependency). See
-`packages/zed-extension/README.md` "Toolchain prerequisite" and "Language
+`packages/editors/zed/README.md` "Toolchain prerequisite" and "Language
 server", and `UPSTREAM.md` for the pinned `marko-js/zed` commit the `lib.rs`
 shape was read from.
 
@@ -366,7 +366,7 @@ injection resolves, and only then does the region get any syntax
 highlighting, when Zed's official `marko-js/zed` extension (`name = "Marko"`
 in its `languages/marko/config.toml`, matched case-insensitively) is also
 installed; without it the region stays unhighlighted plain text. This is a
-documented prerequisite, not a bug (see `packages/zed-extension/UPSTREAM.md`
+documented prerequisite, not a bug (see `packages/editors/zed/UPSTREAM.md`
 "SolidMX injection prerequisite").
 
 ## Design docs
@@ -401,7 +401,7 @@ Current state: `counter`, `todos`, `attrs` and `lists` all pass on both backends
 
 Golden snapshots (`fixtures/<name>/__golden__/twin.<backend>.<variant>.js`) pin `twin.tsx`'s own compiled output, independent of MX, to catch a Solid 2 pin bump changing generated code. Regenerate them deliberately with `bun run oracle -- --update` and call it out in the PR — never let a pin bump change them as a silent side effect.
 
-`packages/mx-parser/src/mx/perf.test.ts`'s 500ms wall-clock budget only fails the test when `MX_PERF_STRICT` is set; otherwise it just `console.warn`s past the budget, since a plain `bun run verify` under machine contention (several agents/verifiers at once) can blow well past 500ms with no actual parser regression.
+`packages/parser/src/mx/perf.test.ts`'s 500ms wall-clock budget only fails the test when `MX_PERF_STRICT` is set; otherwise it just `console.warn`s past the budget, since a plain `bun run verify` under machine contention (several agents/verifiers at once) can blow well past 500ms with no actual parser regression.
 
 ### `oracle:marko`: Marko parity for the stock `.marko` fixture set
 
@@ -409,10 +409,10 @@ Decision 51: the parity target for Marko-syntax constructs is Marko itself,
 not Solid. Decision 68 retired `.mx`/`@mxlang/html`, so there is one dialect
 and one table: `bun run oracle:marko` (`packages/oracle/src/report-marko.ts`,
 delegating to `report-marko-stock.ts`) renders every fixture under
-`packages/translator/fixtures-marko/<name>/{input.marko,input.json,expected.html}`
+`packages/hosts/html/fixtures-marko/<name>/{input.marko,input.json,expected.html}`
 two ways — through the real Marko 6 toolchain (`@marko/compiler` 5.42.5 +
 `marko/translator`, exactly matching `marko@6.3.51`'s own dependency) and
-through `@mxlang/translator`'s `compile()` — and compares both against
+through `@mxlang/html`'s `compile()` — and compares both against
 `expected.html` for **semantic** equality (`normalize-html.ts`'s
 `htmlEquals`: both sides parsed with `parse5` and compared by decoded
 tag/attribute/text/comment content, not by string spelling). `-- --strict` is
@@ -435,11 +435,11 @@ Two Marko-toolchain facts worth knowing before touching
 `packages/oracle/src/marko-compile-stock.ts`:
 
 - `compileFile`'s `translator` option must be resolved and passed as the imported module object (`import * as translator from "marko/translator"`), not the string `"marko/translator"` — passing the string fails to resolve relative to the compiler's own internal base path rather than the caller's `node_modules`.
-- `optimize: true` is required to get a plain server-HTML render: without it, `@marko/compiler` emits Marko's resume/hydration markers (an HTML comment plus an inline `<script>`) even under `output: "html"`. It does not fully suppress them — `<input>` and dynamic spread attributes still emit one regardless of `optimize` — so `normalize-html.ts`'s `stripMarkoResumeMarker` strips the trailing `<!--M_$…--><script>…</script>` pair before comparison: it is Marko hydration plumbing with no `@mxlang/translator` equivalent to compare against, not template content, and its id/script body is randomly generated per compile so it can never byte-match anyway.
+- `optimize: true` is required to get a plain server-HTML render: without it, `@marko/compiler` emits Marko's resume/hydration markers (an HTML comment plus an inline `<script>`) even under `output: "html"`. It does not fully suppress them — `<input>` and dynamic spread attributes still emit one regardless of `optimize` — so `normalize-html.ts`'s `stripMarkoResumeMarker` strips the trailing `<!--M_$…--><script>…</script>` pair before comparison: it is Marko hydration plumbing with no `@mxlang/html` equivalent to compare against, not template content, and its id/script body is randomly generated per compile so it can never byte-match anyway.
 
 ## Vite plugin
 
-`packages/mx-vite-plugin` (`@mxlang/vite-plugin`) is the primary integration
+`packages/tooling/vite-plugin` (`@mxlang/vite-plugin`) is the primary integration
 (spec section 7.1): an `enforce: "pre"` Vite transform that prints
 `.solid.mx` to JSX source text with `print()` ahead of
 `@solidjs/vite-plugin`. Both plugins are `enforce: "pre"`, so their relative
@@ -447,7 +447,7 @@ order is their order in the `plugins` array — `mx()` must come first.
 
 `mx()`'s default `extensions` is `[".solid.mx", ".mx", ".marko"]`: `.mx` (the
 official extension, decision 72) and its `.marko` alias both compile through
-`@mxlang/translator`'s `compile()` instead of `print()`, to a plain
+`@mxlang/html`'s `compile()` instead of `print()`, to a plain
 `(input) => string` module (no JSX, no Solid) — `suffixFor(ext)` picks `.ts`
 for that path and `.tsx` for `.solid.mx`, so rolldown never runs a JSX
 transform over code that has none. `.solid.mx` is otherwise byte-for-byte
@@ -457,12 +457,12 @@ literal string suffix of `.solid.mx`, so the longest-first sort at
 `index.ts`'s `matchExt`/`isMxModule` setup matters here the same way it did
 for the old `.marko`/`.solid.marko` collision). The `.mx`/`.marko` path
 returns `map: null` from `transform` — `compile()`'s map is presently an
-identity placeholder (see `packages/translator`'s own doc comment: no AST is
+identity placeholder (see `packages/hosts/html`'s own doc comment: no AST is
 printed on that path), so there is nothing real to hand Vite yet.
 
 `compileMarko()` inside the plugin dynamically `import()`s
-`@mxlang/translator` rather than importing it statically at module top level,
-and this is load-bearing, not a style choice: `@mxlang/translator` has no
+`@mxlang/html` rather than importing it statically at module top level,
+and this is load-bearing, not a style choice: `@mxlang/html` has no
 compiled entry (`main` is `src/index.ts`), and its `translate.ts` pulls in
 `@marko/compiler`. A static import would load that dependency the instant
 `vite.config.ts` imports this plugin — including for a `.solid.mx`-only
@@ -481,7 +481,7 @@ fully.
 
 Any consumer of this plugin needs `allowImportingTsExtensions` in its own
 `tsconfig.json`, even one that only writes `.solid.mx`: resolving
-`@mxlang/translator`'s types at all — even through the plugin's own dynamic
+`@mxlang/html`'s types at all — even through the plugin's own dynamic
 `import()`, cast away at the call site — means `tsc` walks that package's
 `.ts` source, which needs the flag wherever it lands. `examples/counter-app`
 and `examples/todomvc` both carry it for exactly this reason, not because
@@ -550,9 +550,9 @@ method per kind, plus the `drive`/`emit` driver). `src/declarations.ts` holds
 compatibility alias of `HostDeclarations` only. `HostOptions.emitIr` is
 required: there is no pre-IR string-walk fallback.
 
-Both current hosts are on the driver. `@mxlang/translator` uses
-`packages/translator/src/emitter.ts` for vanilla HTML strings;
-`@mxlang/astro` uses `packages/astro/src/astro-template.ts` for `.amx`'s
+Both current hosts are on the driver. `@mxlang/html` uses
+`packages/hosts/html/src/emitter.ts` for vanilla HTML strings;
+`@mxlang/astro` uses `packages/hosts/astro/src/astro-template.ts` for `.amx`'s
 expression-shaped Astro syntax. Neither emitter reads a Marko node; a
 host-specific resolve-time decision goes in `HostTag.data` through
 `claimsTag`/`resolveHostTag`.
@@ -585,11 +585,11 @@ Four facts worth knowing before editing it:
   `translate`), because `@marko/compiler` otherwise resolves its default
   `marko/translator` before parsing and fails — the `marko` package is not a
   dependency here. SolidMX's own bridge
-  (`packages/mx-parser/src/mx/bridge.ts`) is untouched until phase 4.
+  (`packages/parser/src/mx/bridge.ts`) is untouched until phase 4.
 
-## `@mxlang/translator`: the vanilla HTML host on `@mxlang/core`
+## `@mxlang/html`: the vanilla HTML host on `@mxlang/core`
 
-`packages/translator` (`@mxlang/translator`, decisions 66, 68) compiles an
+`packages/hosts/html` (`@mxlang/html`, decisions 66, 68) compiles an
 **ordinary Marko template** to a runtime-free `(input) => string` module. Not
 a dialect: tag discovery through taglibs and `tags/` directories, Marko's own
 HTML/SVG/MathML element registry, Marko's attribute-tag and component
@@ -597,14 +597,14 @@ conventions. The seam is `config.translator` — package-name discovery is a
 dead end, since 5.42.5 scans only `@marko/runtime-*`.
 
 The generic half now lives in `packages/core` (`@mxlang/core`) — see
-"`@mxlang/core`: the Marko-node consumer" below. `packages/translator` keeps
+"`@mxlang/core`: the Marko-node consumer" below. `packages/hosts/html` keeps
 `translate.ts` (the policy rows, `strictPolicy`), `bun.ts`, `types/`,
 `example.ts`, the taglib and the fixtures; its `index.ts` is a thin wrapper
 over the core's `compileSource`, and its own `emitProgram` is now a
 `postEmit(code: string) => string` pass that appends the
 `classValue`/`styleValue`/`escapeComment`/`renderDynamic` helpers a template
 actually calls. `escape` moved to the core and is re-exported here, so every
-compiled template's `import { escape } from "@mxlang/translator"` is
+compiled template's `import { escape } from "@mxlang/html"` is
 unchanged. The `./core` export is **gone** (breaking): importers take
 `@mxlang/core` directly.
 
@@ -669,7 +669,7 @@ than assumed:
   alone.
 
 `bun run oracle:marko` prints one table, for
-`packages/translator/fixtures-marko` — see the "oracle:marko" section above
+`packages/hosts/html/fixtures-marko` — see the "oracle:marko" section above
 for the current fixture count and pass/skip/bug totals. Fixture
 `expected.html` files are generated from real Marko, never hand-written.
 
@@ -701,7 +701,7 @@ into `<!--build -->`.
 
 ## `@mxlang/astro`: the Astro host
 
-`packages/astro` (`@mxlang/astro`, decisions 70 to 72) renders `.mx`
+`packages/hosts/astro` (`@mxlang/astro`, decisions 70 to 72) renders `.mx`
 components inside an Astro project as **static markup**: no islands, no
 hydration, no client JS from this renderer. Two files and no third —
 `src/index.ts` is the integration, `src/server.ts` the renderer's server
@@ -716,7 +716,7 @@ Four facts worth knowing before editing it:
   Astro's renderer contract hands `check(Component, props, slots)` the
   component as an opaque value with no reserved brand channel, and Astro's own
   docs suggest sniffing `Component.name` — which a minifier may rewrite and
-  any function could collide with. Instead `@mxlang/translator`'s `postEmit`
+  any function could collide with. Instead `@mxlang/html`'s `postEmit`
   (`brandRender` in `translate.ts`) names the core's anonymous default export
   `render`, marks it, and exports it, so every compiled MX module carries
   `Symbol.for("mx.component")`. `Symbol.for`, through the global registry, not
@@ -810,21 +810,21 @@ Four facts worth knowing before editing `src/astro-template.ts` or
   diagnostic through `rejectAttributeMethod`.
 
 The lowering table and the full error list live in
-`packages/astro/README.md` "AstroMX templates (`.amx`)". Nothing silently
+`packages/hosts/astro/README.md` "AstroMX templates (`.amx`)". Nothing silently
 degrades: every construct this target cannot express is a build error naming
 the construct, the reason and the `.amx` line.
 
-`packages/astro/types/mx.d.ts` declares `*.mx`/`*.marko` as
+`packages/hosts/astro/types/mx.d.ts` declares `*.mx`/`*.marko` as
 `(input: any) => string`, referenced by a consumer from its own `env.d.ts`
 (`/// <reference types="@mxlang/astro/types" />`). `any` for the same reason
-`@mxlang/translator`'s own `types/marko.d.ts` does it: per-file `Input` typing
+`@mxlang/html`'s own `types/marko.d.ts` does it: per-file `Input` typing
 needs a virtual-file projection inside tsserver, which is the `astro-ts-plugin`
 task. `@astrojs/ts-plugin` is not reusable for it — it adds `.astro` imports
 *within* `.ts` files, the opposite direction.
 
 ## `@mxlang/language-server`: diagnostics-only LSP server (decision 71/72)
 
-`packages/language-server` (`@mxlang/language-server`) exists to close one
+`packages/tooling/language-server` (`@mxlang/language-server`) exists to close one
 gap decisions 71/72 name explicitly: "a host is not done without its editor
 diagnostics." Marko's own language server (`marko-js/language-server`)
 compiles every `.marko`/`.mx` file with a **hardcoded** compiler config that
@@ -866,7 +866,7 @@ file. Three branches, in order, walking upward from the file for the nearest
 authoritative source, which doubles as the routing config decision 71's
 "mixed projects" case already needs for the Vite plugin/Bun loader; (2)
 failing that, if the `package.json` depends on **exactly one** `@mxlang/*`
-host package (`@mxlang/translator`, `@mxlang/astro`), that host at its
+host package (`@mxlang/html`, `@mxlang/astro`), that host at its
 default policy; (3) otherwise, the translator's default (non-strict) policy.
 `@mxlang/astro` always compiles under `strictPolicy` (decision 71: it ships
 no stateful tags) — `resolvePolicyObject` in `diagnose.ts` special-cases
@@ -883,7 +883,7 @@ repos/marko-js/zed/contents/...`, no local checkout) confirms
 `[language_servers.marko]` binds `languages = ["Marko"]` to that extension's
 own `zed::Extension::language_server_command` implementation — a
 `Cargo.toml`-backed Rust extension is what makes the entry work, not the TOML
-table alone. `packages/zed-extension` is grammar-only today (no
+table alone. `packages/editors/zed` is grammar-only today (no
 `Cargo.toml`, see "No Rust" in the Zed extension section above) *because* it
 registers no language server; adding this server's registration is therefore
 new scope (a Rust crate) for that package, tracked as follow-up rather than
@@ -916,7 +916,7 @@ so this only bites a standalone `vitest run` of this package.
 
 ## Bun loader
 
-`packages/translator/src/bun.ts` (`@mxlang/translator/bun`) is the Bun-side
+`packages/hosts/html/src/bun.ts` (`@mxlang/html/bun`) is the Bun-side
 `.marko` integration, decision 58 roadmap item 2, half A (moved here from the
 retired `@mxlang/html/bun` by decision 68). It exports a `BunPlugin` that
 registers `build.onLoad({ filter: /\.marko$/ }, ...)`: on each `.marko` file
@@ -928,13 +928,13 @@ second transform.
 
 The plugin object self-registers at import time (`Bun.plugin(markoPlugin)`
 runs at module scope, in addition to the `export default`): `bunfig.toml`'s
-`preload = ["@mxlang/translator/bun"]` runs a preloaded module purely for its
+`preload = ["@mxlang/html/bun"]` runs a preloaded module purely for its
 side effects — it does **not** call `Bun.plugin` on a default export
 automatically — so without the self-registration call, `.mx`/`.marko`
 imports silently fall through to Bun's default loader and resolve to the
 file's path string, not a compiled function. `Bun.plugin` is idempotent for
 an already-registered plugin object, so `import markoPlugin from
-"@mxlang/translator/bun"; Bun.plugin(markoPlugin)` (the programmatic form)
+"@mxlang/html/bun"; Bun.plugin(markoPlugin)` (the programmatic form)
 still works without double-registering.
 
 `examples/mx-site` uses this loader: `bunfig.toml` preloads it, `.mx` pages
@@ -948,15 +948,15 @@ an emit bug") lives in the e2e suite's own content assertions
 build — there is no separate golden-file diff, since the rendered HTML
 itself is the golden.
 
-`packages/translator/src/bun.test.ts` is a `bun:test` file (not vitest — it
+`packages/hosts/html/src/bun.test.ts` is a `bun:test` file (not vitest — it
 exercises `Bun.plugin` and Bun's own dynamic `import()`, both Bun-runtime
-only), run via `bun run test:bun` in that package. `packages/translator`'s
+only), run via `bun run test:bun` in that package. `packages/hosts/html`'s
 own `vitest.config.ts` excludes it from the vitest project so the root
 `bun run test` does not try to load `bun:test` under Node/Vite.
 
 ## `.mx`/`.marko` import typing
 
-`packages/translator/types/marko.d.ts` declares `declare module "*.mx"` and
+`packages/hosts/html/types/marko.d.ts` declares `declare module "*.mx"` and
 `declare module "*.marko"`, both typing the import as `(input: any) =>
 string`. `any`, not each file's real `Input` interface: per-file typing
 needs a virtual-file projection of the compiled module (mirroring
@@ -1018,24 +1018,24 @@ virtual-`.tsx` projection (spec section 7.2).
 
 `examples/mx-site` is a plain-string example: a Hono-on-Bun server and a
 static build both rendering MX (`.mx`) templates via
-`@mxlang/translator/bun` (the Bun loader — see its own section above), no
+`@mxlang/html/bun` (the Bun loader — see its own section above), no
 Solid, no client runtime, no prebuild step. `src/server.ts` and
 `src/build.ts` `import renderX from "./pages/x.mx"` directly, exactly like
 any other module; `bunfig.toml` preloads the loader.
 
-`packages/translator/tsconfig.json` maps `@mxlang/parser` to
-`../mx-parser/src/public.d.ts` in its `paths`, for typechecking against the
+`packages/hosts/html/tsconfig.json` maps `@mxlang/parser` to
+`../parser/src/public.d.ts` in its `paths`, for typechecking against the
 parser's public types without requiring `dist/` to be built first. Bun's
 `bun run` also honours `tsconfig.json` `paths` at runtime, and does so per
 imported file's own directory, not just the entry point's — so a plain `bun
-run` of any script that imports `@mxlang/translator` (which imports
+run` of any script that imports `@mxlang/html` (which imports
 `@mxlang/parser`) fails with `Export named 'X' not found in module
 ".../public.d.ts"`, because Bun resolves the bare `@mxlang/parser` specifier
-against `packages/translator/tsconfig.json`'s `paths` regardless of where the
+against `packages/hosts/html/tsconfig.json`'s `paths` regardless of where the
 importing file lives. Work around it with `bun run
 --tsconfig-override=<path to a tsconfig with no such paths>`; `examples/mx-site`'s
 `dev` and `build` scripts do this against the root `tsconfig.base.json`. This
-is a property of `translator`'s tsconfig, not a bug in `@mxlang/translator`
+is a property of `translator`'s tsconfig, not a bug in `@mxlang/html`
 itself or in Bun's resolver generally — vitest is unaffected because it does
 not resolve bare specifiers through `tsconfig.json` `paths` the same way.
 
@@ -1069,8 +1069,8 @@ package section above). Both pages live in `error-fixtures/`, **outside**
 every other test depends on. `vitest.config.ts` sets `fileParallelism: false`,
 since each spec runs a real `astro build`.
 
-**`.mx` pages** (decision 76b, `packages/astro/src/index.ts` +
-`packages/astro/src/vite-pages.ts`): the integration calls Astro's
+**`.mx` pages** (decision 76b, `packages/hosts/astro/src/index.ts` +
+`packages/hosts/astro/src/vite-pages.ts`): the integration calls Astro's
 `addPageExtension(".mx")` — `.marko` is deliberately not registered as a page
 extension, staying a component-only alias. A second Vite plugin (`mxPages`,
 `enforce: "post"`, scoped to `<srcDir>/pages/`) runs after
@@ -1078,7 +1078,7 @@ extension, staying a component-only alias. A second Vite plugin (`mxPages`,
 and rewrites the already-compiled module — by the time this stage runs the
 bundler has already stripped TypeScript types from the code (measured: no
 `: Input`/`: string` annotations survive), so the rewrite injects plain JS,
-not TS. It matches `@mxlang/translator`'s exact branded tail (`function
+not TS. It matches `@mxlang/html`'s exact branded tail (`function
 render(input) {...}; Object.defineProperty(render,
 Symbol.for("mx.component"), ...); export default render;` — see
 `translate.ts`'s `brandRender`) and replaces it with an Astro
@@ -1115,10 +1115,10 @@ under `src/pages/`, a tiny `src/build.ts` that imports both and writes
 than a browser entry — `vite build` bundles it through the plugin's
 `.mx`/`.marko` transform, then `bun run dist-ssr/build.js` actually runs it
 and writes the
-HTML. `vite.config.ts`'s `ssr.external: ["@mxlang/translator"]` keeps that
-package's own `import { escape } from "@mxlang/translator"` (present in
+HTML. `vite.config.ts`'s `ssr.external: ["@mxlang/html"]` keeps that
+package's own `import { escape } from "@mxlang/html"` (present in
 every compiled `.mx` page) out of the rolldown bundle — left un-external,
-rolldown would try to bundle `@mxlang/translator`'s raw TS source itself,
+rolldown would try to bundle `@mxlang/html`'s raw TS source itself,
 pulling in `@marko/compiler`'s transitive syntax the same way the plugin's
 own dynamic `import()` has to route around (see the Vite plugin section
 above).

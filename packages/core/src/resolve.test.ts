@@ -10,7 +10,7 @@ import { resolve } from "./resolve.ts";
  * The resolver (decision 79): one fixture per IR kind, plus the error cases.
  *
  * These are the tests that keep the IR honest. `compileSource`'s own emitted
- * output is asserted elsewhere (`@mxlang/translator`'s suite and both
+ * output is asserted elsewhere (`@mxlang/html`'s suite and both
  * oracles); what is asserted *here* is the shape the core hands a host —
  * because a host's emitter is written against this tree and nothing else, so a
  * silently changed node kind, a dropped child or a lost position is a break no

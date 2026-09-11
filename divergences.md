@@ -19,15 +19,15 @@ the structural core, no longer a contract in itself.
 
 ## Known bugs, not divergences
 
-These are `@mxlang/translator` implementation bugs against decision 67's
+These are `@mxlang/html` implementation bugs against decision 67's
 rule ("the translator should follow Marko"), not intentional divergences.
-They are tracked as skipped fixtures under `packages/translator/fixtures-marko/`
+They are tracked as skipped fixtures under `packages/hosts/html/fixtures-marko/`
 with a `translator-bug` reason in each fixture's `meta.json`, not rows above.
 
 - **`unknown-element`**: real Marko treats an unresolved hyphenated tag as a
   failed custom-element lookup and refuses to compile
   ("Unable to find entry point for custom tag `<my-widget>`", verified
-  against `@marko/compiler` 5.42.5 / `marko@6.3.51`). `@mxlang/translator`'s
+  against `@marko/compiler` 5.42.5 / `marko@6.3.51`). `@mxlang/html`'s
   `isElement` (`translate.ts`) instead treats any hyphenated name as literal
   HTML unconditionally, so it compiles and renders the tag as-is. Fix:
   `isElement` should attempt component resolution for a hyphenated name
@@ -36,7 +36,7 @@ with a `translator-bug` reason in each fixture's `meta.json`, not rows above.
 - **`lowercase-component`**: real Marko rejects a lowercase local-variable
   tag reference outright ("Local variables must be in a dynamic tag unless
   they are PascalCase. Use `<${layout}/>` or rename to `Layout`.", verified
-  against the same versions). `@mxlang/translator`'s `isComponent`
+  against the same versions). `@mxlang/html`'s `isComponent`
   (`translate.ts`) is binding-based regardless of case, so it calls the
   import successfully instead of erroring — strictly *more permissive* than
   Marko. Fix: `isComponent` should reject a lowercase local-variable
