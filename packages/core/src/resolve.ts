@@ -326,7 +326,7 @@ function resolveConst(ctx: Ctx, node: Node): IrNode {
 }
 
 /** `<define/name|params|>...</define>` — a reusable block. */
-function resolveDefine(ctx: Ctx, node: Node): IrNode[] {
+function resolveDefine(ctx: Ctx, node: Node): IrNode {
   if (!node.var) {
     fail("`<define>` without a name (write `<define/name>`)", node);
   }
@@ -352,15 +352,13 @@ function resolveDefine(ctx: Ctx, node: Node): IrNode[] {
     code,
     loc,
   }));
-  return [
-    {
-      kind: "Define",
-      name,
-      params,
-      children: [...hoisted, ...children],
-      loc,
-    },
-  ];
+  return {
+    kind: "Define",
+    name,
+    params,
+    children: [...hoisted, ...children],
+    loc,
+  };
 }
 
 /**
@@ -440,7 +438,10 @@ function resolveComponent(
 }
 
 function targetName(target: ComponentTarget): string {
-  return target.kind === "dynamic" ? "${…}" : target.name;
+  // A dynamic target has no name to report, so the diagnostic names the
+  // construct instead. Spelled without a `$`-brace so it is not mistaken for
+  // an unintended template placeholder in this file's own source.
+  return target.kind === "dynamic" ? "dynamic tag" : target.name;
 }
 
 function resolveTag(ctx: Ctx, node: Node): IrNode {
@@ -581,8 +582,7 @@ export function resolveChildren(ctx: Ctx, children: Node[]): IrNode[] {
           out.push({ kind: "Hoisted", code, loc: posOf(child) });
         }
         ctx.prelude.length = before;
-        if (Array.isArray(node)) out.push(...node);
-        else out.push(node);
+        out.push(node);
         break;
       }
       case "MarkoDocumentType":

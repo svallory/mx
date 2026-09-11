@@ -52,6 +52,11 @@ export {
 export type { HostDeclarations } from "./declarations.ts";
 export { drive, type Emitter, emit } from "./emit.ts";
 export { escape } from "./escape.ts";
+export {
+  type FragmentBase,
+  type FragmentResult,
+  parseFragment,
+} from "./fragment.ts";
 export type {
   Attr,
   AttributeTag,
@@ -66,8 +71,3 @@ export type {
   Position,
 } from "./ir.ts";
 export { resolve, resolveChildren } from "./resolve.ts";
-export {
-  type FragmentBase,
-  type FragmentResult,
-  parseFragment,
-} from "./fragment.ts";
