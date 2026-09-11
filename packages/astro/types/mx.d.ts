@@ -18,7 +18,7 @@
  * opposite direction from typing `.mx` imports inside `.astro`.
  */
 declare module "*.mx" {
-  const render: (input: any) => string;
+  const render: (input: unknown) => string;
   export default render;
 }
 
@@ -27,6 +27,6 @@ declare module "*.mx" {
  * alias, identical treatment. Same shape, same reason.
  */
 declare module "*.marko" {
-  const render: (input: any) => string;
+  const render: (input: unknown) => string;
   export default render;
 }

@@ -45,6 +45,53 @@
           "a11y": { "useButtonType": "off" }
         }
       }
+    },
+    {
+      "includes": ["examples/astro-static/**/*.astro"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedImports": "off",
+            "noUnusedVariables": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/astro/src/astro-template.test.ts",
+        "packages/astro/src/astro-template.ts",
+        "packages/astro/src/server.test.ts",
+        "packages/astro/src/vite-pages.test.ts",
+        "packages/astro/src/vite-pages.ts",
+        "packages/core/src/compile.ts",
+        "packages/core/src/core.ts",
+        "packages/core/src/emit-statement.test.ts",
+        "packages/core/src/hooks.test.ts",
+        "packages/translator/scripts/consumer-check.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": { "noTemplateCurlyInString": "off" }
+        }
+      }
+    },
+    {
+      "includes": ["packages/core/src/compile.ts", "packages/core/src/core.ts"],
+      "linter": {
+        "rules": {
+          "style": { "useNamingConvention": "on" },
+          "suspicious": { "noExplicitAny": "off" }
+        }
+      }
+    },
+    {
+      "includes": ["packages/translator/src/translate.test.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": { "noTemplateCurlyInString": "info" }
+        }
+      }
     }
   ]
 }

@@ -8,7 +8,7 @@
  * `.solid.mx`), not something this ambient declaration can derive on its own.
  */
 declare module "*.marko" {
-  const render: (input: any) => string;
+  const render: (input: unknown) => string;
   export default render;
 }
 
@@ -17,6 +17,6 @@ declare module "*.marko" {
  * accepted alias, identical treatment. Same shape, same reason.
  */
 declare module "*.mx" {
-  const render: (input: any) => string;
+  const render: (input: unknown) => string;
   export default render;
 }

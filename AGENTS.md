@@ -69,6 +69,25 @@ or `examples/*` with its own test files) that emits into
 
 `.claude/hyper.json` runs Biome formatting checks, then per-package TypeScript type checking via `tsc --noEmit` after every agent edit. Both commands use `./node_modules/.bin` paths directly so they work without shell shims (proto/bun/nvm wrappers).
 
+## Scoped lint exceptions
+
+- `noUnusedImports` and `noUnusedVariables` are disabled for
+  `examples/astro-static/**/*.astro`: Biome checks only Astro frontmatter and
+  cannot see imports and variables consumed by the template body.
+- `noTemplateCurlyInString` is disabled for the exact Astro, core, and
+  translator source/test files listed in `biome.json`. Those strings
+  intentionally contain Marko `${...}` syntax or generated JavaScript
+  template source and must remain ordinary string literals.
+- `packages/translator/src/translate.test.ts` keeps
+  `noTemplateCurlyInString` enabled at info severity because its existing
+  occurrence-level suppressions would become stale if the rule were disabled.
+  Biome 2.5.12 does not expose `suppressions/unused` as a configurable rule.
+- `useNamingConvention` remains enabled only in
+  `packages/core/src/compile.ts` and `packages/core/src/core.ts`, keeping their
+  existing visitor-key suppressions active; `noExplicitAny` is disabled only
+  there for the compiler adapter's intentional `Node = any`. These two files
+  are owned by the parallel core-ir refactor and must not be edited here.
+
 ## Exact-pin policy
 
 All dependencies in the root `package.json` are pinned to an exact version (no `^`/`~`). `mx-parser`'s output must be byte-reproducible wire format across the parser, the Babel plugin, and the TS plugin's virtual-file generator; an unpinned transitive bump in Babel or TypeScript could silently change AST shape or emitted output. See `README.md` "Pinned versions" for the current set and rationale.
