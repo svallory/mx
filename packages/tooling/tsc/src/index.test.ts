@@ -5,6 +5,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { resolveTscPath } from "./index.ts";
 
+/**
+ * Each of these tests spawns a real `tsc`, which takes ~1s alone but well past
+ * vitest's 5s default when the whole root suite runs in parallel on a loaded
+ * machine. The budget is generous on purpose: a slow machine is not a
+ * regression, and a flaky gate is worse than a slow one.
+ */
+const SPAWN_TIMEOUT_MS = 60_000;
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..", "..");
 const fixtures = join(here, "fixtures");
@@ -69,29 +77,45 @@ describe("mx-tsc", () => {
     expect(resolveTscPath()).toMatch(/typescript[/\\]lib[/\\]tsc\.js$/);
   });
 
-  it("type-checks a valid .solid.mx and its importer with --noEmit", () => {
-    const result = run(mxTsc, ["--noEmit", "-p", join(fixtures, "passing")]);
+  it(
+    "type-checks a valid .solid.mx and its importer with --noEmit",
+    () => {
+      const result = run(mxTsc, ["--noEmit", "-p", join(fixtures, "passing")]);
 
-    expect(result.output).toBe("");
-    expect(result.status).toBe(0);
-  });
+      expect(result.output).toBe("");
+      expect(result.status).toBe(0);
+    },
+    SPAWN_TIMEOUT_MS,
+  );
 
-  it("reports a type error inside an MX region at its own position", () => {
-    const result = run(mxTsc, ["--noEmit", "-p", join(fixtures, "failing")]);
+  it(
+    "reports a type error inside an MX region at its own position",
+    () => {
+      const result = run(mxTsc, ["--noEmit", "-p", join(fixtures, "failing")]);
 
-    expect(result.status).not.toBe(0);
-    // The error is inside the `.solid.mx` file itself, not the importer, and
-    // lands on the offending argument rather than the region's opening tag.
-    expect(result.output).toContain("Widget.solid.mx(7,32)");
-    expect(result.output).toContain("error TS2345");
-  });
+      expect(result.status).not.toBe(0);
+      // The error is inside the `.solid.mx` file itself, not the importer, and
+      // lands on the offending argument rather than the region's opening tag.
+      expect(result.output).toContain("Widget.solid.mx(7,32)");
+      expect(result.output).toContain("error TS2345");
+    },
+    SPAWN_TIMEOUT_MS,
+  );
 
-  it("catches what plain tsc cannot even see", () => {
-    const result = run(plainTsc, ["--noEmit", "-p", join(fixtures, "failing")]);
+  it(
+    "catches what plain tsc cannot even see",
+    () => {
+      const result = run(plainTsc, [
+        "--noEmit",
+        "-p",
+        join(fixtures, "failing"),
+      ]);
 
-    // Plain `tsc` never opens the file: it fails at the *import* instead, and
-    // so reports nothing about the type error the module actually contains.
-    expect(result.output).toContain("error TS2307");
-    expect(result.output).not.toContain("TS2345");
-  });
+      // Plain `tsc` never opens the file: it fails at the *import* instead, and
+      // so reports nothing about the type error the module actually contains.
+      expect(result.output).toContain("error TS2307");
+      expect(result.output).not.toContain("TS2345");
+    },
+    SPAWN_TIMEOUT_MS,
+  );
 });
