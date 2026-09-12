@@ -222,12 +222,6 @@ describe("attribute tag parse errors", () => {
     );
   });
 
-  it("rejects the same attribute tag twice", () => {
-    expectSyntaxError(
-      `const el = <Layout><@header>A</@header><@header>B</@header></Layout>;`,
-      "attribute tag `@header` given twice",
-    );
-  });
 
   it("rejects an attribute tag at the top level", () => {
     expectSyntaxError(

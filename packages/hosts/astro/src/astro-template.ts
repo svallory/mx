@@ -298,6 +298,12 @@ export function createEmitter(): Emitter<string> {
     },
 
     forLoop(node) {
+      if (node.source.kind === "range" && node.source.step) {
+        fail(
+          "`<for step=...>`: step is not supported; use a computed array",
+          node,
+        );
+      }
       const [first, second] = node.params;
       const branch = fragment(node.children);
       if (node.source.kind === "of") {

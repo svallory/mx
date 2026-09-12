@@ -578,12 +578,6 @@ function resolveComponent(
         tag,
       );
     }
-    if (seenTags.has(name)) {
-      fail(
-        `attribute tag \`@${name}\` given twice (repeatable attribute tags are not supported)`,
-        tag,
-      );
-    }
     seenTags.add(name);
     if ((tag.attributes ?? []).length > 0) {
       fail("attribute tags take params or a body, not attributes (v1)", tag);
