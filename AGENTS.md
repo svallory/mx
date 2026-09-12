@@ -333,9 +333,9 @@ cannot fail is not a gate. `.github/workflows/upstream-check.yml`'s
 **Rust `lib.rs` registers the MX language server** (decision 77, task
 `zed-ls-registration`): `Cargo.toml` + `src/lib.rs` implement
 `zed::Extension::language_server_command`, and `extension.toml` carries
-`[language_servers.mxlang]` (`languages = ["MX"]` only — `SolidMX`/`AstroMX`
-are not listed since `@mxlang/language-server` does not compile those file
-kinds yet). Minimal by design: no settings, no downloads — command
+`[language_servers.mxlang]` (`languages = ["MX", "SolidMX"]`; AstroMX is not
+listed since `@mxlang/language-server` does not compile that file kind yet).
+Minimal by design: no settings, no downloads — command
 resolution checks a local worktree install (via `Worktree::read_text_file`,
 the sandbox-safe check: Zed's wasm sandbox preopens only the extension's own
 working directory, so a plain `std::fs`/`Path` check on a worktree path
