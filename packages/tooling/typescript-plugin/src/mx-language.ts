@@ -114,6 +114,15 @@ export function createMxLanguagePlugin(
  * Astro passes template children as JSX's `children` attribute, then the MX
  * renderer turns that slot into `input.content` at runtime. Present that call
  * shape to TypeScript without changing the compiled function body.
+ *
+ * `children` is offered only to a component whose `Input` actually declares
+ * `content`. A component with no content slot accepts no slot content at
+ * runtime, so bolting `children?: unknown` onto it would let
+ * `<Card>anything</Card>` type-check against a component that silently drops
+ * it. The choice is made by a conditional type rather than by inspecting the
+ * emitted interface text, so it stays correct however the author formatted
+ * their `Input` — and `Omit` still removes `content` itself, which is the
+ * renderer's own parameter name and never something an Astro caller passes.
  */
 export function createAstroTypeSurface(code: string): string {
   const defaultExport = "export default render;";
@@ -125,7 +134,9 @@ export function createAstroTypeSurface(code: string): string {
   return code.replace(
     defaultExport,
     [
-      'type MxAstroInput = Omit<Input, "content"> & { children?: unknown };',
+      'type MxAstroInput = "content" extends keyof Input',
+      '  ? Omit<Input, "content"> & { children?: unknown }',
+      "  : Input;",
       "const mxAstroRender = render as unknown as (input: MxAstroInput) => string;",
       "export default mxAstroRender;",
     ].join("\n"),

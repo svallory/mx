@@ -12,6 +12,7 @@ import {
   SOLID_MX_LANGUAGE_ID,
 } from "./language.ts";
 import {
+  createAstroTypeSurface,
   createHtmlMappings,
   createMxLanguagePlugin,
   MX_LANGUAGE_ID,
@@ -498,6 +499,76 @@ describe("Astro language plugin composition", () => {
     ).toThrowError(
       "@mxlang/typescript-plugin: `astro: true` requires the optional peer dependency `@astrojs/language-server@2.16.16`; install it beside the plugin.",
     );
+  });
+
+  // An `.astro` file inside a dependency is Astro's own package-owned
+  // component source, not the consumer's code: associating it keeps imports
+  // resolvable without `mx-tsc` reporting diagnostics for files the user
+  // cannot edit. Both separator styles are covered because the check
+  // normalizes Windows paths before testing for the segment.
+  it.each([
+    ["/project/node_modules/astro/components/Image.astro", true],
+    ["C:\\project\\node_modules\\astro\\components\\Image.astro", true],
+    ["/project/src/pages/index.astro", false],
+    ["C:\\project\\src\\pages\\index.astro", false],
+  ])("treats %s as associated-only: %s", (fileName, expected) => {
+    const plugin = createAstroLanguagePlugin();
+
+    expect(plugin.isAssociatedFileOnly?.(fileName, "astro")).toBe(expected);
+  });
+});
+
+describe("Astro type surface", () => {
+  const compiled = (inputMembers: string) =>
+    [
+      `export interface Input {${inputMembers}}`,
+      "",
+      "function render(input: Input): string {",
+      '  return "";',
+      "}",
+      "",
+      "export default render;",
+    ].join("\n");
+
+  it("offers children to a component whose Input declares content", () => {
+    const surface = createAstroTypeSurface(
+      compiled(" title: string; content: () => string; "),
+    );
+
+    expect(surface).toContain('"content" extends keyof Input');
+    expect(surface).toContain(
+      'Omit<Input, "content"> & { children?: unknown }',
+    );
+  });
+
+  /**
+   * A component with no content slot accepts no slot content at runtime, so
+   * `children` must not be bolted on: `<Card>anything</Card>` against such a
+   * component is a real error, and the earlier unconditional
+   * `children?: unknown` silently accepted it.
+   */
+  it("resolves to Input itself for a component with no content slot", () => {
+    const surface = createAstroTypeSurface(compiled(" title: string; "));
+    const service = createPluginService(
+      {
+        "/project/surface.ts": [
+          surface.replace("export default mxAstroRender;", ""),
+          'const withChildren: MxAstroInput = { title: "t", children: 1 };',
+          'const withoutChildren: MxAstroInput = { title: "t" };',
+          "void withChildren;",
+          "void withoutChildren;",
+        ].join("\n"),
+      },
+      ["/project/surface.ts"],
+    );
+
+    const codes = service
+      .getSemanticDiagnostics("/project/surface.ts")
+      .map((diagnostic) => diagnostic.code);
+
+    // TS2353: `children` is not a known property, because `Input` never
+    // declared `content` and so the conditional type resolved to `Input`.
+    expect(codes).toContain(2353);
   });
 });
 
