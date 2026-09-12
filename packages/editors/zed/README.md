@@ -14,10 +14,12 @@ Ships three languages:
 - `SolidMX` (`.solid.mx`), backed by `packages/editors/tree-sitter-solidmx` (a
   patched `tree-sitter-typescript` tsx dialect with an `mx_element` external
   token in expression position).
+- `AstroMX` (`.amx`) on the same Marko grammar and queries as `MX`.
 
 Also registers a language server: `src/lib.rs` (a minimal Rust extension,
 `Cargo.toml`) implements `zed::Extension::language_server_command` for
-`@mxlang/language-server` on `MX` — see "Language server" below.
+`@mxlang/language-server` on `MX` and `SolidMX` — see "Language server"
+below.
 
 ## Toolchain prerequisite: Rust + wasm32-wasip1
 
@@ -90,7 +92,10 @@ under the sandbox (always "not found," silently falling through to `bunx`).
    naming the `<let>` construct as unsupported under the resolved policy —
    see `packages/tooling/language-server/README.md` "Policy resolution" for exactly
    how the `#mxlang` field is read.
-5. Check Zed's LSP logs regardless (command palette → **"zed: open language
+5. Open a `.solid.mx` file with a `<let>` inside an MX region. Expect the
+   Solid host diagnostic to point at the tag's position in the complete
+   TypeScript file.
+6. Check Zed's LSP logs regardless (command palette → **"zed: open language
    server logs"** → pick the `mxlang` server): expect a line naming the
    command that was launched, e.g. `mxlang server started with
    <path-or-bunx-command> --stdio` (exact wording is Zed's own, not this
@@ -99,7 +104,7 @@ under the sandbox (always "not found," silently falling through to `bunx`).
    stopped at `cargo build`/the clean-clone compile-check; nobody has run the
    extension inside Zed yet, so treat the above as the procedure to follow,
    not a result already confirmed.
-6. If no diagnostic appears: check the logs first for a spawn failure (none
+7. If no diagnostic appears: check the logs first for a spawn failure (none
    of the four resolution paths found the server) before assuming the
    diagnostic logic itself is wrong.
 
@@ -123,14 +128,9 @@ this precedence correct when `MX` was added back.
 ## What you get in Zed today
 
 - `MX` (`.mx`/`.marko`): syntax highlighting, brackets, outline — all from
-  Marko's own grammar and queries. **No language server**: Marko's own LS,
-  which the official `marko-js/zed` extension registers for its `Marko`
-  language, does not attach to files Zed resolves as `MX` — Zed's
-  `language_servers` binding is per-language-name, and `[language_servers.*]`
-  is declared by the extension that owns the LS binary, not by ours. Installing
-  the official Marko extension gives you the LS on `.marko` files (a separate
-  extension's language); it does not extend to `.mx`. A future MX diagnostics
-  language server (decision 71/72) is a phase-3 item, not part of this task.
+  Marko's own grammar and queries — plus MX host diagnostics from
+  `@mxlang/language-server`. Marko's own server still supplies its broader
+  language features for files associated with its `Marko` language.
 - `AstroMX` (`.amx`): syntax highlighting, brackets, outline, from the same
   Marko grammar and queries as `MX` — an `.amx` file's template half *is* MX
   (decisions 76c/78), so Marko's queries apply unchanged. **Known limitation**:
@@ -144,9 +144,10 @@ this precedence correct when `MX` was added back.
   (whose split, fence versus body, is simpler than SolidMX's
   expression-position problem); follow-up work, not done here. No language
   server.
-- `SolidMX` (`.solid.mx`): syntax highlighting, brackets, outline, and syntax
+- `SolidMX` (`.solid.mx`): syntax highlighting, brackets, outline, syntax
   highlighting inside `mx_element` regions via the official Marko extension's
-  injection (see "Prerequisite" below). No language server either.
+  injection (see "Prerequisite" below), and Solid host diagnostics from
+  `@mxlang/language-server`.
 
 `.amx` needs no precedence rule of its own: Zed's matcher reads the text after
 the last dot, and `amx` is not `mx`, so `AstroMX` and `MX` never contend the

@@ -9,11 +9,16 @@ There is no dedicated MX extension yet. Because MX 1.0 is a strict subset of Mar
 
 ## Highlighting
 
-Install the official Marko extension, then map the `.mx` extension to it:
+Install the official Marko extension, then map `.mx` to Marko. Give
+`.solid.mx` its own `solidmx` language id so a generic LSP client can route it
+to MX's diagnostics server:
 
 ```json
 {
-  "files.associations": { "*.mx": "marko" }
+  "files.associations": {
+    "*.mx": "marko",
+    "*.solid.mx": "solidmx"
+  }
 }
 ```
 
@@ -41,7 +46,7 @@ A generic LSP client extension (for example, one that reads a JSON server defini
 {
   "command": "bunx",
   "args": ["@mxlang/language-server", "--stdio"],
-  "filetypes": ["marko", "mx"]
+  "filetypes": ["marko", "mx", "solidmx"]
 }
 ```
 
@@ -54,7 +59,12 @@ const client = new LanguageClient(
   "mxlang",
   "MX diagnostics",
   { command: "bunx", args: ["@mxlang/language-server", "--stdio"] },
-  { documentSelector: [{ scheme: "file", language: "marko" }] },
+  {
+    documentSelector: [
+      { scheme: "file", language: "marko" },
+      { scheme: "file", language: "solidmx" },
+    ],
+  },
 );
 client.start();
 ```

@@ -25,11 +25,16 @@ Both languages can match the same file: `Counter.solid.mx` matches `MX`'s `.mx` 
 | --- | --- | --- |
 | MX (`.mx`) | Yes, from Marko's grammar | Yes — see below |
 | AstroMX (`.amx`) | Yes, from Marko's grammar (the frontmatter fence itself highlights as Marko markup, a known limitation) | No |
-| SolidMX (`.solid.mx`) | Yes, plus injected highlighting inside embedded MX regions (needs the Marko extension) | No |
+| SolidMX (`.solid.mx`) | Yes, plus injected highlighting inside embedded MX regions (needs the Marko extension) | Yes — see below |
 
 ## Diagnostics language server
 
-The extension registers `@mxlang/language-server` for the `MX` language only. It resolves the server to launch, in order: a local install under the project (`node_modules/.bin/mxlang-language-server`), a global install, `bunx @mxlang/language-server --stdio`, then `npx`. Nothing needs to be configured for a project that already has the package installed one of those ways.
+The extension registers `@mxlang/language-server` for the `MX` and `SolidMX`
+languages. It resolves the server to launch, in order: a local install under
+the project (`node_modules/.bin/mxlang-language-server`), a global install,
+`bunx @mxlang/language-server --stdio`, then `npx`. Nothing needs to be
+configured for a project that already has the package installed one of those
+ways.
 
 ### Trying it locally
 
@@ -41,7 +46,11 @@ The extension registers `@mxlang/language-server` for the `MX` language only. It
    { "mxlang": { "host": "html", "strict": true } }
    ```
 
-4. Open an `.mx` file containing a `<let>` tag. Under a `strict` host policy this is rejected — you should see one diagnostic naming the construct. See [Language server](/editors/language-server/) for exactly how policy resolution works.
+4. Open an `.mx` file containing a `<let>` tag. Under a `strict` host policy this is rejected — you should see one diagnostic naming the construct.
+5. Open a `.solid.mx` file with a `<let>` tag inside an MX region. The Solid
+   host rejects the tag and the diagnostic should point to its position in the
+   complete TypeScript file. See [Language server](/editors/language-server/)
+   for routing and policy details.
 
 ## Building the extension from source
 

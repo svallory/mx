@@ -9,7 +9,7 @@ description: "@mxlang/language-server: diagnostics-only, for what a host's polic
 
 ## Scope: diagnostics only
 
-It does exactly one thing: watch `.mx`/`.marko` documents, compile each one under its resolved host policy, and publish one diagnostic per compile error. No completion, no hover, no go-to-definition, no formatting, no semantic tokens — Marko's own language server already provides all of that, and this server is meant to run *alongside* it, not replace it. Running two language servers against one file type is an ordinary pattern in both VS Code and Zed (the same way ESLint and TypeScript's own server coexist).
+It does exactly one thing: watch `.mx`, `.marko`, and `.solid.mx` documents, compile or parse each one through its host, and publish one diagnostic per positioned error. No completion, no hover, no go-to-definition, no formatting, no semantic tokens — Marko's own language server already provides those features for `.mx`/`.marko`, and this server is meant to run *alongside* it, not replace it. Running two language servers against one file type is an ordinary pattern in both VS Code and Zed (the same way ESLint and TypeScript's own server coexist).
 
 ## Why it exists
 
@@ -29,6 +29,24 @@ An editor only hands the server a file path and its text — nothing about which
 3. Otherwise, it falls back to the HTML host's default policy.
 
 The Astro host always compiles under its strict policy — it has no non-strict mode — so `"host": "astro"` behaves as strict regardless of the field's own `strict` value.
+
+The dependency hosts are `@mxlang/html`, `@mxlang/astro`, and
+`@mxlang/solid`. A whole-file `.mx`/`.marko` document resolved to
+`"host": "solid"` is checked with the Solid host's fixed profile, so
+stateful Marko tags such as `<let>` are errors.
+
+## SolidMX documents
+
+`.solid.mx` is a different file format rather than another policy for a
+whole-file template: it is TypeScript/TSX with MX regions. The server parses
+the complete module through `@mxlang/parser`, which lowers each region through
+`@mxlang/solid`. Host errors and malformed expressions inside a region are
+reported at their file-absolute positions.
+
+Because the region finder must parse the whole module, the server also reports
+TypeScript syntax errors outside MX regions. TypeScript's own language server
+reports those too, so an editor may show both diagnostics for the same syntax
+error.
 
 ## Running it directly
 

@@ -4,12 +4,20 @@ A small, diagnostics-only LSP server for MX hosts (decision 71/72).
 
 ## What it does
 
-Watches `.mx`/`.marko` documents an editor opens or edits, runs
-`@mxlang/core`'s `compileSource` under the file's resolved host policy, and
-publishes one LSP `Diagnostic` per thrown `TranslateError` — the errors a
-strict host policy raises for a construct it forbids (`<let>`, `<effect>`,
-`<lifecycle>`, `<script>`, `:=` under `strictPolicy`). A successful compile
-clears any previous diagnostics for that file.
+Watches `.mx`, `.marko`, and `.solid.mx` documents an editor opens or edits
+and publishes one LSP `Diagnostic` for a positioned compile error. A
+successful compile clears any previous diagnostics for that file.
+
+- `.mx`/`.marko` compile as whole-file templates under the resolved host
+  policy. The HTML and Astro hosts use `@mxlang/html`; a file routed to
+  `host: "solid"` uses `@mxlang/solid`'s fixed profile, where stateful Marko
+  tags such as `<let>` are errors.
+- `.solid.mx` parses as a whole TypeScript/TSX module through
+  `@mxlang/parser`, the same region-discovery and Solid-lowering path used by
+  the Vite plugin. This reports errors inside MX regions at file-absolute
+  positions. It also reports TypeScript syntax errors outside regions because
+  finding regions requires parsing the whole module; TypeScript's own language
+  server may report the same syntax error too.
 
 ## What it does not do
 
@@ -44,18 +52,17 @@ this by walking upward from the file, looking for the nearest `package.json`:
    doubles as the routing config `@mxlang/vite-plugin`/the Bun loader already
    need for a mixed project (decision 71's "mixed projects" case).
 2. Otherwise, if that `package.json` depends on **exactly one** `@mxlang/*`
-   host package (`@mxlang/html`, `@mxlang/astro`), use that host at its
-   default (non-strict) policy.
+   host package (`@mxlang/html`, `@mxlang/astro`, `@mxlang/solid`), use that
+   host at its default (non-strict) policy.
 3. Otherwise, fall back to the translator's default (non-strict) policy.
 
-`@mxlang/astro` always compiles under `strictPolicy` (it ships no stateful
-tags), so an `#mxlang` field naming `"host": "astro"` implies `strict: true`
-regardless of what the field itself says — the server takes whatever `strict`
-value the field states, matching the astro host's own fixed behavior in
-practice. SolidMX (`"host": "solid"`) is paused (decision 58) and has no
-`@mxlang/core`-based `Policy` object yet; until it does, files routed there
-fall back to the translator's policy rather than throwing, so the rest of a
-mixed workspace keeps getting diagnostics.
+`@mxlang/astro` always compiles under its strict policy (it ships no stateful
+tags), whatever `strict` says. The Solid host also has a fixed profile:
+`host: "solid"` routes whole-file `.mx`/`.marko` templates through
+`compileSolidMx`, so stateful Marko tags are rejected. A `.solid.mx` suffix or
+`solidmx`/`SolidMX` language id takes precedence over package policy because
+that suffix identifies a different file format: TypeScript/TSX with MX
+regions.
 
 See `src/resolve-policy.ts` for the implementation and
 `src/resolve-policy.test.ts` for all three branches.
@@ -73,13 +80,10 @@ No zero-Rust path exists for registering a second language server against a
 language another extension owns (or one's own): Zed's `extension.toml`
 `[language_servers.<key>]` table binds a server only to a `languages` array
 implemented by that extension's own `zed::Extension::language_server_command`
-— a Rust `Cargo.toml`-backed extension, confirmed by reading
-`marko-js/zed`'s own `src/lib.rs` (which does exactly this for
-`@marko/language-server`, spawning it over stdio via `node`). This repo's
-`packages/editors/zed` is currently grammar-only (no `Cargo.toml`,
-`AGENTS.md` "No Rust") specifically because no `[language_servers.*]` entry
-existed to need one. See `packages/editors/zed/UPSTREAM.md` and
-`extension.toml` for the registration this package adds.
+— a Rust `Cargo.toml`-backed extension. `packages/editors/zed` implements that
+command and registers this server for both its `MX` and `SolidMX` languages.
+See `packages/editors/zed/UPSTREAM.md` and `extension.toml` for the command's
+provenance and registration.
 
 Both VS Code and Zed do support **multiple** servers on one language id —
 this is not a workaround, it's how ESLint+TS or Tailwind+CSS coexist today
@@ -96,7 +100,7 @@ or a minimal `LanguageClient` of your own) can launch it directly:
 {
   "command": "bunx",
   "args": ["@mxlang/language-server", "--stdio"],
-  "filetypes": ["marko", "mx"]
+  "filetypes": ["marko", "mx", "solidmx"]
 }
 ```
 
@@ -109,7 +113,12 @@ const client = new LanguageClient(
   "mxlang",
   "MX diagnostics",
   { command: "bunx", args: ["@mxlang/language-server", "--stdio"] },
-  { documentSelector: [{ scheme: "file", language: "marko" }] },
+  {
+    documentSelector: [
+      { scheme: "file", language: "marko" },
+      { scheme: "file", language: "solidmx" },
+    ],
+  },
 );
 client.start();
 ```
@@ -128,30 +137,16 @@ node node_modules/@mxlang/language-server/dist/bin.js --stdio
 inspected: `vscode-languageserver`'s `createConnection` auto-detects the
 stdio transport when no other transport flag is given.
 
-## Extension point: adding a host
-
-`resolve-policy.ts`'s `HOST_PACKAGES` map and `diagnose.ts`'s
-`resolvePolicyObject` are the two places a new host's `Policy` object gets
-wired in. Today only `"html"` resolves to a real, importable `Policy`
-(`@mxlang/html`'s `policy`/`strictPolicy`); `"astro"` reuses the
-translator's `strictPolicy` (its own fixed behavior) rather than importing a
-policy from `@mxlang/astro`, since that package does not export one
-separately; `"solid"` is a documented placeholder for when SolidMX resumes.
-
 ## Tests
 
 ```
 bunx vitest run --root ../.. --project @mxlang/language-server
 ```
 
-`src/diagnose.test.ts` — `diagnoseDocument` directly: `<let>` under strict,
-a valid file, `<let>` rendered under the non-strict policy, and the
-unexpected-exception path (never throws, publishes nothing, calls the
-caller's error callback). `src/resolve-policy.test.ts` — all three
-policy-resolution branches, with fixture directories under `src/fixtures/`.
-`src/server.test.ts` — the stdio end-to-end test: spawns the real built
-`dist/bin.js`, exchanges `initialize`/`didOpen`, and asserts the
-`publishDiagnostics` notification. Requires `bun run build` to have run
-first (see the root `AGENTS.md` "Running tests in a fresh worktree" — `bun
-run verify` builds before it tests, so this only matters when running this
-package's tests standalone).
+`src/diagnose.test.ts` covers HTML policy diagnostics, SolidMX host and parse
+errors with exact positions, clean documents, Solid-host `.mx`, and the
+locationless-error callback. `src/resolve-policy.test.ts` covers explicit,
+dependency-derived (including `@mxlang/solid`), and fallback policies.
+`src/server.test.ts` exercises stdio routing for `.mx`, `.solid.mx`, and the
+`solidmx` language id. Requires `bun run build` first (see the root
+`AGENTS.md` "Running tests in a fresh worktree").
