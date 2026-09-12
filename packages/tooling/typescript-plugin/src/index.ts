@@ -6,14 +6,22 @@ import {
   createSolidMxLanguagePlugin,
   type SolidMxLanguagePlugin,
 } from "./language.ts";
+import {
+  createMxLanguagePlugin,
+  type MxLanguagePlugin,
+} from "./mx-language.ts";
 
 const pluginFactory: ts.server.PluginModuleFactory = (modules) => {
-  let languagePlugin: SolidMxLanguagePlugin | undefined;
+  let languagePlugins:
+    | Array<SolidMxLanguagePlugin | MxLanguagePlugin>
+    | undefined;
   const volarFactory = createLanguageServicePlugin((typescript) => {
-    languagePlugin = createSolidMxLanguagePlugin(typescript);
+    const solidMxPlugin = createSolidMxLanguagePlugin(typescript);
+    const mxPlugin = createMxLanguagePlugin(typescript);
+    languagePlugins = [solidMxPlugin, mxPlugin];
     return {
       languagePlugins: [
-        languagePlugin,
+        ...languagePlugins,
         createCompoundExtensionResolver(typescript),
       ],
     };
@@ -25,14 +33,19 @@ const pluginFactory: ts.server.PluginModuleFactory = (modules) => {
     getExternalFiles(project, updateLevel) {
       return (
         pluginModule.getExternalFiles?.(project, updateLevel) ?? []
-      ).filter((fileName) => fileName.endsWith(".solid.mx"));
+      ).filter(
+        (fileName) =>
+          fileName.endsWith(".solid.mx") ||
+          fileName.endsWith(".mx") ||
+          fileName.endsWith(".marko"),
+      );
     },
     create(info) {
       const service = pluginModule.create(info);
       return withSyntaxDiagnostics(
         modules.typescript,
         service,
-        () => languagePlugin,
+        () => languagePlugins,
       );
     },
   };
@@ -41,7 +54,9 @@ const pluginFactory: ts.server.PluginModuleFactory = (modules) => {
 function withSyntaxDiagnostics(
   typescript: typeof ts,
   service: ts.LanguageService,
-  getLanguagePlugin: () => SolidMxLanguagePlugin | undefined,
+  getLanguagePlugins: () =>
+    | Array<SolidMxLanguagePlugin | MxLanguagePlugin>
+    | undefined,
 ): ts.LanguageService {
   return new Proxy(service, {
     get(target, property, receiver) {
@@ -51,7 +66,9 @@ function withSyntaxDiagnostics(
 
       return (fileName: string) => {
         const diagnostics = target.getSyntacticDiagnostics(fileName);
-        const error = getLanguagePlugin()?.getSyntaxError(fileName);
+        const error = getLanguagePlugins()
+          ?.map((plugin) => plugin.getSyntaxError(fileName))
+          .find((candidate) => candidate !== undefined);
         if (!error) return diagnostics;
 
         const file = typescript.createSourceFile(
@@ -69,7 +86,7 @@ function withSyntaxDiagnostics(
             length: Math.min(1, error.source.length - error.offset),
             category: typescript.DiagnosticCategory.Error,
             code: 80001,
-            source: "solidmx",
+            source: fileName.endsWith(".solid.mx") ? "solidmx" : "mx",
             messageText: error.message,
           },
         ];
@@ -82,4 +99,5 @@ export {
   createCompoundExtensionResolver,
   createSolidMxLanguagePlugin,
 } from "./language.ts";
+export { createHtmlMappings, createMxLanguagePlugin } from "./mx-language.ts";
 export default pluginFactory;

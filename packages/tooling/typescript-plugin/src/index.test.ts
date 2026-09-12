@@ -8,6 +8,11 @@ import {
   decodeMappings,
   SOLID_MX_LANGUAGE_ID,
 } from "./language.ts";
+import {
+  createHtmlMappings,
+  createMxLanguagePlugin,
+  MX_LANGUAGE_ID,
+} from "./mx-language.ts";
 
 describe("SolidMX language plugin", () => {
   it("recognizes .solid.mx and exposes a TSX service script", () => {
@@ -184,6 +189,163 @@ describe("SolidMX language plugin", () => {
 
     const diagnostics = service.getSemanticDiagnostics(component);
     const diagnostic = diagnostics.find((candidate) => candidate.code === 2345);
+
+    expect(diagnostic?.start).toBe(source.indexOf(expression));
+    expect(diagnostic?.length).toBe(expression.length);
+  });
+});
+
+describe("MX language plugin", () => {
+  it("recognizes .mx and .marko and exposes a TypeScript service script", () => {
+    const plugin = createMxLanguagePlugin(ts);
+    const source = [
+      "export interface Input { title: string }",
+      "<h1>${input.title}</h1>",
+    ].join("\n");
+    const virtual = plugin.createVirtualCode?.(
+      "/src/card.mx",
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+
+    expect(plugin.getLanguageId("/src/card.mx")).toBe("mx");
+    expect(plugin.getLanguageId("/src/card.marko")).toBe("mx");
+    expect(plugin.getLanguageId("/src/card.solid.mx")).toBeUndefined();
+    expect(plugin.getLanguageId("/src/card.ts")).toBeUndefined();
+    if (!virtual) throw new Error("Expected MX virtual code");
+    const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+    expect(virtual.languageId).toBe("typescript");
+    expect(generated).toContain("export interface Input { title: string }");
+    expect(generated).toContain("function render(input: Input): string");
+    expect(generated).toContain("out += escape(input.title)");
+    expect(virtual.mappings.length).toBeGreaterThan(0);
+    expect(plugin.typescript?.extraFileExtensions).toEqual([
+      {
+        extension: "mx",
+        isMixedContent: false,
+        scriptKind: ts.ScriptKind.TS,
+      },
+      {
+        extension: "marko",
+        isMixedContent: false,
+        scriptKind: ts.ScriptKind.TS,
+      },
+    ]);
+    expect(plugin.typescript?.getServiceScript(virtual)).toMatchObject({
+      code: virtual,
+      extension: ".ts",
+      scriptKind: ts.ScriptKind.TS,
+      preventLeadingOffset: true,
+    });
+  });
+
+  it("builds exact expression mappings from positioned HTML IR", () => {
+    const source = [
+      "export interface Input { count: number }",
+      'static function needsNumber(value: number) { return value; }',
+      '<p>before ${needsNumber(input.count + "x")} after</p>',
+    ].join("\n");
+    const plugin = createMxLanguagePlugin(ts);
+    const virtual = plugin.createVirtualCode?.(
+      "/src/column.mx",
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+    if (!virtual) throw new Error("Expected MX virtual code");
+    const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+    const mappings = createHtmlMappings(
+      source,
+      "/src/column.mx",
+      generated,
+      false,
+    );
+    const expression = 'needsNumber(input.count + "x")';
+    const mapping = mappings.find(
+      (candidate) => candidate.sourceOffsets[0] === source.indexOf(expression),
+    );
+
+    expect(mapping).toMatchObject({
+      sourceOffsets: [source.indexOf(expression)],
+      generatedOffsets: [generated.indexOf(expression)],
+      lengths: [expression.length],
+    });
+  });
+
+  it("uses the nearest package.json host and Astro strictness", () => {
+    const astroFile = `${process.cwd()}/src/fixtures/astro-policy/card.mx`;
+    const solidFile = `${process.cwd()}/src/fixtures/solid-policy/card.mx`;
+    const plugin = createMxLanguagePlugin(ts);
+    const astroSource = "<let/count=0/>";
+    const solidSource = "<button title=count>count</button>";
+    const astroVirtual = plugin.createVirtualCode?.(
+      astroFile,
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(astroSource),
+      { getAssociatedScript: () => undefined },
+    );
+    const solidVirtual = plugin.createVirtualCode?.(
+      solidFile,
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(solidSource),
+      { getAssociatedScript: () => undefined },
+    );
+
+    expect(astroVirtual?.snapshot.getLength()).toBe(0);
+    expect(plugin.getSyntaxError(astroFile)?.message).toContain(
+      "strict policy",
+    );
+    expect(
+      solidVirtual?.snapshot.getText(0, solidVirtual.snapshot.getLength()),
+    ).toContain("<button title={count}>count</button>");
+  });
+
+  it("reports an MX compile error once through tsserver diagnostics", () => {
+    const fileName = "/project/broken.mx";
+    const consumer = "/project/index.ts";
+    const source = "<await=value>oops</await>";
+    const service = createPluginService(
+      {
+        [fileName]: source,
+        [consumer]: 'import "./broken.mx";\n',
+      },
+      [consumer],
+    );
+
+    service.getSemanticDiagnostics(consumer);
+    const diagnostics = service.getSyntacticDiagnostics(fileName);
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({
+      start: source.indexOf("<await"),
+      source: "mx",
+      code: 80001,
+      category: ts.DiagnosticCategory.Error,
+    });
+  });
+
+  it("maps a type error amid other text to its source expression column", () => {
+    const component = "/project/Column.mx";
+    const consumer = "/project/index.ts";
+    const expression = 'input.count + "x"';
+    const source = [
+      "export interface Input { count: number }",
+      "static function needsNumber(value: number) { return value; }",
+      `<p>before ${"${"}needsNumber(${expression})} after</p>`,
+    ].join("\n");
+    const service = createPluginService(
+      {
+        [component]: source,
+        [consumer]: 'import "./Column.mx";\n',
+      },
+      [consumer],
+    );
+    service.getSemanticDiagnostics(consumer);
+
+    const diagnostic = service
+      .getSemanticDiagnostics(component)
+      .find((candidate) => candidate.code === 2345);
 
     expect(diagnostic?.start).toBe(source.indexOf(expression));
     expect(diagnostic?.length).toBe(expression.length);

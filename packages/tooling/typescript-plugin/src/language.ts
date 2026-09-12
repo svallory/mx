@@ -12,7 +12,7 @@ import type * as ts from "typescript";
 export const SOLID_MX_EXTENSION = "solid.mx";
 export const SOLID_MX_LANGUAGE_ID = "solidmx";
 
-const codeInformation: CodeInformation = {
+export const codeInformation: CodeInformation = {
   verification: true,
   completion: true,
   semantic: true,
@@ -155,7 +155,7 @@ export function decodeMappings(
  * list compact for the common case where lines outside MX regions are
  * identity-mapped character by character by `@babel/generator`.
  */
-function mergeMappings(mappings: CodeMapping[]): CodeMapping[] {
+export function mergeMappings(mappings: CodeMapping[]): CodeMapping[] {
   const merged: CodeMapping[] = [];
 
   for (const curr of mappings) {
