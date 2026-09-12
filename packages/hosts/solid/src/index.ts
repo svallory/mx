@@ -40,8 +40,19 @@ export interface CompileSolidMxResult {
   map: RawSourceMap;
 }
 
+/**
+ * `@babel/generator` ships as CJS with an interop default; under
+ * `esModuleInterop` the namespace can arrive as either the function itself or
+ * a `{ default }` wrapper depending on the loader. Normalize once.
+ */
+const generator = (
+  typeof generate === "function"
+    ? generate
+    : (generate as { default: typeof generate }).default
+) as typeof generate;
+
 function generateExpression(node: Node): string {
-  return generate(node, { concise: true }).code;
+  return generator(node, { concise: true }).code;
 }
 
 /**

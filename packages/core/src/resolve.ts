@@ -653,10 +653,10 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
       return resolveDefine(ctx, node);
     case "else": {
       const label = attrByName(node, "if") ? "else if" : "else";
-      fail(`\`<${label}>\` without a preceding \`<if>\``, node);
+      return fail(`\`<${label}>\` without a preceding \`<if>\``, node);
     }
     case "else-if":
-      fail(`\`<${name}>\` without a preceding \`<if>\``, node);
+      return fail(`\`<${name}>\` without a preceding \`<if>\``, node);
   }
 
   if (ctx.declarations.claimsTag?.(name, ctx)) {

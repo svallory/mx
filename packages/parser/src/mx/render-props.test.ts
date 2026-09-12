@@ -222,7 +222,6 @@ describe("attribute tag parse errors", () => {
     );
   });
 
-
   it("rejects an attribute tag at the top level", () => {
     expectSyntaxError(
       `const el = <@header>x</@header>;`,

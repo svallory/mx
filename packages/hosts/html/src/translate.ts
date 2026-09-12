@@ -475,7 +475,7 @@ export const policy: Policy = {
   rejectModifier,
   rejectComponentTag,
   rejectUnknownTag,
-  rejectElementAttributeTags: (name, node, ctx) => {
+  rejectElementAttributeTags: (name, node) => {
     const first = node.attributeTags?.[0];
     const slot = String(first?.name?.value ?? "").replace(/^@/, "");
     fail(

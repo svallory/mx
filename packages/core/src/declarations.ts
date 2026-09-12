@@ -99,10 +99,7 @@ export interface HostDeclarations {
    */
   rejectAttributeMethod?(attr: Node, on?: "element" | "component"): void;
   /** Return true when this host carries an attribute method as a callable prop. */
-  resolveAttributeMethod?(
-    attr: Node,
-    on?: "element" | "component",
-  ): boolean;
+  resolveAttributeMethod?(attr: Node, on?: "element" | "component"): boolean;
   /**
    * Rejects attribute tags attached to an element in this host's own words.
    *
