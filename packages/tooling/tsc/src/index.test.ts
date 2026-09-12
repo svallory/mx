@@ -21,35 +21,31 @@ const fixtures = join(here, "fixtures");
  * `mx-tsc` is a real `tsc` with Volar's program proxy spliced in, so there is
  * no in-process surface to assert against: the thing under test *is* the
  * process's diagnostics and exit code. These tests therefore run the built
- * binary, which means `bun run build` must have produced `dist/bin.cjs`
+ * entry point, which means `bun run build` must have produced `dist/bin.cjs`
  * first — the same fresh-worktree caveat `@mxlang/parser`'s `dist/index.js`
  * carries.
+ *
+ * `dist/bin.cjs` directly, not `node_modules/.bin/mx-tsc`: bun creates a bin
+ * symlink at *install* time and silently skips one whose target does not exist
+ * yet. In CI `bun install` always runs before `bun run build`, so that symlink
+ * is never created there — which is exactly how this was found (`mx-tsc:
+ * command not found`, on a machine where the local link existed from an
+ * earlier build). Running the file needs no linking at all.
+ *
+ * `node`, not bun: `runTsc` reads and re-evaluates TypeScript's own `tsc.js`
+ * as CommonJS, which bun's loader does not reproduce faithfully.
  */
-const mxTsc = join(
-  repoRoot,
-  "examples",
-  "counter-app",
-  "node_modules",
-  ".bin",
-  "mx-tsc",
-);
-const plainTsc = join(
-  repoRoot,
-  "examples",
-  "counter-app",
-  "node_modules",
-  ".bin",
-  "tsc",
-);
+const mxTsc = join(repoRoot, "packages", "tooling", "tsc", "dist", "bin.cjs");
+const plainTsc = join(repoRoot, "node_modules", "typescript", "bin", "tsc");
 
 interface Run {
   status: number;
   output: string;
 }
 
-function run(bin: string, args: string[]): Run {
+function run(entry: string, args: string[]): Run {
   try {
-    const output = execFileSync(bin, args, {
+    const output = execFileSync(process.execPath, [entry, ...args], {
       cwd: here,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -69,7 +65,7 @@ function run(bin: string, args: string[]): Run {
 }
 
 describe("mx-tsc", () => {
-  it("has a built binary to exercise", () => {
+  it("has a built entry point to exercise", () => {
     expect(existsSync(mxTsc)).toBe(true);
   });
 

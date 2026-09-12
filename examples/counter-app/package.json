@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "mx-tsc --noEmit",
+    "typecheck": "node ../../packages/tooling/tsc/dist/bin.cjs --noEmit",
     "e2e": "vitest run --config e2e/vitest.config.ts"
   },
   "dependencies": {

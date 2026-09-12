@@ -112,8 +112,8 @@ export function decodeMappings(
       generatedLineOffsets[generatedLine + 1] ?? generated.length;
 
     for (let segIdx = 0; segIdx < segments.length; segIdx++) {
-      const segment = segments[segIdx]!;
-      if (segment.length < 4) continue;
+      const segment = segments[segIdx];
+      if (segment === undefined || segment.length < 4) continue;
       const sourceLine = segment[2];
       const sourceColumn = segment[3];
       if (sourceLine === undefined || sourceColumn === undefined) continue;
