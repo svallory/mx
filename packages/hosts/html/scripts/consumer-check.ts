@@ -85,7 +85,7 @@ if (simulateMissingDist) {
 }
 
 function packTarball(dir: string): string {
-  const output = run(["bun", "pm", "pack", "--destination", "/tmp"], dir);
+  const output = run(["npm", "pack", "--pack-destination", "/tmp"], dir);
   const match = output.match(/([\w.@-]+\.tgz)/);
   if (!match) fail(`could not find tarball name in pack output: ${output}`);
   const tarballPath = join("/tmp", match[1] as string);
