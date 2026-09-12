@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import {
   type Expr,
   type Ir,
+  type IrNode,
   type Lookup,
   type Node,
   newCtx,
@@ -95,7 +96,14 @@ export function createMxLanguagePlugin(
           code: root,
           extension: ".ts",
           scriptKind: typescript.ScriptKind.TS,
-          preventLeadingOffset: true,
+          // Deliberately no `preventLeadingOffset`. A compiled `.mx` module
+          // does not preserve the source's line structure (the `escape` import
+          // and the hoisted statements move), and with that flag set Volar's
+          // `runTsc` parses its `SourceFile` from the generated text alone —
+          // so `tsc` turns a correctly mapped source *offset* into line/column
+          // using the generated file's line table, reporting every `.mx`
+          // diagnostic on the wrong line. Unset, Volar pads the virtual
+          // contents to the source's own lines and the offsets agree.
         };
       },
     },
@@ -167,27 +175,31 @@ export function createHtmlMappings(
     compiler.taglib.buildLookup(dirname(fileName), translator),
   );
   const ir = resolve(ctx, body);
-  const expressions = collectExpressions(ir);
+  const mappedCode = collectMappedCode(ir);
   const sourceLines = lineOffsets(source);
   const mappings: CodeMapping[] = [];
   let generatedCursor = 0;
+  const generatedCodeCursors = new Map<string, number>();
 
-  for (const expression of expressions) {
-    const loc = expression.node?.loc;
-    if (!loc?.start || !loc.end || expression.code.length === 0) continue;
-    const sourceOffset = offsetAt(sourceLines, source.length, loc.start);
-    const sourceEnd = offsetAt(sourceLines, source.length, loc.end);
-    if (source.slice(sourceOffset, sourceEnd) !== expression.code) continue;
+  for (const item of mappedCode) {
+    const sourceRange = locateSourceCode(item, source, sourceLines);
+    if (!sourceRange || item.code.length === 0) continue;
 
-    let generatedOffset = generated.indexOf(expression.code, generatedCursor);
-    if (generatedOffset < 0)
-      generatedOffset = generated.indexOf(expression.code);
+    const searchFrom = Math.max(
+      generatedCursor,
+      generatedCodeCursors.get(item.code) ?? 0,
+    );
+    const generatedOffset = generated.indexOf(item.code, searchFrom);
     if (generatedOffset < 0) continue;
-    generatedCursor = generatedOffset + expression.code.length;
+    generatedCursor = generatedOffset + item.code.length;
+    generatedCodeCursors.set(item.code, generatedCursor);
     mappings.push({
-      sourceOffsets: [sourceOffset],
+      sourceOffsets: [sourceRange.offset],
       generatedOffsets: [generatedOffset],
-      lengths: [expression.code.length],
+      lengths: [sourceRange.length],
+      ...(sourceRange.length === item.code.length
+        ? {}
+        : { generatedLengths: [item.code.length] }),
       data: codeInformation,
     });
   }
@@ -200,15 +212,28 @@ export function createHtmlMappings(
   );
 }
 
-function collectExpressions(ir: Ir): Expr[] {
-  const expressions: Expr[] = [];
+type PositionedCode =
+  | Expr
+  | Extract<
+      IrNode,
+      {
+        kind: "Static" | "Import" | "Export" | "InputInterface" | "Hoisted";
+      }
+    >;
+
+function collectMappedCode(ir: Ir): PositionedCode[] {
+  const mapped: PositionedCode[] = [];
   const seen = new Set<object>();
 
   function visit(value: unknown): void {
     if (!value || typeof value !== "object" || seen.has(value)) return;
     seen.add(value);
     if (isExpression(value)) {
-      expressions.push(value);
+      mapped.push(value);
+      return;
+    }
+    if (isPositionedCode(value)) {
+      mapped.push(value);
       return;
     }
     if (Array.isArray(value)) {
@@ -221,7 +246,7 @@ function collectExpressions(ir: Ir): Expr[] {
   }
 
   visit(ir);
-  return expressions;
+  return mapped;
 }
 
 function isExpression(value: object): value is Expr {
@@ -231,6 +256,52 @@ function isExpression(value: object): value is Expr {
     typeof candidate.shape === "string" &&
     !!candidate.node
   );
+}
+
+function isPositionedCode(
+  value: object,
+): value is Exclude<PositionedCode, Expr> {
+  const candidate = value as Partial<Exclude<PositionedCode, Expr>>;
+  return (
+    typeof candidate.code === "string" &&
+    typeof candidate.kind === "string" &&
+    ["Static", "Import", "Export", "InputInterface", "Hoisted"].includes(
+      candidate.kind,
+    ) &&
+    !!candidate.loc &&
+    !!candidate.end
+  );
+}
+
+function locateSourceCode(
+  item: PositionedCode,
+  source: string,
+  sourceLines: number[],
+): { offset: number; length: number } | undefined {
+  if (isExpression(item)) {
+    const loc = item.node?.loc;
+    if (!loc?.start || !loc.end) return undefined;
+    const offset = offsetAt(sourceLines, source.length, loc.start);
+    const end = offsetAt(sourceLines, source.length, loc.end);
+    return source.slice(offset, end) === item.code
+      ? { offset, length: item.code.length }
+      : undefined;
+  }
+
+  const blockStart = offsetAt(sourceLines, source.length, item.loc);
+  const blockEnd = offsetAt(sourceLines, source.length, item.end);
+  const withinBlock = source.slice(blockStart, blockEnd).indexOf(item.code);
+  if (withinBlock >= 0) {
+    return { offset: blockStart + withinBlock, length: item.code.length };
+  }
+
+  // A host hook may synthesize a hoisted declaration from a source tag. Map
+  // the generated declaration as one block to the producing tag's full span;
+  // this is deliberately approximate, but keeps its diagnostics visible.
+  if (item.kind === "Hoisted" && blockEnd > blockStart) {
+    return { offset: blockStart, length: blockEnd - blockStart };
+  }
+  return undefined;
 }
 
 function lineOffsets(text: string): number[] {

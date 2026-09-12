@@ -638,21 +638,23 @@ export function emitModule(ir: Ir, escapeFrom: string): string {
 
   const lines: string[] = [`import { escape } from "${escapeFrom}";`];
   const hoisted = [
-    ...ir.imports,
-    ...ir.hoisted,
+    ...ir.imports.map((node) => node.code),
+    ...ir.hoisted.map((node) => node.code),
     ...emitter.state.moduleHoisted,
   ];
   if (hoisted.length > 0) lines.push("", ...hoisted);
   lines.push(
     "",
-    ir.inputInterface ?? "export interface Input {}",
+    ir.inputInterface?.code ?? "export interface Input {}",
     "",
     "export default function (input: Input): string {",
     `${INDENT}let out = "";`,
     // Hoisted statements precede the body but follow `out`, so a hoisted
     // declaration may not reference the buffer — which is the point: it is a
     // declaration, not output.
-    ...[...ir.prelude, ...emitter.state.prelude].map((code) => INDENT + code),
+    ...[...ir.prelude.map((node) => node.code), ...emitter.state.prelude].map(
+      (code) => INDENT + code,
+    ),
     ...body,
     `${INDENT}return out;`,
     "}",

@@ -179,6 +179,8 @@ export function mergeMappings(mappings: CodeMapping[]): CodeMapping[] {
       currGen === undefined ||
       currSrc === undefined ||
       currLen === undefined ||
+      prev.generatedLengths !== undefined ||
+      curr.generatedLengths !== undefined ||
       currGen !== prevGen + prevLen ||
       currSrc !== prevSrc + prevLen
     ) {

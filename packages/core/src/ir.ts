@@ -230,14 +230,19 @@ export type IrNode =
     } & IrBase)
   | ({ kind: "Const"; name: string; init: Expr } & IrBase)
   /** A `static` block, or a host statement block that hoists like one. */
-  | ({ kind: "Static"; code: string } & IrBase)
-  | ({ kind: "Import"; code: string; bindings: string[] } & IrBase)
+  | ({ kind: "Static"; code: string; end: Position } & IrBase)
+  | ({
+      kind: "Import";
+      code: string;
+      bindings: string[];
+      end: Position;
+    } & IrBase)
   /** Any other top-level `export`, hoisted verbatim to module scope. */
-  | ({ kind: "Export"; code: string } & IrBase)
+  | ({ kind: "Export"; code: string; end: Position } & IrBase)
   /** `export interface Input`, lifted so a host can place it. */
-  | ({ kind: "InputInterface"; code: string } & IrBase)
+  | ({ kind: "InputInterface"; code: string; end: Position } & IrBase)
   /** A statement lifted by decision 70's `hoist` hook. */
-  | ({ kind: "Hoisted"; code: string } & IrBase)
+  | ({ kind: "Hoisted"; code: string; end: Position } & IrBase)
   | ({ kind: "HostTag"; tag: HostTag<unknown> } & IrBase)
   /** `<!doctype html>`; `value` has its delimiters stripped by Marko. */
   | ({ kind: "DocumentType"; value: string } & IrBase)
@@ -250,13 +255,13 @@ export type IrNode =
 /** The resolved template: its module-level parts, and its body. */
 export interface Ir {
   /** `import` statements, hoisted to module scope in source order. */
-  imports: string[];
+  imports: Array<Extract<IrNode, { kind: "Import" }>>;
   /** `static`/`server` block statements, hoisted to module scope. */
-  hoisted: string[];
+  hoisted: Array<Extract<IrNode, { kind: "Static" | "Export" }>>;
   /** The author's `export interface Input`, or null. */
-  inputInterface: string | null;
+  inputInterface: Extract<IrNode, { kind: "InputInterface" }> | null;
   /** Statements lifted to the render function's head by the hoist hook. */
-  prelude: string[];
+  prelude: Array<Extract<IrNode, { kind: "Hoisted" }>>;
   /** The template body. */
   body: IrNode[];
 }

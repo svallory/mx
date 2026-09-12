@@ -178,7 +178,7 @@ export interface Ctx {
    * (decision 70's hoist hook). `hoist()` appends here; the resolver drains it
    * at the nearest function boundary.
    */
-  prelude: string[];
+  prelude: Array<{ code: string; node: Node }>;
   /**
    * Lifts a statement to the head of the enclosing function — the render
    * function, or the nearest `Define` block.
@@ -187,7 +187,7 @@ export interface Ctx {
    * the block it was written in (a signal declared inside an `<if>` but read
    * after it). Emitted verbatim, at the function's own indent.
    */
-  hoist(code: string): void;
+  hoist(code: string, node: Node): void;
   /** Reference rewrites for registered bindings; see `BindingRegistry`. */
   bindings: BindingRegistry;
   /** `<define>`s bound so far, name -> declared parameter names in order. */
@@ -579,8 +579,8 @@ export function newCtx(
     source,
     lines: source.split("\n"),
     prelude: [],
-    hoist(code: string) {
-      ctx.prelude.push(code);
+    hoist(code: string, node: Node) {
+      ctx.prelude.push({ code, node });
     },
     bindings: {
       register(name, rewrite) {

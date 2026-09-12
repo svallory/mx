@@ -415,10 +415,10 @@ export function lowerAstroMx(source: string, filename: string): LowerResult {
     const ctx = newCtx(source, (node) => sourceOf(source, node), declarations);
     const ir = resolve(ctx, body);
     const statements = [
-      ...ir.imports,
-      ...ir.hoisted,
-      ...(ir.inputInterface ? [ir.inputInterface] : []),
-      ...ir.prelude,
+      ...ir.imports.map((node) => node.code),
+      ...ir.hoisted.map((node) => node.code),
+      ...(ir.inputInterface ? [ir.inputInterface.code] : []),
+      ...ir.prelude.map((node) => node.code),
     ];
     return {
       code: `${addHoistedToFence(originalFence, statements)}${emitTemplate(ir)}`,

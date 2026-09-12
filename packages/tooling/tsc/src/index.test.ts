@@ -108,6 +108,27 @@ describe("mx-tsc", () => {
   );
 
   it(
+    "reports a type error in a whole-file MX static block",
+    () => {
+      const result = run(mxTsc, [
+        "--noEmit",
+        "-p",
+        join(fixtures, "hoisted-failing"),
+      ]);
+
+      expect(result.status).not.toBe(0);
+      // Line 2, column 14 is `bogus` in the source `.mx` file: the diagnostic
+      // is reported against the author's own `static` line, not against the
+      // generated module's line numbering.
+      expect(result.output).toContain("StaticError.mx(2,14): error TS2322");
+      expect(result.output).toContain(
+        "Type 'string' is not assignable to type 'number'",
+      );
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  it(
     "catches what plain tsc cannot even see",
     () => {
       const result = run(plainTsc, [

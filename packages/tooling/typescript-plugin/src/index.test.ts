@@ -238,12 +238,21 @@ describe("MX language plugin", () => {
         scriptKind: ts.ScriptKind.TS,
       },
     ]);
-    expect(plugin.typescript?.getServiceScript(virtual)).toMatchObject({
+    const serviceScript = plugin.typescript?.getServiceScript(virtual);
+    expect(serviceScript).toMatchObject({
       code: virtual,
       extension: ".ts",
       scriptKind: ts.ScriptKind.TS,
-      preventLeadingOffset: true,
     });
+    // `preventLeadingOffset` must stay unset for whole-file MX. With it set,
+    // Volar's `runTsc` builds its `SourceFile` from the generated text alone,
+    // so `tsc` renders a correctly mapped source offset against the
+    // *generated* file's line table — every diagnostic in a `.mx` file came
+    // out on the wrong line and column. Leaving it unset makes Volar pad the
+    // virtual contents to the source's own line structure, which is what keeps
+    // the reported line/column the author's own. `.solid.mx` is unaffected
+    // either way because its printed output preserves the source's lines.
+    expect(serviceScript?.preventLeadingOffset).toBeUndefined();
   });
 
   it("builds exact expression mappings from positioned HTML IR", () => {
@@ -278,6 +287,56 @@ describe("MX language plugin", () => {
       generatedOffsets: [generated.indexOf(expression)],
       lengths: [expression.length],
     });
+  });
+
+  it("keeps duplicate expression mappings on their own forward occurrences", () => {
+    const expression = "input.count";
+    const source = [
+      "export interface Input { count: number }",
+      `<p title=${expression}>${"${"}${expression}} ${"${"}${expression}}</p>`,
+    ].join("\n");
+    const plugin = createMxLanguagePlugin(ts);
+    const virtual = plugin.createVirtualCode?.(
+      "/src/duplicates.mx",
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+    if (!virtual) throw new Error("Expected MX virtual code");
+    const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+    const mappings = createHtmlMappings(
+      source,
+      "/src/duplicates.mx",
+      generated,
+      false,
+    ).filter(
+      (mapping) =>
+        source.slice(
+          mapping.sourceOffsets[0],
+          (mapping.sourceOffsets[0] ?? 0) + (mapping.lengths[0] ?? 0),
+        ) === expression,
+    );
+    const sourceOffsets = [...source.matchAll(/input\.count/g)].map(
+      (match) => match.index,
+    );
+
+    expect(mappings.map((mapping) => mapping.sourceOffsets[0])).toEqual(
+      sourceOffsets,
+    );
+    expect(mappings.map((mapping) => mapping.generatedOffsets[0])).toEqual(
+      [...mappings]
+        .map((mapping) => mapping.generatedOffsets[0])
+        .sort((left, right) => (left ?? 0) - (right ?? 0)),
+    );
+    expect(
+      mappings.every(
+        (mapping) =>
+          generated.slice(
+            mapping.generatedOffsets[0],
+            (mapping.generatedOffsets[0] ?? 0) + (mapping.lengths[0] ?? 0),
+          ) === expression,
+      ),
+    ).toBe(true);
   });
 
   it("uses the nearest package.json host and Astro strictness", () => {
@@ -373,6 +432,35 @@ describe("MX language plugin", () => {
 
     expect(diagnostic?.start).toBe(source.indexOf(expression));
     expect(diagnostic?.length).toBe(expression.length);
+  });
+
+  it("maps a static-block type error through the real plugin service", () => {
+    const component = "/project/StaticError.mx";
+    const consumer = "/project/index.ts";
+    const source = [
+      "export interface Input { title: string }",
+      'static const bogus: number = "not a number";',
+      `<h1>${"${"}input.title}</h1>`,
+    ].join("\n");
+    const service = createPluginService(
+      {
+        [component]: source,
+        [consumer]: 'import "./StaticError.mx";\n',
+      },
+      [consumer],
+    );
+    service.getSemanticDiagnostics(consumer);
+
+    const diagnostic = service
+      .getSemanticDiagnostics(component)
+      .find((candidate) => candidate.code === 2322);
+
+    // TypeScript anchors an assignability error on a declaration's *name*, not
+    // on the offending initializer, so the mapping must land on `bogus` — the
+    // whole point being that it lands inside the `static` block at all rather
+    // than being dropped for want of a mapping.
+    expect(diagnostic?.start).toBe(source.indexOf("bogus"));
+    expect(diagnostic?.length).toBe("bogus".length);
   });
 });
 

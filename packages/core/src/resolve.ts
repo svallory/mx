@@ -62,6 +62,12 @@ function posOf(node: Node): Position {
   return { line: start.line ?? 0, column: start.column ?? 0 };
 }
 
+/** A node's end position, paired with `posOf` for source-backed code blocks. */
+function endPosOf(node: Node): Position {
+  const end = node?.loc?.end ?? node?.end ?? {};
+  return { line: end.line ?? 0, column: end.column ?? 0 };
+}
+
 /** Classifies an expression once, while its parsed node is still available. */
 export function expressionShape(node: Node): ExprShape {
   switch (node?.type) {
@@ -96,7 +102,7 @@ function exprOf(ctx: Ctx, node: Node): Expr {
  * render function's — the same function-boundary rule the resolver applies to
  * the template body.
  */
-function withPrelude<T>(ctx: Ctx, run: () => T): [T, string[]] {
+function withPrelude<T>(ctx: Ctx, run: () => T): [T, Ctx["prelude"]] {
   const outer = ctx.prelude;
   ctx.prelude = [];
   const result = run();
@@ -466,10 +472,11 @@ function resolveDefine(ctx: Ctx, node: Node): IrNode {
   ctx.defines.set(name, params);
 
   const loc = posOf(node);
-  const hoisted: IrNode[] = prelude.map((code) => ({
+  const hoisted: IrNode[] = prelude.map(({ code, node }) => ({
     kind: "Hoisted" as const,
     code,
-    loc,
+    loc: posOf(node),
+    end: endPosOf(node),
   }));
   return {
     kind: "Define",
@@ -490,6 +497,7 @@ function resolveDefine(ctx: Ctx, node: Node): IrNode {
 function resolveStatement(ctx: Ctx, node: Node, name: string): IrNode {
   const line = sliceLoc(ctx, node.loc).trim();
   const loc = posOf(node);
+  const end = endPosOf(node);
 
   if (name === "import") {
     const bindings = importBindings(line);
@@ -498,16 +506,21 @@ function resolveStatement(ctx: Ctx, node: Node, name: string): IrNode {
     // registered only after the whole body resolved would make every
     // imported component an unbound capitalized tag.
     for (const binding of bindings) ctx.imports.add(binding);
-    return { kind: "Import", code: line, bindings, loc };
+    return { kind: "Import", code: line, bindings, loc, end };
   }
   if (name === "static") {
-    return { kind: "Static", code: line.replace(/^static\s+/, ""), loc };
+    return {
+      kind: "Static",
+      code: line.replace(/^static\s+/, ""),
+      loc,
+      end,
+    };
   }
   if (/^export\s+interface\s+Input\b/.test(line)) {
-    return { kind: "InputInterface", code: line, loc };
+    return { kind: "InputInterface", code: line, loc, end };
   }
   if (name === "export") {
-    return { kind: "Export", code: line, loc };
+    return { kind: "Export", code: line, loc, end };
   }
   fail(
     `unrecognized statement tag \`${name}\`; expected \`import\`, \`static\`, or \`export\``,
@@ -803,7 +816,12 @@ export function resolve(ctx: Ctx, body: Node[]): Ir {
     imports: [],
     hoisted: [],
     inputInterface: null,
-    prelude,
+    prelude: prelude.map(({ code, node }) => ({
+      kind: "Hoisted",
+      code,
+      loc: posOf(node),
+      end: endPosOf(node),
+    })),
     body: [],
   };
 
@@ -812,19 +830,19 @@ export function resolve(ctx: Ctx, body: Node[]): Ir {
       case "Import":
         // The bindings were registered as the statement resolved; this only
         // places the statement itself at module scope.
-        ir.imports.push(node.code);
+        ir.imports.push(node);
         break;
       case "Static":
-        ir.hoisted.push(node.code);
+        ir.hoisted.push(node);
         break;
       case "Export":
-        ir.hoisted.push(node.code);
+        ir.hoisted.push(node);
         break;
       case "InputInterface":
-        ir.inputInterface = node.code;
+        ir.inputInterface = node;
         break;
       case "Hoisted":
-        ir.prelude.push(node.code);
+        ir.prelude.push(node);
         break;
       default:
         ir.body.push(node);

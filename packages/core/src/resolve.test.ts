@@ -310,8 +310,22 @@ describe("one fixture per IR kind", () => {
     const ir = resolveSource(
       'import Panel from "./panel.marko"\nstatic const G = 1\n<p>x</p>\n',
     );
-    expect(ir.imports).toEqual(['import Panel from "./panel.marko"']);
-    expect(ir.hoisted).toEqual(["const G = 1"]);
+    expect(ir.imports).toMatchObject([
+      {
+        kind: "Import",
+        code: 'import Panel from "./panel.marko"',
+        loc: { line: 1, column: 0 },
+        end: { line: 1, column: 33 },
+      },
+    ]);
+    expect(ir.hoisted).toMatchObject([
+      {
+        kind: "Static",
+        code: "const G = 1",
+        loc: { line: 2, column: 0 },
+        end: { line: 2, column: 18 },
+      },
+    ]);
     // Lifted, not left behind: a host reads them from `Ir`'s own fields rather
     // than filtering the body for statement nodes.
     expect(tryFind(ir.body, "Import")).toBeNull();
@@ -322,8 +336,20 @@ describe("one fixture per IR kind", () => {
     const ir = resolveSource(
       "export interface Input { n: number }\nexport const prerender = true;\n<p>x</p>\n",
     );
-    expect(ir.inputInterface).toBe("export interface Input { n: number }");
-    expect(ir.hoisted).toEqual(["export const prerender = true;"]);
+    expect(ir.inputInterface).toMatchObject({
+      kind: "InputInterface",
+      code: "export interface Input { n: number }",
+      loc: { line: 1, column: 0 },
+      end: { line: 1, column: 36 },
+    });
+    expect(ir.hoisted).toMatchObject([
+      {
+        kind: "Export",
+        code: "export const prerender = true;",
+        loc: { line: 2, column: 0 },
+        end: { line: 2, column: 30 },
+      },
+    ]);
   });
 
   it("DocumentType keeps the value with its delimiters stripped", () => {
@@ -416,14 +442,21 @@ describe("one fixture per IR kind", () => {
       fakeDeclarations({
         claimsTag: (name) => name === "signal",
         resolveHostTag: (_name, node, ctx) => {
-          ctx.hoist(`const ${node.var.name} = 7;`);
+          ctx.hoist(`const ${node.var.name} = 7;`, node);
           return null;
         },
       }),
     );
     // The declaration outlives the block it was written in, which is the whole
     // point of decision 70's hoist hook.
-    expect(ir.prelude).toEqual(["const count = 7;"]);
+    expect(ir.prelude).toMatchObject([
+      {
+        kind: "Hoisted",
+        code: "const count = 7;",
+        loc: { line: 2, column: 2 },
+        end: { line: 2, column: 19 },
+      },
+    ]);
   });
 
   it("an inert tag is accepted and contributes nothing", () => {
@@ -620,7 +653,7 @@ describe("binding scopes are per JS block", () => {
   const signalPolicy = fakeDeclarations({
     claimsTag: (name) => name === "signal",
     resolveHostTag: (_name, node, ctx) => {
-      ctx.hoist(`const ${node.var.name} = () => 0;`);
+      ctx.hoist(`const ${node.var.name} = () => 0;`, node);
       ctx.bindings.register(node.var.name, (ref) => `${ref}()`);
       return null;
     },
@@ -697,13 +730,20 @@ describe("a claimed tag's children are resolved exactly once", () => {
         resolveHostTag: (name, node, ctx) => {
           if (name !== "signal") return null;
           hoists++;
-          ctx.hoist(`const ${node.var.name} = 1;`);
+          ctx.hoist(`const ${node.var.name} = 1;`, node);
           return null;
         },
       }),
     );
 
     expect(hoists).toBe(1);
-    expect(ir.prelude).toEqual(["const inner = 1;"]);
+    expect(ir.prelude).toMatchObject([
+      {
+        kind: "Hoisted",
+        code: "const inner = 1;",
+        loc: { line: 2, column: 2 },
+        end: { line: 2, column: 19 },
+      },
+    ]);
   });
 });
