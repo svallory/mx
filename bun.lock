@@ -161,6 +161,15 @@
         "@types/bun": "1.4.2",
       },
     },
+    "packages/hosts/solid": {
+      "name": "@mxlang/solid",
+      "version": "0.0.0",
+      "dependencies": {
+        "@marko/compiler": "5.42.5",
+        "@mxlang/core": "workspace:*",
+        "magic-string": "0.30.21",
+      },
+    },
     "packages/oracle": {
       "name": "@mxlang/oracle",
       "version": "0.0.0",
@@ -178,6 +187,9 @@
     "packages/parser": {
       "name": "@mxlang/parser",
       "version": "0.0.0",
+      "dependencies": {
+        "@mxlang/solid": "workspace:*",
+      },
     },
     "packages/tooling/babel-plugin": {
       "name": "@mxlang/babel-plugin",
@@ -553,6 +565,8 @@
     "@mxlang/oracle": ["@mxlang/oracle@workspace:packages/oracle"],
 
     "@mxlang/parser": ["@mxlang/parser@workspace:packages/parser"],
+
+    "@mxlang/solid": ["@mxlang/solid@workspace:packages/hosts/solid"],
 
     "@mxlang/tree-sitter-solidmx": ["@mxlang/tree-sitter-solidmx@workspace:packages/editors/tree-sitter-solidmx"],
 

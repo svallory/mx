@@ -16,9 +16,9 @@ function Layout(props: {
   // See `fixtures/README.md`, "Whitespace in a twin".
   return (
     <section>
-      <header>{props.header}</header>
-      <main>{props.children}</main>
-      <footer>{props.footer(2026)}</footer>
+      <header>${props.header}</header>
+      <main>${props.children}</main>
+      <footer>${props.footer(2026)}</footer>
     </section>
   );
 }
