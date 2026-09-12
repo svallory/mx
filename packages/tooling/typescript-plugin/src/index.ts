@@ -2,6 +2,10 @@ import type {} from "@volar/typescript";
 import { createLanguageServicePlugin } from "@volar/typescript/lib/quickstart/createLanguageServicePlugin";
 import type * as ts from "typescript";
 import {
+  type AstroLanguagePluginLoader,
+  createAstroLanguagePlugin,
+} from "./astro-language.ts";
+import {
   createCompoundExtensionResolver,
   createSolidMxLanguagePlugin,
   type SolidMxLanguagePlugin,
@@ -15,15 +19,17 @@ const pluginFactory: ts.server.PluginModuleFactory = (modules) => {
   let languagePlugins:
     | Array<SolidMxLanguagePlugin | MxLanguagePlugin>
     | undefined;
-  const volarFactory = createLanguageServicePlugin((typescript) => {
+  const volarFactory = createLanguageServicePlugin((typescript, info) => {
     const solidMxPlugin = createSolidMxLanguagePlugin(typescript);
     const mxPlugin = createMxLanguagePlugin(typescript);
     languagePlugins = [solidMxPlugin, mxPlugin];
     return {
-      languagePlugins: [
-        ...languagePlugins,
-        createCompoundExtensionResolver(typescript),
-      ],
+      languagePlugins: createConfiguredLanguagePlugins(
+        typescript,
+        info.config?.astro === true,
+        undefined,
+        languagePlugins,
+      ),
     };
   });
   const pluginModule = volarFactory(modules);
@@ -37,7 +43,8 @@ const pluginFactory: ts.server.PluginModuleFactory = (modules) => {
         (fileName) =>
           fileName.endsWith(".solid.mx") ||
           fileName.endsWith(".mx") ||
-          fileName.endsWith(".marko"),
+          fileName.endsWith(".marko") ||
+          fileName.endsWith(".astro"),
       );
     },
     create(info) {
@@ -50,6 +57,22 @@ const pluginFactory: ts.server.PluginModuleFactory = (modules) => {
     },
   };
 };
+
+export function createConfiguredLanguagePlugins(
+  typescript: typeof ts,
+  astro: boolean,
+  loadAstro?: AstroLanguagePluginLoader,
+  mxPlugins: Array<SolidMxLanguagePlugin | MxLanguagePlugin> = [
+    createSolidMxLanguagePlugin(typescript),
+    createMxLanguagePlugin(typescript),
+  ],
+) {
+  return [
+    ...mxPlugins,
+    ...(astro ? [createAstroLanguagePlugin(loadAstro)] : []),
+    createCompoundExtensionResolver(typescript),
+  ];
+}
 
 function withSyntaxDiagnostics(
   typescript: typeof ts,
@@ -95,9 +118,14 @@ function withSyntaxDiagnostics(
   });
 }
 
+export { createAstroLanguagePlugin } from "./astro-language.ts";
 export {
   createCompoundExtensionResolver,
   createSolidMxLanguagePlugin,
 } from "./language.ts";
-export { createHtmlMappings, createMxLanguagePlugin } from "./mx-language.ts";
+export {
+  createAstroTypeSurface,
+  createHtmlMappings,
+  createMxLanguagePlugin,
+} from "./mx-language.ts";
 export default pluginFactory;

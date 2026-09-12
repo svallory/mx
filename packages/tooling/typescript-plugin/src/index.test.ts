@@ -1,8 +1,11 @@
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { decode } from "@jridgewell/sourcemap-codec";
 import { print } from "@mxlang/parser";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import pluginFactory from "./index.ts";
+import { createAstroLanguagePlugin } from "./astro-language.ts";
+import pluginFactory, { createConfiguredLanguagePlugins } from "./index.ts";
 import {
   createSolidMxLanguagePlugin,
   decodeMappings,
@@ -13,6 +16,8 @@ import {
   createMxLanguagePlugin,
   MX_LANGUAGE_ID,
 } from "./mx-language.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 describe("SolidMX language plugin", () => {
   it("recognizes .solid.mx and exposes a TSX service script", () => {
@@ -200,6 +205,7 @@ describe("MX language plugin", () => {
     const plugin = createMxLanguagePlugin(ts);
     const source = [
       "export interface Input { title: string }",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
       "<h1>${input.title}</h1>",
     ].join("\n");
     const virtual = plugin.createVirtualCode?.(
@@ -243,7 +249,8 @@ describe("MX language plugin", () => {
   it("builds exact expression mappings from positioned HTML IR", () => {
     const source = [
       "export interface Input { count: number }",
-      'static function needsNumber(value: number) { return value; }',
+      "static function needsNumber(value: number) { return value; }",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
       '<p>before ${needsNumber(input.count + "x")} after</p>',
     ].join("\n");
     const plugin = createMxLanguagePlugin(ts);
@@ -274,10 +281,15 @@ describe("MX language plugin", () => {
   });
 
   it("uses the nearest package.json host and Astro strictness", () => {
-    const astroFile = `${process.cwd()}/src/fixtures/astro-policy/card.mx`;
-    const solidFile = `${process.cwd()}/src/fixtures/solid-policy/card.mx`;
+    const astroFile = `${here}/fixtures/astro-policy/card.mx`;
+    const solidFile = `${here}/fixtures/solid-policy/card.mx`;
     const plugin = createMxLanguagePlugin(ts);
     const astroSource = "<let/count=0/>";
+    const astroValidSource = [
+      "export interface Input { title: string; content: () => string }",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
+      "<h1>${input.title}</h1>",
+    ].join("\n");
     const solidSource = "<button title=count>count</button>";
     const astroVirtual = plugin.createVirtualCode?.(
       astroFile,
@@ -296,6 +308,18 @@ describe("MX language plugin", () => {
     expect(plugin.getSyntaxError(astroFile)?.message).toContain(
       "strict policy",
     );
+    const astroValidVirtual = plugin.createVirtualCode?.(
+      astroFile,
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(astroValidSource),
+      { getAssociatedScript: () => undefined },
+    );
+    expect(
+      astroValidVirtual?.snapshot.getText(
+        0,
+        astroValidVirtual.snapshot.getLength(),
+      ),
+    ).toContain('Omit<Input, "content"> & { children?: unknown }');
     expect(
       solidVirtual?.snapshot.getText(0, solidVirtual.snapshot.getLength()),
     ).toContain("<button title={count}>count</button>");
@@ -349,6 +373,43 @@ describe("MX language plugin", () => {
 
     expect(diagnostic?.start).toBe(source.indexOf(expression));
     expect(diagnostic?.length).toBe(expression.length);
+  });
+});
+
+describe("Astro language plugin composition", () => {
+  it("loads Astro's language plugin when astro is true", () => {
+    const plugins = createConfiguredLanguagePlugins(ts, true);
+
+    expect(
+      plugins.some(
+        (plugin) => plugin.getLanguageId("/project/src/page.astro") === "astro",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not load Astro's language plugin when astro is false", () => {
+    let loaded = false;
+    const plugins = createConfiguredLanguagePlugins(ts, false, () => {
+      loaded = true;
+      throw new Error("should not load");
+    });
+
+    expect(loaded).toBe(false);
+    expect(
+      plugins.some(
+        (plugin) => plugin.getLanguageId("/project/src/page.astro") === "astro",
+      ),
+    ).toBe(false);
+  });
+
+  it("explains how to install the missing optional Astro peer", () => {
+    expect(() =>
+      createAstroLanguagePlugin(() => {
+        throw new Error("Cannot find module");
+      }),
+    ).toThrowError(
+      "@mxlang/typescript-plugin: `astro: true` requires the optional peer dependency `@astrojs/language-server@2.16.16`; install it beside the plugin.",
+    );
   });
 });
 

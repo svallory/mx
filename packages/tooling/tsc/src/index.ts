@@ -1,8 +1,11 @@
 import { createRequire } from "node:module";
 import {
+  createAstroLanguagePlugin,
   createCompoundExtensionResolver,
+  createMxLanguagePlugin,
   createSolidMxLanguagePlugin,
 } from "@mxlang/typescript-plugin";
+import type { LanguagePlugin } from "@volar/language-core";
 import { runTsc } from "@volar/typescript/lib/quickstart/runTsc";
 
 /**
@@ -10,7 +13,7 @@ import { runTsc } from "@volar/typescript/lib/quickstart/runTsc";
  * both halves, because TypeScript's own module resolver appends the terminal
  * segment when probing for declaration files.
  */
-const EXTRA_SUPPORTED_EXTENSIONS = [".solid.mx"];
+const EXTRA_SUPPORTED_EXTENSIONS = [".solid.mx", ".mx", ".marko"];
 
 /**
  * Resolves TypeScript's own `tsc.js`.
@@ -38,15 +41,34 @@ export function resolveTscPath(): string {
  * whether a file type-checks.
  */
 export function runMxTsc(): void {
+  const astro = consumeAstroFlag(process.argv);
   runTsc(
     resolveTscPath(),
-    EXTRA_SUPPORTED_EXTENSIONS,
-    (typescript) => [
-      createSolidMxLanguagePlugin(typescript),
-      createCompoundExtensionResolver(typescript),
-    ],
+    astro
+      ? [...EXTRA_SUPPORTED_EXTENSIONS, ".astro"]
+      : EXTRA_SUPPORTED_EXTENSIONS,
+    (typescript) => {
+      const plugins: LanguagePlugin<string>[] = [
+        createSolidMxLanguagePlugin(typescript),
+        createMxLanguagePlugin(typescript),
+      ];
+      if (astro) plugins.push(createAstroLanguagePlugin());
+      plugins.push(createCompoundExtensionResolver(typescript));
+      return plugins;
+    },
     TYPESCRIPT_OBJECT,
   );
+}
+
+/** Removes mx-tsc's own flag before TypeScript parses its command line. */
+export function consumeAstroFlag(argv: string[]): boolean {
+  let enabled = false;
+  for (let index = argv.length - 1; index >= 0; index--) {
+    if (argv[index] !== "--astro") continue;
+    argv.splice(index, 1);
+    enabled = true;
+  }
+  return enabled;
 }
 
 /**

@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { resolveTscPath } from "./index.ts";
+import { consumeAstroFlag, resolveTscPath } from "./index.ts";
 
 /**
  * Each of these tests spawns a real `tsc`, which takes ~1s alone but well past
@@ -71,6 +71,14 @@ describe("mx-tsc", () => {
 
   it("resolves TypeScript's own tsc entry point", () => {
     expect(resolveTscPath()).toMatch(/typescript[/\\]lib[/\\]tsc\.js$/);
+  });
+
+  it("consumes --astro before TypeScript sees the command line", () => {
+    const argv = ["node", "mx-tsc", "--noEmit", "--astro", "--astro"];
+
+    expect(consumeAstroFlag(argv)).toBe(true);
+    expect(argv).toEqual(["node", "mx-tsc", "--noEmit"]);
+    expect(consumeAstroFlag(argv)).toBe(false);
   });
 
   it(

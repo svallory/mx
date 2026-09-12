@@ -9,12 +9,7 @@ import {
   parseFragment,
   resolve,
 } from "@mxlang/core";
-import {
-  compile,
-  policy,
-  strictPolicy,
-  translator,
-} from "@mxlang/html";
+import { compile, policy, strictPolicy, translator } from "@mxlang/html";
 import { compileSolidMx } from "@mxlang/solid";
 import type {
   CodeMapping,
@@ -23,11 +18,7 @@ import type {
 } from "@volar/language-core";
 import type {} from "@volar/typescript";
 import type * as ts from "typescript";
-import {
-  codeInformation,
-  decodeMappings,
-  mergeMappings,
-} from "./language.ts";
+import { codeInformation, decodeMappings, mergeMappings } from "./language.ts";
 import { resolveHostPolicy } from "./resolve-policy.ts";
 
 export const MX_LANGUAGE_ID = "mx";
@@ -67,17 +58,21 @@ export function createMxLanguagePlugin(
                 strict:
                   hostPolicy.host === "astro" || hostPolicy.strict === true,
               });
+        const generated =
+          hostPolicy.host === "astro"
+            ? createAstroTypeSurface(compiled.code)
+            : compiled.code;
         const mappings =
           hostPolicy.host === "solid"
-            ? decodeMappings(compiled.map, compiled.code, source)
+            ? decodeMappings(compiled.map, generated, source)
             : createHtmlMappings(
                 source,
                 fileName,
-                compiled.code,
+                generated,
                 hostPolicy.host === "astro" || hostPolicy.strict === true,
               );
         syntaxErrors.delete(fileName);
-        return createVirtualCode(typescript, compiled.code, mappings);
+        return createVirtualCode(typescript, generated, mappings);
       } catch (cause) {
         syntaxErrors.set(fileName, toSyntaxError(fileName, source, cause));
         return createVirtualCode(typescript, "", []);
@@ -105,6 +100,28 @@ export function createMxLanguagePlugin(
       },
     },
   };
+}
+
+/**
+ * Astro passes template children as JSX's `children` attribute, then the MX
+ * renderer turns that slot into `input.content` at runtime. Present that call
+ * shape to TypeScript without changing the compiled function body.
+ */
+export function createAstroTypeSurface(code: string): string {
+  const defaultExport = "export default render;";
+  if (!code.includes(defaultExport)) {
+    throw new Error(
+      "@mxlang/typescript-plugin: the Astro host could not find the compiled MX default export.",
+    );
+  }
+  return code.replace(
+    defaultExport,
+    [
+      'type MxAstroInput = Omit<Input, "content"> & { children?: unknown };',
+      "const mxAstroRender = render as unknown as (input: MxAstroInput) => string;",
+      "export default mxAstroRender;",
+    ].join("\n"),
+  );
 }
 
 function createVirtualCode(
@@ -163,7 +180,8 @@ export function createHtmlMappings(
     if (source.slice(sourceOffset, sourceEnd) !== expression.code) continue;
 
     let generatedOffset = generated.indexOf(expression.code, generatedCursor);
-    if (generatedOffset < 0) generatedOffset = generated.indexOf(expression.code);
+    if (generatedOffset < 0)
+      generatedOffset = generated.indexOf(expression.code);
     if (generatedOffset < 0) continue;
     generatedCursor = generatedOffset + expression.code.length;
     mappings.push({
