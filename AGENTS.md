@@ -112,41 +112,36 @@ Conventional commits: `type(scope): summary`.
 
 `packages/parser` vendors `@babel/parser` 7.29.8 and forks one method of its JSX plugin so `<` in expression position is parsed as MX. Entry points:
 
-- `parse(source, filename, options?)` — parses `.solid.mx`, returns a Babel `File` of standard node types only (MX facts go in `node.extra.mx`).
+- `parse(source, filename, options?)` — parses `.solid.mx`, returns a Babel `File` of standard node types only (MX facts go in `node.extra.mx`). Every MX region inside is lowered to Solid JSX text via `@mxlang/solid`'s `compileSolidMx` before being re-parsed and spliced back in — see "`@mxlang/solid`: the Solid host on `@mxlang/core`" below for that lowering, and `packages/parser/README.md` for this package's own, now-narrower job (region discovery only).
 - `parseBabel` / `parseBabelExpression` — the untouched vendored `@babel/parser` surface, for plain `.ts`/`.tsx`.
 
 MX parsing is opt-in through the `mx` parser option, which `parse` sets. Without it the vendored parser is byte-equivalent to npm `@babel/parser` — `src/vendored.test.ts` pins that, so keep those tests on `parseBabel` rather than `parse`. `packages/parser/UPSTREAM.md` "Local modifications" records exactly what the fork changed.
 
 Consumers typecheck against `src/public.d.ts`, not `src/index.ts`: the vendored tree needs tsconfig relaxations that must not leak into packages that merely call `parse`.
 
-Two syntax decisions are settled and encoded in the lowering table:
+Two syntax decisions are settled and encoded in `@mxlang/solid`'s lowering (`packages/hosts/solid/README.md`'s table is the authoritative version; this is the summary):
 
-- **Whitespace follows Marko, not JSX.** A whitespace-only text run containing a newline is dropped entirely, so indented markup renders nothing between children; a whitespace-only run without a newline collapses to one space. `${" "}` is the escape hatch. Comments are dropped from the output and do not count as content when trimming.
+- **Whitespace follows Marko, not JSX.** A whitespace-only text run containing a newline is dropped entirely, so indented markup renders nothing between children; a whitespace-only run without a newline collapses to one space. `${" "}` is the escape hatch. Comments are dropped from the output and do not count as content when trimming. This is Marko's own `onText` rule (decision 33), the same one every host relies on — see the four Marko facts below.
 - **Void elements need no slash.** `<input value=x>` parses. The set (`area base br col embed hr img input link meta param source track wbr`) is declared to htmljs-parser as `TagType.void`; a void tag written with a closing tag is a parse error.
 - **Shorthand `class` merges with a string or an object; anything else is a parse error.** Shorthand plus a *string* `class="x"` merges to `class="card x"` (shorthand first). Shorthand plus an **object literal** merges to Solid 2's array form, `class={["card", {...}]}`, the string entry always-on and the object toggling; a static `class="x"` present as well folds into that string entry (`class={["card x", {...}]}`) rather than being emitted as a second `class` attribute. Shorthand plus any *other* dynamic `class=` expression (an identifier, a call, a ternary) is a parse error. `#id` shorthand combined with an explicit `id=` is a parse error. `style=` only accepts an object-literal value (`style={color: c()}` → `style={{color: c()}}`); any other `style=` expression is a parse error for v1.
 - **Tag params and attribute tags are generic, not control-tag-only**
-  (decision 51). `<Tag|p1, p2|>body</Tag>` lowers to
-  `<Tag>{(p1, p2) => body}</Tag>` for *any* tag — components and HTML
-  elements alike — which is what lets Solid's own render-prop components be
-  called from MX (`<For|item, i| each=xs()>`, `<Show|u| when=user()>`).
-  A function child on a DOM element has no meaning in Solid; MX lowers it
-  anyway rather than inventing a rule the target does not have. Inside any
-  tag, `<@name>body</@name>` becomes the prop `name={body}` on the parent,
-  and `<@name|p|>` becomes `name={(p) => body}`; ordinary children stay
-  `children`, and props are emitted as the parent's own attributes in source
-  order followed by the attribute tags in source order. `<try>` is expressed
-  *on top of* this: `lowerTry` reads `<@catch>`/`<@placeholder>` out of the
-  same `collectAttributeTags` every other tag uses, so the special and
-  generic paths cannot drift. Control tags take no attribute tags other than
-  `<try>`'s two. An attribute tag whose name is already an attribute on the
-  parent is a parse error rather than a second `name=` the last writer wins —
-  and `children` counts, since ordinary children lower into that prop, so
-  `<@children>` beside any ordinary child collides too. The params callback's
-  body range is measured over the *stripped* children (the `<@name>` ones
-  consumed into props are gone), or the arrow's `loc` overruns into text that
-  belongs to a prop: right JS, wrong source map. The still-unsupported
-  construct `mx.test.ts` uses to exercise the LowerError-to-SyntaxError path
-  is now the dynamic tag name (`<${x}>`), not an attribute tag.
+  (decision 51), for any tag Marko itself accepts them on — decision 72's
+  subset rule (`divergences.md`) removed the cases real Marko rejects (tag
+  params on `<if>`, tag params and attribute tags on native HTML elements).
+  `<Tag|p1, p2|>body</Tag>` lowers to `<Tag>{(p1, p2) => body}</Tag>`, which is
+  what lets Solid's own render-prop components be called from MX
+  (`<For|item, i| each=xs()>`, `<Show|u| when=user()>`). Inside a component,
+  `<@name>body</@name>` becomes the prop `name={body}`, and `<@name|p|>`
+  becomes `name={(p) => body}`; ordinary children stay the child callback, and
+  props are emitted as the parent's own attributes in source order followed
+  by the attribute tags in source order. `<try>` is expressed *on top of*
+  this in `@mxlang/solid`'s `resolveHostTag`: it reads `<@catch>`/
+  `<@placeholder>` out of the same attribute-tag resolution every other tag
+  uses, so the special and generic paths cannot drift. An attribute tag whose
+  name is already an attribute on the parent is a parse error rather than a
+  second `name=` the last writer wins — and `children` counts, since ordinary
+  children lower into that prop, so `<@children>` beside any ordinary child
+  collides too.
 - **Tag params (`|a, b|`) come before `=value`.** `<if|u|=user()>`, not `<if=user()|u|>` — the latter parses but folds `|u|` into the condition expression and reports no params, matching `<for|item, i| of=...>`'s own order. `notes/solidmx-spec.md` §5.1 writes `<if=user()|u|>` as loose prose; the real grammar is params-first.
 
 ## `.mx` is the official extension; `.marko` is an alias (decision 72)
@@ -165,10 +160,10 @@ covered by this alias.
 
 - `parse(source, filename)` in `@mxlang/parser` — a `.solid.mx` file: a
   TypeScript module in which `<` in expression position opens an MX element,
-  lowered to Solid 2 JSX. This is the parser package's only mode; there is no
-  `mxMode` option. SolidMX is a separate host from the vanilla one below, and
-  is not affected by either the `.mx`/`.marko` alias or decision 68's dialect
-  retirement.
+  lowered to Solid 2 JSX by `@mxlang/solid` (see below). This is the parser
+  package's only mode; there is no `mxMode` option. SolidMX is a separate
+  host from the vanilla one below, and is not affected by either the
+  `.mx`/`.marko` alias or decision 68's dialect retirement.
 - `compile(source, filename)` in `@mxlang/html` — a whole-file MX
   template (`.mx` or its `.marko` alias, both stock Marko syntax with no
   dialect layered on top). `@marko/compiler` parses, validates and supplies
@@ -218,8 +213,9 @@ namespace, named, aliased, and combined forms), not by regex. An unbound
 *lowercase* tag that is neither hyphenated nor a real HTML/SVG/MathML element
 is a translate error naming it, rather than silently rendering as an unknown
 custom element. SolidMX's own PascalCase-means-component convention
-(`lower.ts`) is unrelated and unchanged by this — it follows JSX, and is a
-separate host on a separate lowering path.
+(`packages/hosts/solid/src/emitter.ts`'s `isComponent`) is unrelated and
+unchanged by this — it follows JSX, and is a separate host on a separate
+lowering path.
 
 ## Running tests in a fresh worktree
 
@@ -260,12 +256,11 @@ Emitted module shape: the `escape` import, the author's hoisted `import`s and
 `export default function (input: Input): string` building one local by `out +=`
 concatenation (**not** an array join — the goldens diff this code).
 
-Whitespace on the **SolidMX** path is `normalizeText()` from
-`src/mx/lower.ts`, exported from the parser. Do not write a second
-implementation for that target. The **string** target does not use it at all:
-Marko's own `onText` already applies the same decision-33 rule before the
-translator sees a `MarkoText` (see the four Marko facts above), so calling
-`normalizeText()` there would collapse twice.
+Whitespace on **every** host, SolidMX included, is decision 33's rule
+applied once, by Marko's own `onText` before `@mxlang/core`'s resolver ever
+sees a `MarkoText` node (see the four Marko facts above) — there is no
+separate SolidMX-specific whitespace pass to keep in sync; a second
+implementation on any host's path would collapse whitespace twice.
 
 Goldens live at `packages/hosts/html/fixtures-marko/<name>/` with
 `input.marko`, `input.json` and `expected.html`, and are asserted on
@@ -585,7 +580,44 @@ Four facts worth knowing before editing it:
   `translate`), because `@marko/compiler` otherwise resolves its default
   `marko/translator` before parsing and fails — the `marko` package is not a
   dependency here. SolidMX's own bridge
-  (`packages/parser/src/mx/bridge.ts`) is untouched until phase 4.
+  (`packages/parser/src/mx/bridge.ts`) now calls `parseFragment` for every MX
+  region it finds; see "`@mxlang/solid`: the Solid host on `@mxlang/core`"
+  below.
+
+## `@mxlang/solid`: the Solid host on `@mxlang/core`
+
+`packages/hosts/solid` (`@mxlang/solid`, decisions 69, 71, 72, 79, 81) is the
+third emitter over the core IR — SolidMX's `.solid.mx` becomes Solid JSX
+text instead of a string or Astro template. `packages/hosts/solid/README.md`
+carries the full lowering table (IR kind to Solid JSX), the error list, and
+the `.solid.mx` bridge paragraph; the summary here is the package-map entry.
+
+Two facts worth knowing before touching it:
+
+- **It is an `Emitter<string>`, same shape as `@mxlang/astro`'s
+  `.amx` emitter**: `IfChain` becomes `<Show>` (≤2 conditioned branches) or
+  `<Switch>/<Match>` (3+); `For` becomes `<For each keyed>` (`of=`/`in=`) or
+  `<Repeat count from>` (`from=`/`to=`/`until=`, with `step` folded into a
+  per-row callback when present); `<try>` is a `HostTag` (`claimsTag`/
+  `resolveHostTag`) lowering to `<Loading>`/`<Errored>`. Nothing Solid-specific
+  reaches `packages/core` beyond the two IR fields (`ForSource.range.step`,
+  `For.key`) every Marko-syntax host needs regardless of target — see the
+  core README's IR table.
+- **`.solid.mx` region discovery stays in `@mxlang/parser`.**
+  `packages/parser/src/mx/{walk.ts,bridge.ts}` (the vendored Babel's JSX
+  plugin, replaced to recognize `<` in expression position) find each MX
+  region and hand its raw text to this package's `compileSolidMx`, which
+  resolves it through `@mxlang/core`'s `parseFragment` and re-splices the
+  emitted JSX text back into the surrounding TypeScript AST at the same
+  span — so positions and the eventual source map stay anchored to the
+  original `.solid.mx` file. `@mxlang/parser`'s own `lower.ts`/`control.ts`/
+  `attrs.ts` (the pre-core-IR lowering) are deleted; that lowering now lives
+  entirely in this package. See `packages/parser/README.md`.
+
+Decision 72's subset rule removed four SolidMX constructs real Marko itself
+rejects (tag params on `<if>`, tag params and attribute tags on native
+elements, `<fragment>`) — see `divergences.md`'s "Deferred to MX 2" table for
+each construct, Marko's exact error, and the test that used to cover it.
 
 ## `@mxlang/html`: the vanilla HTML host on `@mxlang/core`
 
@@ -871,10 +903,14 @@ default policy; (3) otherwise, the translator's default (non-strict) policy.
 `@mxlang/astro` always compiles under `strictPolicy` (decision 71: it ships
 no stateful tags) — `resolvePolicyObject` in `diagnose.ts` special-cases
 `host: "astro"` to `strictPolicy` regardless of the field's own `strict`
-value, since that host has no other mode. `host: "solid"` is a documented
-placeholder: SolidMX is paused (decision 58) and exports no `@mxlang/core`
-`Policy` object yet, so it falls back to the translator's policy rather than
-throwing, keeping the rest of a mixed workspace diagnosed.
+value, since that host has no other mode. `host: "solid"` remains a
+placeholder for a different reason than before: `@mxlang/solid` ships now
+(the Solid host on `@mxlang/core`, see below), but this server has no
+`.solid.mx`-document diagnostics path yet — `.solid.mx` is MX regions inside
+a TypeScript module, not a whole-file Marko template the way `@mxlang/html`
+compiles, so wiring it needs its own diagnose path, not just a `Policy`
+object. `resolveStrict` falls back to the translator's own default rather
+than throwing, keeping the rest of a mixed workspace diagnosed.
 
 **Zed finding** (brief item 4): there is **no zero-Rust path** to register a
 second `[language_servers.*]` entry in Zed's `extension.toml`. Reading

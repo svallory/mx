@@ -21,10 +21,12 @@ export interface HostPolicy {
 /**
  * Resolves a `HostPolicy` to the `strict` flag the translator compiles under.
  *
- * Only `"html"` is wired to a real host today (`@mxlang/astro` and a
- * future SolidMX host both build on `@mxlang/core` but do not yet export a
- * host a caller outside their own package can drive — see the "host" union
- * above and README "Adding a host" for the extension point).
+ * Only `"html"` is actually diagnosed through `@mxlang/core`'s `compile()`
+ * today. `@mxlang/astro` and `@mxlang/solid` both ship real hosts now, but
+ * wiring diagnostics for `.amx`/`.solid.mx` documents (which aren't
+ * whole-file Marko templates the way `.mx`/`.marko` are) was not part of the
+ * task that added `@mxlang/solid` — see the "host" union above and README
+ * "Adding a host" for the extension point.
  */
 function resolveStrict(hostPolicy: HostPolicy): boolean {
   switch (hostPolicy.host) {
@@ -33,8 +35,9 @@ function resolveStrict(hostPolicy: HostPolicy): boolean {
       // astro-static ships no stateful tags), whatever the field says.
       return true;
     case "solid":
-      // SolidMX is paused (decision 58) and has no core-based host yet; fall
-      // back to the translator's own default rather than throwing, so a mixed
+      // `@mxlang/solid` ships (SolidMX), but this server doesn't diagnose
+      // `.solid.mx` documents yet (see the doc comment above); fall back to
+      // the translator's own default rather than throwing, so a mixed
       // workspace still gets diagnostics for its non-Solid files.
       return hostPolicy.strict ?? false;
     default:

@@ -23,8 +23,9 @@ It depends on `@marko/compiler` and nothing else.
 | The two front doors (`compileSource`, `parseFragment`) | Stateful tags (`<let>`, `<effect>`, `:=`), through the three hooks |
 | `escape` | Its own integration: a Vite plugin, a Bun loader, a TypeScript plugin |
 
-`@mxlang/html` is the first host (vanilla HTML strings); SolidMX and
-Astro follow.
+`@mxlang/html` is the first host (vanilla HTML strings); `@mxlang/astro`
+(`.amx`, expression-shaped Astro syntax) and `@mxlang/solid` (SolidMX's
+`.solid.mx` bridge, Solid JSX text) are the other two.
 
 ## The HostDeclarations contract
 
@@ -154,8 +155,9 @@ enclosing file. The consumer is a host whose MX lives inside another language
 (SolidMX's `.solid.mx`). This is the stopgap
 `notes/research/marko-seam-spikes.md` spike 1 measured, not a fix: the fix is an
 additive base-position parameter upstream, which MX still intends to send.
-SolidMX's own bridge (`packages/parser/src/mx/bridge.ts`) is untouched until
-phase 4 switches it over. Documented limits:
+SolidMX's own bridge (`packages/parser/src/mx/bridge.ts`) now calls this
+front door for every MX region it finds — see `packages/hosts/solid/README.md`
+for the bridge's own side of that hand-off. Documented limits:
 
 - Marko's own nodes (`MarkoTag`, `MarkoAttribute`, …) carry **no** numeric
   `start`/`end` at all — only `loc.{line,column}`. Nothing to shift there.
@@ -191,7 +193,7 @@ shape `TranslateError` reports, which is what an editor squiggle needs):
 | `Element` | An HTML/SVG/MathML element, with `attrs`, `children` and a `void` flag |
 | `Component` | A component call: target is an import binding, a `<define>`, or `<${expr}/>` |
 | `IfChain` | `<if>` plus every `<else if>`/`<else>`, grouped; the trailing else has a null condition |
-| `For` | All four `<for>` forms, normalized to `of` / `in` / `range` (with `inclusive` for `to=` vs `until=`) |
+| `For` | All four `<for>` forms, normalized to `of` / `in` / `range` (with `inclusive` for `to=` vs `until=`, `step` on a `range` source, and `key` from `by=` for a host with reconciliation — a string-emitting host ignores both; Solid's `<Repeat>` uses `step`, its `<For keyed>` uses `key`) |
 | `Define` | `<define/Name\|params\|>` |
 | `Const` | `<const/name=expr/>` |
 | `Static` | A `static` block, and any host statement block that hoists like one |
