@@ -20,7 +20,7 @@ import {
   TextDocuments,
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { diagnoseDocument } from "./diagnose.ts";
+import { diagnoseDocument, isSolidMxDocument } from "./diagnose.ts";
 import { resolveHostPolicy } from "./resolve-policy.ts";
 
 /** Milliseconds to wait after the last edit before compiling (brief §3). */
@@ -35,6 +35,7 @@ const MX_LANGUAGE_IDS = new Set(["mx", "marko"]);
 
 function isMxDocument(uri: string, languageId: string): boolean {
   return (
+    isSolidMxDocument(uri, languageId) ||
     MX_LANGUAGE_IDS.has(languageId) ||
     uri.endsWith(".mx") ||
     uri.endsWith(".marko")
@@ -90,6 +91,7 @@ export function startServer(
           connection.console.error(
             `@mxlang/language-server: unexpected error compiling ${uri}: ${String(error)}`,
           ),
+        languageId,
       );
       connection.sendDiagnostics({ uri, diagnostics });
     }, DEBOUNCE_MS);
@@ -142,4 +144,4 @@ export function startServer(
   return connection;
 }
 
-export { MX_LANGUAGE_IDS };
+export { isMxDocument, MX_LANGUAGE_IDS };

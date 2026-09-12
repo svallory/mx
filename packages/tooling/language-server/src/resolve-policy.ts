@@ -9,7 +9,7 @@
  *    answer: `{ host: "html" | "astro" | "solid", strict?: boolean }` (with "translator" accepted as a deprecated alias).
  * 2. Otherwise, if that same `package.json` depends (in `dependencies` or
  *    `devDependencies`) on exactly one `@mxlang/*` host package
- *    (`@mxlang/html`, `@mxlang/astro`; `@mxlang/core` itself does not
+ *    (`@mxlang/html`, `@mxlang/astro`, `@mxlang/solid`; `@mxlang/core` itself does not
  *    count, since every host depends on it too), use that host.
  * 3. Otherwise, fall back to the translator's default (non-strict) policy.
  *
@@ -25,8 +25,7 @@ import type { HostPolicy } from "./diagnose.ts";
 const HOST_PACKAGES: Record<string, HostPolicy["host"]> = {
   "@mxlang/html": "html",
   "@mxlang/astro": "astro",
-  // No SolidMX host package exists yet (decision 58: paused); the entry is
-  // documented here as the extension point for when it lands.
+  "@mxlang/solid": "solid",
 };
 
 const DEFAULT_POLICY: HostPolicy = { host: "html" };

@@ -42,11 +42,11 @@ describe("diagnoseDocument", () => {
   it("never throws on an unexpected exception, and reports nothing", () => {
     const onUnexpectedError = vi.fn();
 
-    // A source Marko's own parser rejects outright (unbalanced tag) throws
-    // something that is not a TranslateError from @marko/compiler itself —
-    // this exercises the catch-all branch, not the TranslateError branch.
+    // Deliberately violate the public input type to make the underlying
+    // compiler throw a locationless TypeError. Real syntax errors now carry
+    // `loc` and must become diagnostics, regardless of their concrete class.
     const diagnostics = diagnoseDocument(
-      "<div",
+      null as unknown as string,
       "file:///project/App.mx",
       { host: "html" },
       onUnexpectedError,
@@ -54,5 +54,86 @@ describe("diagnoseDocument", () => {
 
     expect(diagnostics).toEqual([]);
     expect(onUnexpectedError).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a Solid host error at its file-absolute position inside a .solid.mx region", () => {
+    const source = `import { createSignal } from "solid-js";
+
+export const view = () => (
+  <div>
+    <let/count=1/>
+  </div>
+);
+`;
+    const diagnostics = diagnoseDocument(
+      source,
+      "file:///project/App.solid.mx",
+      { host: "solid" },
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({
+      severity: 1,
+      source: "mxlang",
+      range: {
+        start: { line: 4, character: 4 },
+        end: { line: 4, character: 5 },
+      },
+    });
+    expect(diagnostics[0]?.message).toMatch(/let/i);
+  });
+
+  it("reports an expression parse error inside a .solid.mx region", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax, not a JS template literal
+    const source = "export const view = () => (\n  <p>${a b}</p>\n);\n";
+    const diagnostics = diagnoseDocument(
+      source,
+      "file:///project/App.solid.mx",
+      { host: "solid" },
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.range).toEqual({
+      start: { line: 1, character: 9 },
+      end: { line: 1, character: 10 },
+    });
+  });
+
+  it("reports a TypeScript syntax error outside every .solid.mx region", () => {
+    const source =
+      "const answer: = 42;\nexport const view = () => <p>ok</p>;\n";
+    const diagnostics = diagnoseDocument(
+      source,
+      "file:///project/App.solid.mx",
+      { host: "solid" },
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.range).toEqual({
+      start: { line: 0, character: 14 },
+      end: { line: 0, character: 15 },
+    });
+  });
+
+  it("reports nothing for a clean .solid.mx document", () => {
+    const diagnostics = diagnoseDocument(
+      "export const view = () => <p>hello</p>;\n",
+      "file:///project/App.solid.mx",
+      { host: "solid" },
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("uses the Solid host profile for a whole-file .mx document", () => {
+    const diagnostics = diagnoseDocument(
+      "<let/count=1/>\n",
+      "file:///project/App.mx",
+      { host: "solid" },
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toMatch(/let/i);
+    expect(diagnostics[0]?.range.start).toEqual({ line: 0, character: 0 });
   });
 });

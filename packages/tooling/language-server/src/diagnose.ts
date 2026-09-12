@@ -8,6 +8,8 @@
 
 import { TranslateError } from "@mxlang/core";
 import { compile } from "@mxlang/html";
+import { parse } from "@mxlang/parser";
+import { compileSolidMx } from "@mxlang/solid";
 import {
   type Diagnostic,
   DiagnosticSeverity,
@@ -18,72 +20,97 @@ export interface HostPolicy {
   strict?: boolean;
 }
 
-/**
- * Resolves a `HostPolicy` to the `strict` flag the translator compiles under.
- *
- * Only `"html"` is actually diagnosed through `@mxlang/core`'s `compile()`
- * today. `@mxlang/astro` and `@mxlang/solid` both ship real hosts now, but
- * wiring diagnostics for `.amx`/`.solid.mx` documents (which aren't
- * whole-file Marko templates the way `.mx`/`.marko` are) was not part of the
- * task that added `@mxlang/solid` — see the "host" union above and README
- * "Adding a host" for the extension point.
- */
-function resolveStrict(hostPolicy: HostPolicy): boolean {
-  switch (hostPolicy.host) {
-    case "astro":
-      // `@mxlang/astro` always compiles under the strict policy (decision 71:
-      // astro-static ships no stateful tags), whatever the field says.
-      return true;
-    case "solid":
-      // `@mxlang/solid` ships (SolidMX), but this server doesn't diagnose
-      // `.solid.mx` documents yet (see the doc comment above); fall back to
-      // the translator's own default rather than throwing, so a mixed
-      // workspace still gets diagnostics for its non-Solid files.
-      return hostPolicy.strict ?? false;
-    default:
-      return hostPolicy.strict ?? false;
-  }
+export const SOLID_MX_LANGUAGE_IDS = new Set(["solidmx", "SolidMX"]);
+
+export function isSolidMxDocument(uri: string, languageId = ""): boolean {
+  return uri.endsWith(".solid.mx") || SOLID_MX_LANGUAGE_IDS.has(languageId);
 }
 
 /**
- * Compiles `text` under `hostPolicy` and returns the diagnostics to publish
- * for `uri`. Never throws: a `TranslateError` (with `line`/`column`) becomes
- * one Error diagnostic; a successful compile returns `[]`, which the caller
- * publishes to clear any previous diagnostics; any other, unexpected
- * exception is swallowed here and reported via `onUnexpectedError` so the
- * caller can log it without ever publishing a stale or wrong diagnostic set.
+ * Resolves a `HostPolicy` to the `strict` flag the translator compiles under.
+ *
+ * Solid documents take their own compiler path before this function is
+ * called. Astro is always strict; HTML follows the resolved policy.
+ */
+function resolveStrict(hostPolicy: HostPolicy): boolean {
+  if (hostPolicy.host === "astro") return true;
+  return hostPolicy.strict ?? false;
+}
+
+function errorPosition(
+  error: unknown,
+): { line: number; column: number } | null {
+  if (error instanceof TranslateError) {
+    return { line: error.line, column: error.column };
+  }
+  if (!error || typeof error !== "object") return null;
+
+  const loc = (error as { loc?: unknown }).loc;
+  if (!loc || typeof loc !== "object") return null;
+
+  const direct = loc as { line?: unknown; column?: unknown };
+  if (typeof direct.line === "number" && typeof direct.column === "number") {
+    return { line: direct.line, column: direct.column };
+  }
+
+  const start = (loc as { start?: unknown }).start;
+  if (!start || typeof start !== "object") return null;
+  const nested = start as { line?: unknown; column?: unknown };
+  if (typeof nested.line === "number" && typeof nested.column === "number") {
+    return { line: nested.line, column: nested.column };
+  }
+  return null;
+}
+
+/**
+ * Compiles or parses `text` for its document kind and returns the diagnostics
+ * to publish for `uri`. Never throws: a positioned error becomes one Error
+ * diagnostic; a successful run returns `[]`, which clears any previous
+ * diagnostics; a locationless exception is reported via `onUnexpectedError`
+ * and also returns `[]`.
  */
 export function diagnoseDocument(
   text: string,
   uri: string,
   hostPolicy: HostPolicy,
   onUnexpectedError?: (error: unknown) => void,
+  languageId = "",
 ): Diagnostic[] {
-  // Through `@mxlang/html`'s own front door, not `compileSource`
-  // directly: `compile()` registers the host's taglib and compiles via the
-  // IR (`HostOptions.emitIr`), which is what makes `<let>` and the other
-  // tags this host claims resolve at all. Driving `compileSource` with an
-  // empty host took the core's legacy string walk instead, where those tags
-  // are not handled — the diagnostics would then report a construct as an
-  // unknown tag purely because the language server compiled it differently
-  // from the way the host actually does.
   try {
-    compile(text, uri, { strict: resolveStrict(hostPolicy) });
+    if (isSolidMxDocument(uri, languageId)) {
+      // `parse` is the Vite path's whole-file parser and the cheapest public
+      // entry that discovers every MX region. A language id can identify an
+      // untitled/mis-suffixed buffer, so give that case the suffix that turns
+      // the parser's opt-in MX bridge on.
+      const filename = uri.endsWith(".solid.mx") ? uri : `${uri}.solid.mx`;
+      parse(text, filename);
+    } else if (hostPolicy.host === "solid") {
+      // A whole-file `.mx` document routed to the Solid host uses the same
+      // fixed Solid profile as an embedded region. Its declarations reject
+      // stateful Marko tags; there is no looser Solid policy to select.
+      compileSolidMx(text, { filename: uri });
+    } else {
+      // Through `@mxlang/html`'s own front door, not `compileSource`
+      // directly: this registers the host taglib and compiles via the IR.
+      compile(text, uri, { strict: resolveStrict(hostPolicy) });
+    }
     return [];
   } catch (error) {
-    if (error instanceof TranslateError) {
-      // `line` is 1-based, `column` is 0-based (Babel's convention, which
-      // TranslateError's constructor passes through unchanged from `fail()`
-      // in @mxlang/core). LSP positions are 0-based on both axes.
-      const line = Math.max(0, error.line - 1);
-      const column = Math.max(0, error.column);
-      // TranslateError carries only a start position, not a span, so the
-      // end column is synthesized as start + 1 — a one-character range
-      // that marks *where* the error is, not the extent of what caused it.
+    const position = errorPosition(error);
+    if (position) {
+      // Babel/core lines are 1-based and columns are 0-based. LSP positions
+      // are 0-based on both axes.
+      const line = Math.max(0, position.line - 1);
+      const column = Math.max(0, position.column);
+      // These errors carry only a start position, not a span, so synthesize a
+      // one-character range that marks where the error occurred.
       const diagnostic: Diagnostic = {
         severity: DiagnosticSeverity.Error,
         source: "mxlang",
-        message: error.message,
+        message:
+          error instanceof Error
+            ? error.message
+            : String((error as { message?: unknown }).message ?? error),
         range: {
           start: { line, character: column },
           end: { line, character: column + 1 },

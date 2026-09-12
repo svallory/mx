@@ -20,6 +20,12 @@ describe("resolveHostPolicy", () => {
     expect(resolveHostPolicy(filePath)).toEqual({ host: "html" });
   });
 
+  it("resolves @mxlang/solid as the Solid host dependency", () => {
+    const filePath = join(FIXTURES, "solid-dependency/App.mx");
+
+    expect(resolveHostPolicy(filePath)).toEqual({ host: "solid" });
+  });
+
   it("falls back to the html default policy when neither signal is present", () => {
     const filePath = join(FIXTURES, "no-signal/App.mx");
 

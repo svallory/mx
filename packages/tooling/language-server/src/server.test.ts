@@ -8,6 +8,7 @@ import {
   StreamMessageReader,
   StreamMessageWriter,
 } from "vscode-jsonrpc/node";
+import { isMxDocument } from "./server.ts";
 
 /**
  * The one stdio end-to-end test the brief asks for (§5): spawn the real
@@ -93,6 +94,78 @@ describe("stdio server (e2e)", () => {
     expect(params.diagnostics[0]?.source).toBe("mxlang");
     expect(params.diagnostics[0]?.message).toMatch(/let/i);
   }, 15000);
+
+  it("diagnoses a .solid.mx URI even when the editor labels it TypeScript", async () => {
+    const conn = startClient();
+
+    await conn.sendRequest("initialize", {
+      processId: null,
+      rootUri: null,
+      capabilities: {},
+    });
+    conn.sendNotification("initialized", {});
+
+    const diagnosticsReceived = new Promise<{
+      uri: string;
+      diagnostics: Array<{ message: string; source?: string }>;
+    }>((resolve) => {
+      conn.onNotification(PublishDiagnosticsNotification, resolve);
+    });
+
+    const uri = "file:///project/App.solid.mx";
+    conn.sendNotification("textDocument/didOpen", {
+      textDocument: {
+        uri,
+        languageId: "typescript",
+        version: 1,
+        text: "export const view = () => <let/count=1/>;\n",
+      },
+    });
+
+    const params = await diagnosticsReceived;
+    expect(params.uri).toBe(uri);
+    expect(params.diagnostics).toHaveLength(1);
+    expect(params.diagnostics[0]?.message).toMatch(/let/i);
+  }, 15000);
+
+  it("diagnoses a document identified by the solidmx language id", async () => {
+    const conn = startClient();
+
+    await conn.sendRequest("initialize", {
+      processId: null,
+      rootUri: null,
+      capabilities: {},
+    });
+    conn.sendNotification("initialized", {});
+
+    const diagnosticsReceived = new Promise<{
+      uri: string;
+      diagnostics: Array<{ message: string; source?: string }>;
+    }>((resolve) => {
+      conn.onNotification(PublishDiagnosticsNotification, resolve);
+    });
+
+    const uri = "file:///project/App.ts";
+    conn.sendNotification("textDocument/didOpen", {
+      textDocument: {
+        uri,
+        languageId: "solidmx",
+        version: 1,
+        text: "export const view = () => <let/count=1/>;\n",
+      },
+    });
+
+    const params = await diagnosticsReceived;
+    expect(params.uri).toBe(uri);
+    expect(params.diagnostics).toHaveLength(1);
+    expect(params.diagnostics[0]?.message).toMatch(/let/i);
+  }, 15000);
+
+  it("recognizes both SolidMX language ids but not an ordinary .ts document", () => {
+    expect(isMxDocument("untitled:App", "solidmx")).toBe(true);
+    expect(isMxDocument("untitled:App", "SolidMX")).toBe(true);
+    expect(isMxDocument("file:///project/App.ts", "typescript")).toBe(false);
+  });
 
   it("resolves the policy correctly for a file:// URI with a percent-encoded space in its path", async () => {
     // Regression for the `new URL(uri).pathname` bug: that API leaves
