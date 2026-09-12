@@ -3,9 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "mxlang": {
+    "host": "astro"
+  },
   "scripts": {
     "build": "astro build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../../packages/tooling/tsc/dist/bin.cjs --astro --noEmit",
     "e2e": "vitest run --config e2e/vitest.config.ts"
   },
   "dependencies": {
@@ -13,6 +16,9 @@
     "@mxlang/html": "workspace:*"
   },
   "devDependencies": {
+    "@astrojs/language-server": "2.16.16",
+    "@mxlang/tsc": "workspace:*",
+    "@mxlang/typescript-plugin": "workspace:*",
     "astro": "7.3.2",
     "playwright": "1.63.0",
     "typescript": "5.9.3",

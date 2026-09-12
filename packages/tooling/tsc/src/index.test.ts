@@ -16,6 +16,7 @@ const SPAWN_TIMEOUT_MS = 60_000;
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..", "..");
 const fixtures = join(here, "fixtures");
+const astroStatic = join(repoRoot, "examples", "astro-static");
 
 /**
  * `mx-tsc` is a real `tsc` with Volar's program proxy spliced in, so there is
@@ -119,6 +120,41 @@ describe("mx-tsc", () => {
       // so reports nothing about the type error the module actually contains.
       expect(result.output).toContain("error TS2307");
       expect(result.output).not.toContain("TS2345");
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  it(
+    "accepts a correctly typed .mx component prop from an Astro file",
+    () => {
+      const result = run(mxTsc, [
+        "--astro",
+        "--noEmit",
+        "-p",
+        join(astroStatic, "typecheck-fixtures", "correct.json"),
+      ]);
+
+      expect(result.output).toBe("");
+      expect(result.status).toBe(0);
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  it(
+    "reports a wrong .mx component prop in an Astro file",
+    () => {
+      const result = run(mxTsc, [
+        "--astro",
+        "--noEmit",
+        "-p",
+        join(astroStatic, "typecheck-fixtures", "wrong.json"),
+      ]);
+
+      expect(result.status).not.toBe(0);
+      expect(result.output).toContain("wrong-prop.astro(5,7): error TS2322");
+      expect(result.output).toContain(
+        "Type 'number' is not assignable to type 'string'",
+      );
     },
     SPAWN_TIMEOUT_MS,
   );

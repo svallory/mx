@@ -2,13 +2,16 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "astro",
     "allowImportingTsExtensions": true,
-    "types": ["node"]
+    "types": ["node", "astro/env"],
+    "plugins": [
+      {
+        "name": "@mxlang/typescript-plugin",
+        "astro": true
+      }
+    ]
   },
-  "include": [
-    "src",
-    "e2e",
-    "astro.config.mjs",
-    "../../packages/hosts/astro/types"
-  ]
+  "include": ["src", "e2e", "astro.config.mjs"]
 }
