@@ -29,13 +29,13 @@ const simulateMissingDist = process.argv.includes("--simulate-missing-dist");
 /**
  * Every external step runs under a hard wall-clock timeout (decision 61: a
  * script must be able to fail, and a hang is a silent, unbounded pass).
- * `bun pm pack` inside `packages/parser` was observed hanging
- * indefinitely (reproduced twice, before `core-extract` removed the
- * translator's dependency on that package) rather than erroring — a real
- * `parser` packaging defect (likely its `files`/`.npmignore` traversal
- * walking the 800KB+ vendored Babel tree or `node_modules`), not this
- * script's problem to fix, and no longer on this script's path at all now
- * that the translator depends on `@mxlang/core` instead. The timeout stays
+ * `bun pm pack` hangs: first observed inside `packages/parser` (before
+ * `core-extract` removed the translator's dependency on it), then again
+ * on `packages/hosts/html` and `packages/core` with bun 1.3.14 on macOS,
+ * spinning at 100% CPU (`kevent64`/`unlinkat` in `sample`), both when
+ * spawned from a bun parent and from a plain shell. Root cause not
+ * determined; this script packs with `npm pack` instead (PR #51), which
+ * produces the same tarball for these packages. The timeout stays
  * as a standing guard against the same class of hang recurring on any
  * future dependency. Wrapped in the POSIX `timeout` command rather than
  * `AbortSignal.timeout` so a killed child's descendants are actually reaped
