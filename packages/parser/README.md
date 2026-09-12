@@ -31,6 +31,8 @@ lowering itself.
   `.solid.mx` file. See `packages/hosts/solid/README.md` for the lowering
   table itself and everything downstream of the region hand-off.
 
+  **Note on fragments:** TSX fragments (`<>...</>`) are supported in `.solid.mx` files, but their text children are parsed by Babel as standard TSX text, not MX text. MX parsing rules (like Marko's whitespace collapsing) only apply inside an explicit MX element.
+
 `@mxlang/parser` depends on `@mxlang/solid` for that hand-off; tooling
 packages (`vite-plugin`, `tsc`, `babel-plugin`, `eslint-plugin`,
 `typescript-plugin`) keep importing `@mxlang/parser` unchanged — the
