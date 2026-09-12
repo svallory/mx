@@ -3,10 +3,20 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.cjs",
   "types": "src/index.ts",
   "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target node --format cjs --entry-naming '[dir]/[name].cjs' --external @mxlang/parser --external @volar/language-core --external @volar/typescript --external typescript",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@jridgewell/sourcemap-codec": "1.6.0",
+    "@mxlang/parser": "workspace:*",
+    "@volar/language-core": "2.4.28",
+    "@volar/typescript": "2.4.28"
+  },
+  "peerDependencies": {
+    "typescript": "5.9.3"
   }
 }
