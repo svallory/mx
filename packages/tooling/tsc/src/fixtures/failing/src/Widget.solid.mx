@@ -1,0 +1,7 @@
+export function label(count: number): string {
+  return `count: ${count}`;
+}
+
+// `label` wants a number. The MX region is type-checked as its lowered TSX,
+// so passing a string here is an error plain `tsc` never sees.
+export const view = <p>${label("not a number")}</p>;

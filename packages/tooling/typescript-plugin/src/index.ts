@@ -1,8 +1,8 @@
-import type { LanguagePlugin } from "@volar/language-core";
 import type {} from "@volar/typescript";
 import { createLanguageServicePlugin } from "@volar/typescript/lib/quickstart/createLanguageServicePlugin";
 import type * as ts from "typescript";
 import {
+  createCompoundExtensionResolver,
   createSolidMxLanguagePlugin,
   type SolidMxLanguagePlugin,
 } from "./language.ts";
@@ -12,7 +12,10 @@ const pluginFactory: ts.server.PluginModuleFactory = (modules) => {
   const volarFactory = createLanguageServicePlugin((typescript) => {
     languagePlugin = createSolidMxLanguagePlugin(typescript);
     return {
-      languagePlugins: [languagePlugin, compoundExtensionResolver(typescript)],
+      languagePlugins: [
+        languagePlugin,
+        createCompoundExtensionResolver(typescript),
+      ],
     };
   });
   const pluginModule = volarFactory(modules);
@@ -34,31 +37,6 @@ const pluginFactory: ts.server.PluginModuleFactory = (modules) => {
     },
   };
 };
-
-/**
- * Volar 2.4.28's resolver assumes custom extensions contain one suffix. For
- * `X.solid.mx`, TypeScript probes `X.solid.d.mx.ts`; advertising the terminal
- * `mx` suffix lets Volar redirect that probe to the real source. External-file
- * discovery is filtered above, so ordinary whole-file `.mx` templates never
- * enter the TypeScript project.
- */
-function compoundExtensionResolver(
-  typescript: typeof ts,
-): LanguagePlugin<string> {
-  return {
-    getLanguageId: () => undefined,
-    typescript: {
-      extraFileExtensions: [
-        {
-          extension: "mx",
-          isMixedContent: false,
-          scriptKind: typescript.ScriptKind.TSX,
-        },
-      ],
-      getServiceScript: () => undefined,
-    },
-  };
-}
 
 function withSyntaxDiagnostics(
   typescript: typeof ts,
@@ -100,5 +78,8 @@ function withSyntaxDiagnostics(
   });
 }
 
-export { createSolidMxLanguagePlugin } from "./language.ts";
+export {
+  createCompoundExtensionResolver,
+  createSolidMxLanguagePlugin,
+} from "./language.ts";
 export default pluginFactory;

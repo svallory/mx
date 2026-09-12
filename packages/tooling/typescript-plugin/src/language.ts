@@ -160,22 +160,33 @@ function mergeMappings(mappings: CodeMapping[]): CodeMapping[] {
 
   for (const curr of mappings) {
     const prev = merged[merged.length - 1];
-    if (prev === undefined) {
+    // Every mapping this function is given has exactly one span, but the
+    // `CodeMapping` type allows many, so read the first defensively rather
+    // than asserting: a malformed entry should be passed through untouched,
+    // not merged on a guessed offset.
+    const prevGen = prev?.generatedOffsets[0];
+    const prevSrc = prev?.sourceOffsets[0];
+    const prevLen = prev?.lengths[0];
+    const currGen = curr.generatedOffsets[0];
+    const currSrc = curr.sourceOffsets[0];
+    const currLen = curr.lengths[0];
+
+    if (
+      prev === undefined ||
+      prevGen === undefined ||
+      prevSrc === undefined ||
+      prevLen === undefined ||
+      currGen === undefined ||
+      currSrc === undefined ||
+      currLen === undefined ||
+      currGen !== prevGen + prevLen ||
+      currSrc !== prevSrc + prevLen
+    ) {
       merged.push(curr);
       continue;
     }
 
-    const prevGenEnd = prev.generatedOffsets[0] + prev.lengths[0];
-    const prevSrcEnd = prev.sourceOffsets[0] + prev.lengths[0];
-
-    if (
-      curr.generatedOffsets[0] === prevGenEnd &&
-      curr.sourceOffsets[0] === prevSrcEnd
-    ) {
-      prev.lengths[0] += curr.lengths[0];
-    } else {
-      merged.push(curr);
-    }
+    prev.lengths[0] = prevLen + currLen;
   }
 
   return merged;
@@ -229,5 +240,38 @@ function toSyntaxError(
     message: error.message ?? "Invalid SolidMX source.",
     offset: Math.min(source.length, error.loc?.index ?? lineStart + column),
     source,
+  };
+}
+
+/**
+ * Advertises the terminal `mx` suffix so TypeScript's module resolver can find
+ * a `.solid.mx` file it was asked to import.
+ *
+ * Volar 2.4.28's resolver assumes a custom extension is one suffix. For
+ * `X.solid.mx` TypeScript probes `X.solid.d.mx.ts`; declaring `mx` as an extra
+ * extension lets that probe be redirected to the real source. Without it an
+ * `import "./X.solid.mx"` is TS2307 even though the file compiles fine on its
+ * own.
+ *
+ * This resolves nothing by itself — `getLanguageId` and `getServiceScript`
+ * both return undefined, so no file is claimed. It exists purely to widen the
+ * resolver, and is used by both the tsserver plugin and `mx-tsc` so an editor
+ * and CI resolve imports the same way.
+ */
+export function createCompoundExtensionResolver(
+  typescript: typeof ts,
+): LanguagePlugin<string> {
+  return {
+    getLanguageId: () => undefined,
+    typescript: {
+      extraFileExtensions: [
+        {
+          extension: "mx",
+          isMixedContent: false,
+          scriptKind: typescript.ScriptKind.TSX,
+        },
+      ],
+      getServiceScript: () => undefined,
+    },
   };
 }

@@ -1,0 +1,5 @@
+export function label(count: number): string {
+  return `count: ${count}`;
+}
+
+export const view = <p>${label(1)}</p>;
