@@ -17,6 +17,15 @@ the structural core, no longer a contract in itself.
 |---|---|---|---|
 | _(none yet — MX 1.0 has no deliberate divergences)_ | | | |
 
+## Deferred to MX 2
+
+| Construct | Why it was wanted | Marko verdict | Test |
+|---|---|---|---|
+| Tag params on `<if>` (`<if\|u\|=cond>`) | Solid's `<Show>` callback form narrows the condition value for the branch body. | Rejected: `Tag does not support parameters.` | `packages/parser/src/mx/control.test.ts` — `uses the callback child form for tag params on if` |
+| Tag params on native elements (`<div\|x\|>`) | A uniform “tag params make children a render prop” rule for every tag. | Rejected: `Tag does not support parameters.` | `packages/parser/src/mx/render-props.test.ts` — `lowers params on an HTML element the same way` |
+| Attribute tags on native elements (`<div><@head>…</@head></div>`) | A uniform “attribute tags become props” rule for every tag. | Rejected: `Tag does not support nested attribute tags.` | `packages/core/src/resolve.test.ts` — `rejects an attribute tag outside a component` |
+| `<fragment>` wrapper | An explicit wrapper for multiple Solid JSX children. | Rejected: `Unable to find entry point for custom tag <fragment>. Marko templates and tag bodies may have multiple root nodes; no fragment wrapper is needed.` | `packages/parser/src/mx/control.test.ts` — `lowers <fragment> to a JSXFragment` |
+
 ## Known bugs, not divergences
 
 These are `@mxlang/html` implementation bugs against decision 67's
