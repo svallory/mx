@@ -95,38 +95,42 @@ describe("stdio server (e2e)", () => {
     expect(params.diagnostics[0]?.message).toMatch(/let/i);
   }, 15000);
 
-  it("diagnoses a .solid.mx URI even when the editor labels it TypeScript", async () => {
-    const conn = startClient();
+  it.each(["typescript", "marko"])(
+    "diagnoses a .solid.mx URI with the %s language id",
+    async (languageId) => {
+      const conn = startClient();
 
-    await conn.sendRequest("initialize", {
-      processId: null,
-      rootUri: null,
-      capabilities: {},
-    });
-    conn.sendNotification("initialized", {});
+      await conn.sendRequest("initialize", {
+        processId: null,
+        rootUri: null,
+        capabilities: {},
+      });
+      conn.sendNotification("initialized", {});
 
-    const diagnosticsReceived = new Promise<{
-      uri: string;
-      diagnostics: Array<{ message: string; source?: string }>;
-    }>((resolve) => {
-      conn.onNotification(PublishDiagnosticsNotification, resolve);
-    });
+      const diagnosticsReceived = new Promise<{
+        uri: string;
+        diagnostics: Array<{ message: string; source?: string }>;
+      }>((resolve) => {
+        conn.onNotification(PublishDiagnosticsNotification, resolve);
+      });
 
-    const uri = "file:///project/App.solid.mx";
-    conn.sendNotification("textDocument/didOpen", {
-      textDocument: {
-        uri,
-        languageId: "typescript",
-        version: 1,
-        text: "export const view = () => <let/count=1/>;\n",
-      },
-    });
+      const uri = "file:///project/App.solid.mx";
+      conn.sendNotification("textDocument/didOpen", {
+        textDocument: {
+          uri,
+          languageId,
+          version: 1,
+          text: "export const view = () => <let/count=1/>;\n",
+        },
+      });
 
-    const params = await diagnosticsReceived;
-    expect(params.uri).toBe(uri);
-    expect(params.diagnostics).toHaveLength(1);
-    expect(params.diagnostics[0]?.message).toMatch(/let/i);
-  }, 15000);
+      const params = await diagnosticsReceived;
+      expect(params.uri).toBe(uri);
+      expect(params.diagnostics).toHaveLength(1);
+      expect(params.diagnostics[0]?.message).toMatch(/let/i);
+    },
+    15000,
+  );
 
   it("diagnoses a document identified by the solidmx language id", async () => {
     const conn = startClient();
@@ -152,6 +156,39 @@ describe("stdio server (e2e)", () => {
         languageId: "solidmx",
         version: 1,
         text: "export const view = () => <let/count=1/>;\n",
+      },
+    });
+
+    const params = await diagnosticsReceived;
+    expect(params.uri).toBe(uri);
+    expect(params.diagnostics).toHaveLength(1);
+    expect(params.diagnostics[0]?.message).toMatch(/let/i);
+  }, 15000);
+
+  it("diagnoses a .marko document resolved to the Solid host", async () => {
+    const conn = startClient();
+
+    await conn.sendRequest("initialize", {
+      processId: null,
+      rootUri: null,
+      capabilities: {},
+    });
+    conn.sendNotification("initialized", {});
+
+    const diagnosticsReceived = new Promise<{
+      uri: string;
+      diagnostics: Array<{ message: string; source?: string }>;
+    }>((resolve) => {
+      conn.onNotification(PublishDiagnosticsNotification, resolve);
+    });
+
+    const uri = `file://${join(import.meta.dirname, "fixtures/solid-dependency/App.marko")}`;
+    conn.sendNotification("textDocument/didOpen", {
+      textDocument: {
+        uri,
+        languageId: "marko",
+        version: 1,
+        text: "<let/count=1/>\n",
       },
     });
 

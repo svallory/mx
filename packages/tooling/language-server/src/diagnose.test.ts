@@ -47,7 +47,7 @@ describe("diagnoseDocument", () => {
     // `loc` and must become diagnostics, regardless of their concrete class.
     const diagnostics = diagnoseDocument(
       null as unknown as string,
-      "file:///project/App.mx",
+      "file:///project/App.solid.mx",
       { host: "html" },
       onUnexpectedError,
     );
