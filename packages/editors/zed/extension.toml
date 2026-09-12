@@ -21,12 +21,11 @@ rev = "7fb20382b9b0c97c8bdbceee0e0641bea11dd00f"
 # `[language_servers.marko]` entry exists only because that crate's
 # `MarkoExtension` implements the command). `src/lib.rs`/`Cargo.toml` do that
 # here, minimally: no settings, no downloads — see their own doc comments for
-# the command resolution order. `SolidMX`/`AstroMX` are not listed yet: this
-# server does not compile those file kinds (decision 77 names them as
-# "later"). See packages/tooling/language-server/README.md "Editors" > "Zed".
+# the command resolution order. AstroMX is not listed yet because the server
+# does not compile that file kind.
 [language_servers.mxlang]
 name = "MX Language Server"
-languages = ["MX"]
+languages = ["MX", "SolidMX"]
 
 [grammars.solidmx]
 # DEV FORM. Zed still requires a committed `rev` even for a `file://`
