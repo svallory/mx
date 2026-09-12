@@ -188,8 +188,14 @@ async function main() {
       continue;
     }
 
-    if (shortName === GRAMMAR_MARKER_PACKAGE || shortName === "tree-sitter-amx") {
-      const ran = shortName === GRAMMAR_MARKER_PACKAGE ? solidmxGrammarRan : amxGrammarRan;
+    if (
+      shortName === GRAMMAR_MARKER_PACKAGE ||
+      shortName === "tree-sitter-amx"
+    ) {
+      const ran =
+        shortName === GRAMMAR_MARKER_PACKAGE
+          ? solidmxGrammarRan
+          : amxGrammarRan;
       if (ran) {
         ranCount++;
         console.log(

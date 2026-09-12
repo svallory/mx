@@ -5,9 +5,7 @@
       "camelcase": "Amx",
       "scope": "source.amx",
       "path": ".",
-      "external-files": [
-        "src/scanner.c"
-      ],
+      "external-files": ["src/scanner.c"],
       "file-types": ["amx"],
       "injection-regex": "^(amx)$"
     }
