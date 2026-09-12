@@ -87,7 +87,7 @@ export function App() {
   };
 
   return (
-    <fragment>
+    <section class="todoapp">
       <header class="header">
         <h1>todos</h1>
         <input
@@ -129,6 +129,6 @@ export function App() {
           onClearCompleted=clearCompleted
         />
       </if>
-    </fragment>
+    </section>
   );
 }
