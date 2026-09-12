@@ -98,6 +98,8 @@ export type Attr =
  * the target can express it.
  */
 export interface Block extends IrBase {
+  /** Distinguishes `<Tag||>` from a tag with no parameter pipes. */
+  hasParams: boolean;
   params: string[];
   children: IrNode[];
 }
@@ -109,8 +111,17 @@ export type ForSource =
   /**
    * `from`/`to`/`until`. `inclusive` distinguishes `to=` (`<=`) from `until=`
    * (`<`); `from` defaults to a literal `0` when the author omitted it.
+   * `step` is the increment per iteration; absent when the author omitted it,
+   * and the host decides the default (1 for HTML's runtime loop, a `step`
+   * prop for Solid's `<Repeat>`).
    */
-  | { kind: "range"; from: Expr | null; bound: Expr; inclusive: boolean };
+  | {
+      kind: "range";
+      from: Expr | null;
+      bound: Expr;
+      inclusive: boolean;
+      step: Expr | null;
+    };
 
 /** One branch of an if-chain: a condition and its children. */
 export interface Branch extends IrBase {
@@ -202,6 +213,13 @@ export type IrNode =
       params: string[];
       /** Every name the params bind, for a host that tracks scopes. */
       bindings: string[];
+      /**
+       * The `by=` expression, as resolved source. `null` when the author
+       * omitted it. A string-emitting host ignores it (no reconciliation in a
+       * one-shot render, decision 65); a reactive host emits it as the
+       * `keyed` prop on `<For>`.
+       */
+      key: Expr | null;
       children: IrNode[];
     } & IrBase)
   | ({

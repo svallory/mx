@@ -475,6 +475,14 @@ export const policy: Policy = {
   rejectModifier,
   rejectComponentTag,
   rejectUnknownTag,
+  rejectElementAttributeTags: (name, node, ctx) => {
+    const first = node.attributeTags?.[0];
+    const slot = String(first?.name?.value ?? "").replace(/^@/, "");
+    fail(
+      `attribute tag \`@${slot}\` on \`<${name}>\`; attribute tags are props of components, so they are only valid directly inside a component call`,
+      first ?? node,
+    );
+  },
 };
 
 /** Runtime import used by this host's emitted modules. */

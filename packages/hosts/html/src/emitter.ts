@@ -399,6 +399,16 @@ export function createEmitter(): StringEmitter {
     },
 
     forLoop(node) {
+      // `step` was rejected by the core until the Solid host needed it. Now
+      // the core carries it and the HTML host rejects it — same message,
+      // same oracle numbers.
+      if (node.source.kind === "range" && node.source.step) {
+        fail(
+          "`<for step=...>`: step is not supported; use a computed array",
+          node,
+        );
+      }
+
       /**
        * Binds a loop's own expressions to temporaries *before* the loop opens.
        *
@@ -588,7 +598,12 @@ export function createEmitter(): StringEmitter {
         // registrations — and made nested dynamic tags resolve exponentially.
         const content: Block | null =
           tag.children.length > 0
-            ? { params: [], children: tag.children, loc: tag.loc }
+            ? {
+                hasParams: false,
+                params: [],
+                children: tag.children,
+                loc: tag.loc,
+              }
             : null;
         emitter.component({
           kind: "Component",

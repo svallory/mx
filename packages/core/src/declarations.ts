@@ -79,6 +79,17 @@ export interface HostDeclarations {
    */
   rejectModifier?(attr: Node, on?: "element" | "component"): void;
   /**
+   * Resolves an attribute modifier a host keeps as target syntax.
+   *
+   * Return the emitted IR name (for example `namespace:name`) to accept it;
+   * return `undefined` to let `rejectModifier`/the generic diagnostic reject
+   * it. Most hosts accept no modifiers, so this hook is optional.
+   */
+  resolveModifier?(
+    attr: Node,
+    on?: "element" | "component",
+  ): string | undefined;
+  /**
    * Rejects an attribute method in this host's own words.
    *
    * Marko represents an attribute method as a `FunctionExpression` value in
@@ -87,6 +98,11 @@ export interface HostDeclarations {
    * standalone-string diagnostic here.
    */
   rejectAttributeMethod?(attr: Node, on?: "element" | "component"): void;
+  /** Return true when this host carries an attribute method as a callable prop. */
+  resolveAttributeMethod?(
+    attr: Node,
+    on?: "element" | "component",
+  ): boolean;
   /**
    * Rejects attribute tags attached to an element in this host's own words.
    *

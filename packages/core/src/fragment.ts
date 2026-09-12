@@ -125,21 +125,30 @@ function shiftNode(
   seen: Set<object> = new Set(),
 ): void {
   if (!node || typeof node !== "object") return;
+  if (typeof node.line === "number" && typeof node.column === "number") {
+    shiftPosition(node, base, seen);
+    return;
+  }
   if (seen.has(node)) return;
   seen.add(node);
   if (Array.isArray(node)) {
     for (const item of node) shiftNode(item, base, seen);
     return;
   }
-  if (typeof node.type !== "string") return;
 
+  // Babel parse failures embedded in an otherwise valid Marko tree carry
+  // their precise location under a plain `errorLoc` object. It has no node
+  // `type`, so stopping at untyped containers leaves that position relative
+  // to the fragment while every surrounding node is file-relative.
   if (node.loc) {
     shiftPosition(node.loc.start, base, seen);
     shiftPosition(node.loc.end, base, seen);
   }
   // Present on plain Babel nodes only; absent on Marko's own.
-  if (typeof node.start === "number") node.start += base.baseOffset;
-  if (typeof node.end === "number") node.end += base.baseOffset;
+  if (typeof node.type === "string") {
+    if (typeof node.start === "number") node.start += base.baseOffset;
+    if (typeof node.end === "number") node.end += base.baseOffset;
+  }
 
   for (const key of Object.keys(node)) {
     if (key === "loc" || key === "extra") continue;

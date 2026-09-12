@@ -243,7 +243,9 @@ describe("one fixture per IR kind", () => {
   });
 
   it("For normalizes `of=`, with params and their bindings", () => {
-    const ir = resolveSource("<for|item, i| of=input.xs><p>x</p></for>\n");
+    const ir = resolveSource(
+      '<for|item, i| of=input.xs by="id"><p>x</p></for>\n',
+    );
     const loop = find(ir.body, "For");
     expect(loop.source).toMatchObject({
       kind: "of",
@@ -251,6 +253,7 @@ describe("one fixture per IR kind", () => {
     });
     expect(loop.params).toEqual(["item", "i"]);
     expect(loop.bindings).toEqual(["item", "i"]);
+    expect(loop.key).toMatchObject({ code: '"id"', shape: "string" });
   });
 
   it("For normalizes `in=`", () => {
@@ -262,12 +265,15 @@ describe("one fixture per IR kind", () => {
   });
 
   it("For normalizes the inclusive and exclusive ranges apart", () => {
-    const inclusive = resolveSource("<for|n| from=1 to=5><p>x</p></for>\n");
+    const inclusive = resolveSource(
+      "<for|n| from=1 to=5 step=2><p>x</p></for>\n",
+    );
     expect(find(inclusive.body, "For").source).toMatchObject({
       kind: "range",
       inclusive: true,
       from: { code: "1" },
       bound: { code: "5" },
+      step: { code: "2" },
     });
 
     const exclusive = resolveSource("<for|n| until=5><p>x</p></for>\n");
@@ -278,6 +284,7 @@ describe("one fixture per IR kind", () => {
       // than invented as a literal the author never wrote.
       from: null,
       bound: { code: "5" },
+      step: null,
     });
   });
 
@@ -477,11 +484,6 @@ describe("errors keep their message and position", () => {
       "<for> with no iterable",
       "<for|x|><p>y</p></for>\n",
       /`<for>` requires `of=`, `in=`, or `from=`\/`to=`\/`until=`/,
-    ],
-    [
-      "<for step=>",
-      "<for|n| from=0 to=5 step=2><p>x</p></for>\n",
-      /step is not supported/,
     ],
     [
       "a stray <else>",

@@ -79,6 +79,11 @@ export function expressionShape(node: Node): ExprShape {
 
 /** An expression, printed and classified through the binding registry. */
 function exprOf(ctx: Ctx, node: Node): Expr {
+  if (node?.type === "MarkoParseError") {
+    fail(node.label ?? "invalid expression", {
+      loc: { start: node.errorLoc?.start ?? node.loc?.start },
+    });
+  }
   return { code: expr(ctx, node), shape: expressionShape(node), node };
 }
 
@@ -113,11 +118,13 @@ function resolveAttr(
   }
 
   if (attr.arguments || attr.value?.type === "FunctionExpression") {
-    ctx.declarations.rejectAttributeMethod?.(attr, on);
-    fail(
-      `attribute method \`${attr.name}(...)\` is an event handler and requires a runtime; standalone MX renders once to a string`,
-      attr,
-    );
+    if (ctx.declarations.resolveAttributeMethod?.(attr, on) !== true) {
+      ctx.declarations.rejectAttributeMethod?.(attr, on);
+      fail(
+        `attribute method \`${attr.name}(...)\` is an event handler and requires a runtime; standalone MX renders once to a string`,
+        attr,
+      );
+    }
   }
 
   if (attr.bound) {
@@ -135,6 +142,15 @@ function resolveAttr(
   // diagnostic is in its own vocabulary (a Marko-parity target quotes Marko's
   // own fix-it); the core's wording is only the fallback.
   if (attr.modifier) {
+    const resolvedName = ctx.declarations.resolveModifier?.(attr, on);
+    if (resolvedName !== undefined) {
+      return {
+        kind: "dynamic",
+        name: resolvedName,
+        value: exprOf(ctx, attr.value),
+        loc,
+      };
+    }
     // The tag kind travels with the rejection: a modifier on a *component*
     // call is a different diagnostic from one on an element, and the pre-IR
     // walk said so ("… on a component call is not supported"). Losing that
@@ -171,7 +187,22 @@ function resolveAttrs(
 
 /** The tag params of `<for|a, b|>` / `<@name|p|>`, as source text. */
 function paramsOf(ctx: Ctx, node: Node): string[] {
-  return (node.body?.params ?? []).map((p: Node) => declName(ctx, p));
+  return (node.body?.params ?? []).map((p: Node) => {
+    // Babel's generator omits a TypeScript annotation when an Identifier is
+    // printed outside its parameter-list context. The Marko node's location
+    // covers the complete authored pattern, so use that exact source text for
+    // params and preserve annotations as well as destructuring.
+    const source = p.loc ? sliceLoc(ctx, p.loc) : "";
+    return source || declName(ctx, p);
+  });
+}
+
+/** Marko keeps non-empty params as nodes but represents both absent and `||` as `[]`. */
+function hasParams(ctx: Ctx, node: Node): boolean {
+  if ((node.body?.params ?? []).length > 0) return true;
+  const source = sliceLoc(ctx, node.loc);
+  const openEnd = source.indexOf(">");
+  return (openEnd < 0 ? source : source.slice(0, openEnd)).includes("||");
 }
 
 /** Every name a tag's params bind, for shadowing. */
@@ -194,7 +225,12 @@ function resolveBlock(ctx: Ctx, node: Node): Block {
   const children = resolveChildren(ctx, node.body?.body ?? []);
   restore();
   unscope();
-  return { params: paramsOf(ctx, node), children, loc: posOf(node) };
+  return {
+    hasParams: hasParams(ctx, node),
+    params: paramsOf(ctx, node),
+    children,
+    loc: posOf(node),
+  };
 }
 
 /** `<@name>` children of a component call, in source order. */
@@ -286,16 +322,12 @@ function resolveIfChain(
 /**
  * All of `<for>`'s forms, normalized to the three a host emits.
  *
- * `by=` is *inert* (decision 65): it names which item a DOM node belongs to
- * across re-renders, and a one-shot render performs no reconciliation, so it
- * changes no emitted byte — verified against Marko itself. It is therefore
- * accepted and dropped here rather than carried into the IR.
+ * `by=` names which item a DOM node belongs to across re-renders. A one-shot
+ * string host has no reconciliation, so it safely ignores the field (decision
+ * 65). A reactive host (Solid) emits it as the `keyed` prop on `<For>`.
+ * Carried in the IR so both paths work from the same tree.
  */
 function resolveFor(ctx: Ctx, node: Node): IrNode {
-  if (attrByName(node, "step")) {
-    fail("`<for step=...>`: step is not supported; use a computed array", node);
-  }
-
   rejectUnsupportedFields(ctx, node, "`<for>`", { params: true });
 
   const params = paramsOf(ctx, node);
@@ -313,6 +345,40 @@ function resolveFor(ctx: Ctx, node: Node): IrNode {
   const inAttr = attrByName(node, "in");
   const to = attrByName(node, "to");
   const until = attrByName(node, "until");
+  const step = attrByName(node, "step");
+  const by = attrByName(node, "by");
+
+  const combos = [of, inAttr, attrByName(node, "from") || to || until].filter(
+    Boolean,
+  ).length;
+  if (combos > 1) {
+    fail(
+      "`<for>` with more than one of `of=`, `in=`, `from=`/`to=`/`until=`",
+      node,
+    );
+  }
+  if (to && until) fail("`<for>` with both `to=` and `until=`", node);
+  if (step && !(to || until)) {
+    fail("`<for step=...>` is only valid on a range", step);
+  }
+
+  const requireValue = (attr: Node | undefined, label: string): void => {
+    if (
+      attr &&
+      (!attr.value?.loc ||
+        attr.arguments ||
+        attr.value.type === "FunctionExpression")
+    ) {
+      fail(`\`<for ${label}=...>\` requires an expression value`, attr);
+    }
+  };
+  requireValue(of, "of");
+  requireValue(inAttr, "in");
+  requireValue(attrByName(node, "from"), "from");
+  requireValue(to, "to");
+  requireValue(until, "until");
+  requireValue(step, "step");
+  requireValue(by, "by");
 
   let source: ForSource;
   if (of) {
@@ -326,6 +392,7 @@ function resolveFor(ctx: Ctx, node: Node): IrNode {
       from: from ? exprOf(ctx, from.value) : null,
       bound: exprOf(ctx, (to ?? until).value),
       inclusive: Boolean(to),
+      step: step ? exprOf(ctx, step.value) : null,
     };
   } else {
     fail("`<for>` requires `of=`, `in=`, or `from=`/`to=`/`until=`", node);
@@ -344,6 +411,7 @@ function resolveFor(ctx: Ctx, node: Node): IrNode {
     source,
     params,
     bindings,
+    key: by ? exprOf(ctx, by.value) : null,
     children,
     loc: posOf(node),
   };
@@ -487,7 +555,48 @@ function resolveComponent(
   rejectUnsupportedFields(ctx, node, `\`<${targetName(target)}>\``, {
     attributeTags: true,
     args: true,
+    params: true,
   });
+
+  const parentAttrs = new Set(
+    (node.attributes ?? [])
+      .filter((attr: Node) => attr.type !== "MarkoSpreadAttribute")
+      .map((attr: Node) => attr.name),
+  );
+  const seenTags = new Set<string>();
+  for (const tag of node.attributeTags ?? []) {
+    const name = String(tag.name?.value ?? "").replace(/^@/, "");
+    if (parentAttrs.has(name)) {
+      fail(
+        `attribute tag \`@${name}\` collides with attribute \`${name}\``,
+        tag,
+      );
+    }
+    if (name === "children" && hasContent(node.body?.body ?? [])) {
+      fail(
+        "attribute tag `@children` collides with the parent's ordinary children",
+        tag,
+      );
+    }
+    if (seenTags.has(name)) {
+      fail(
+        `attribute tag \`@${name}\` given twice (repeatable attribute tags are not supported)`,
+        tag,
+      );
+    }
+    seenTags.add(name);
+    if ((tag.attributes ?? []).length > 0) {
+      fail("attribute tags take params or a body, not attributes (v1)", tag);
+    }
+    if ((tag.attributeTags ?? []).length > 0) {
+      const inner = tag.attributeTags[0];
+      const innerName = String(inner.name?.value ?? "");
+      fail(
+        `attribute tag \`<${innerName}>\` inside attribute tag \`<@${name}>\``,
+        inner,
+      );
+    }
+  }
 
   const children = node.body?.body ?? [];
   return {
@@ -548,7 +657,10 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
       return resolveConst(ctx, node);
     case "define":
       return resolveDefine(ctx, node);
-    case "else":
+    case "else": {
+      const label = attrByName(node, "if") ? "else if" : "else";
+      fail(`\`<${label}>\` without a preceding \`<if>\``, node);
+    }
     case "else-if":
       fail(`\`<${name}>\` without a preceding \`<if>\``, node);
   }
