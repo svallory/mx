@@ -1,6 +1,7 @@
+import { compileSolidMx } from "@mxlang/solid";
+import { parseExpression } from "../babel/index.ts";
 import { Position } from "../babel/util/location.ts";
 import { MxErrors } from "./errors.ts";
-import { type LowerContext, LowerError, lowerElement } from "./lower.ts";
 import { walkMxRegion } from "./walk.ts";
 
 /**
@@ -68,29 +69,92 @@ export function mxParseElementAt(
     });
   }
 
-  const ctx: LowerContext = {
-    source,
-    options: mxSubParseOptions(parser.options),
-  };
-
   let node: unknown;
   try {
-    node = lowerElement(ctx, root);
+    const region = source.slice(start, end);
+    const { code } = compileSolidMx(region, {
+      filename: parser.options?.sourceFilename ?? "input.solid.mx",
+      baseOffset: start,
+      baseLine: startLoc.line - 1,
+      baseColumn: startLoc.column,
+    });
+    node = parseExpression(code, {
+      ...mxSubParseOptions(parser.options),
+      mx: false,
+      startIndex: start,
+      startLine: startLoc.line,
+      startColumn: startLoc.column,
+    });
+    stampRoot(node, source, start, end);
   } catch (err) {
-    if (err instanceof LowerError) {
+    const error = err as {
+      message?: string;
+      line?: number;
+      column?: number;
+      loc?: { start?: { line?: number; column?: number; index?: number } };
+    };
+    const line = error.line ?? error.loc?.start?.line;
+    const column = error.column ?? error.loc?.start?.column;
+    if (typeof line === "number" && typeof column === "number") {
+      const offset = offsetAt(source, line, column);
       throw raiseAndThrow(
         parser,
-        MxErrors.UnsupportedConstruct,
-        positionAt(source, err.failure.start, parser.state.startIndex),
-        { construct: err.failure.construct },
+        MxErrors.HostError,
+        positionAt(source, offset, parser.state.startIndex),
+        { message: error.message ?? "Invalid MX element." },
       );
     }
-    // A Babel SyntaxError from a sub-parse already carries its own position.
     throw err;
   }
 
   repositionTokenizer(parser, source, start, end, contextDepth);
   return node;
+}
+
+/** Keep the region root anchored to the source MX span for diagnostics. */
+function stampRoot(
+  node: unknown,
+  source: string,
+  start: number,
+  end: number,
+): void {
+  if (!node || typeof node !== "object") return;
+  const root = node as Record<string, unknown>;
+  root.start = start;
+  root.end = end;
+  root.loc = {
+    start: locAt(source, start),
+    end: locAt(source, end),
+  };
+  root.range = [start, end];
+  root.extra = {
+    ...(root.extra as object | undefined),
+    mx: { range: [start, end] },
+  };
+}
+
+function locAt(
+  source: string,
+  offset: number,
+): { line: number; column: number; index: number } {
+  let line = 1;
+  let lineStart = 0;
+  for (let index = 0; index < offset; index++) {
+    if (source.charCodeAt(index) === 10) {
+      line++;
+      lineStart = index + 1;
+    }
+  }
+  return { line, column: offset - lineStart, index: offset };
+}
+
+function offsetAt(source: string, line: number, column: number): number {
+  let currentLine = 1;
+  let offset = 0;
+  while (currentLine < line && offset < source.length) {
+    if (source.charCodeAt(offset++) === 10) currentLine++;
+  }
+  return Math.min(source.length, offset + column);
 }
 
 /**

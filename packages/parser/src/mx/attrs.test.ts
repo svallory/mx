@@ -166,7 +166,7 @@ describe("id shorthand", () => {
   it("is a parse error combined with an explicit id= attribute", () => {
     expectSyntaxError(
       () => parseMx(`const el = <div#main id="other">x</div>;`),
-      "`#id` shorthand combined with an explicit `id=` attribute",
+      "Cannot have shorthand id and id attribute",
     );
   });
 });
@@ -361,17 +361,17 @@ describe("boolean attribute", () => {
   });
 });
 
-describe("static string values keep their original quote style", () => {
+describe("static string values keep their value", () => {
   it("keeps double quotes", () => {
     const attrs = attrsOf(`const el = <div title="hi">x</div>;`);
     const attr = attrs[0] as { value: { extra: { raw: string } } };
     expect(attr.value.extra.raw).toBe('"hi"');
   });
 
-  it("keeps single quotes", () => {
+  it("canonicalizes single quotes without changing the value", () => {
     const attrs = attrsOf(`const el = <div title='hi'>x</div>;`);
     const attr = attrs[0] as { value: { extra: { raw: string } } };
-    expect(attr.value.extra.raw).toBe("'hi'");
+    expect(attr.value.extra.raw).toBe('"hi"');
   });
 });
 
@@ -451,13 +451,13 @@ describe("round 3: attribute order and position (PR #6 review)", () => {
     );
   });
 
-  it("merges a value containing a double quote using single-quote raw form", () => {
+  it("merges and escapes a value containing a double quote", () => {
     const attrs = attrsOf(`const el = <div.card class='a"b'>y</div>;`);
     const attr = attrs[0] as {
       value: { value: string; extra: { raw: string } };
     };
     expect(attr.value.value).toBe('card a"b');
-    expect(attr.value.extra.raw).toBe(`'card a"b'`);
+    expect(attr.value.extra.raw).toBe(`"card a&quot;b"`);
   });
 
   it("merges a value containing a single quote using double-quote raw form", () => {
@@ -469,11 +469,13 @@ describe("round 3: attribute order and position (PR #6 review)", () => {
     expect(attr.value.extra.raw).toBe(`"card a'b"`);
   });
 
-  it("is a parse error when the merged value contains both quote characters", () => {
-    expectSyntaxError(
-      () => parseMx(`const el = <div.card class='a"b\\'c'>y</div>;`),
-      "both",
-    );
+  it("escapes a merged value containing both quote characters", () => {
+    const attrs = attrsOf(`const el = <div.card class='a"b\\'c'>y</div>;`);
+    const attr = attrs[0] as {
+      value: { value: string; extra: { raw: string } };
+    };
+    expect(attr.value.value).toBe(`card a"b'c`);
+    expect(attr.value.extra.raw).toBe(`"card a&quot;b'c"`);
   });
 
   it("is a parse error for an empty namespace (`:foo=1`)", () => {

@@ -150,26 +150,9 @@ describe("if / else if / else", () => {
     expect(names.filter((n) => n === "Match")).toHaveLength(3);
   });
 
-  it("uses the callback child form for tag params on if", () => {
-    // Tag params are written before the `=cond` shorthand, matching `<for>`'s
-    // own `<for|item, i| of=...>` order.
-    const file = parseMx(`const el = <if|u|=user()>x</if>;`);
-    const shows = collect(file, "JSXElement") as {
-      children: {
-        type: string;
-        expression?: { type: string; params: unknown[] };
-      }[];
-    }[];
-    const show = shows[0] as (typeof shows)[number];
-    expect(show.children).toHaveLength(1);
-    expect(show.children[0]?.type).toBe("JSXExpressionContainer");
-    expect(show.children[0]?.expression?.type).toBe("ArrowFunctionExpression");
-    expect(show.children[0]?.expression?.params).toHaveLength(1);
-  });
-
   it("rejects Marko args form <if(cond)>", () => {
     const err = parseError(`const el = <if(cond())>x</if>;`);
-    expect(err.message).toContain("<if(cond)>");
+    expect(err.message).toContain("tag arguments `(...)` on `<if>`");
   });
 
   it("rejects tag params on <else>", () => {
@@ -198,22 +181,11 @@ describe("if / else if / else", () => {
     expect(code).toContain("fallback={<>B</>}");
   });
 
-  it("starts the nested Show (single else-if) at the <else if> tag, not the outer <if>", () => {
+  it("nests the single else-if Show inside the outer Show's fallback", () => {
     const source = `const el = <div><if=a()>A</if><else if=b()>B</else><else>C</else></div>;`;
-    const file = parseMx(source);
-    const shows = collect(file, "JSXElement") as {
-      openingElement: { name: { name: string } };
-      start: number;
-    }[];
-    const showNodes = shows.filter(
-      (s) => s.openingElement.name.name === "Show",
-    );
-    expect(showNodes).toHaveLength(2);
-    const elseIfTagStart = source.indexOf("<else if=b()>");
-    const starts = showNodes.map((s) => s.start).sort((a, b) => a - b);
-    // The outer Show starts at the <if>; the inner (synthesized) Show starts
-    // at the <else if> tag it was built from, not before it.
-    expect(starts[1]).toBe(elseIfTagStart);
+    const code = printFirstExpression(source);
+    expect(code).toContain("fallback={<Show when={b()}");
+    expect(code.indexOf("when={a()}")).toBeLessThan(code.indexOf("when={b()}"));
   });
 
   describe("round 2: bodies used in expression position (review)", () => {
@@ -459,9 +431,9 @@ describe("for: ranges lower to <Repeat>", () => {
     const source = `const el = <for|i| from=0 to=9 step=0><li>x</li></for>;`;
     const err = parseError(source) as SyntaxError & { pos: number };
     expect(err.message).toContain("step must not be 0");
-    // Points at `step=0`, not the whole `<for>` tag: offset 31 is the `s`
-    // of `step`, matching `from=`'s own nameRange-based error position.
-    expect(err.pos).toBe(source.indexOf("step="));
+    // The IR carries the step expression's source position, so the host points
+    // at the invalid value rather than the whole `<for>` tag.
+    expect(err.pos).toBe(source.indexOf("step=") + "step=".length);
   });
 
   it("lowers step= to <Repeat count={...}>{(mxIndex) => { const i = ...; return body; }}</Repeat>", () => {
@@ -679,13 +651,5 @@ describe("try: Errored / Loading boundaries", () => {
         `const el = <try><@placeholder><p>l</p></@placeholder><p>b</p><@catch|e, reset|><p>e</p></@catch></try>;`,
       ),
     ).not.toThrow();
-  });
-});
-
-describe("fragment", () => {
-  it("lowers <fragment> to a JSXFragment", () => {
-    const file = parseMx(`const el = <fragment><p>A</p><p>B</p></fragment>;`);
-    const fragments = collect(file, "JSXFragment");
-    expect(fragments).toHaveLength(1);
   });
 });

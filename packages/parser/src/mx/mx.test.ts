@@ -170,7 +170,7 @@ describe("unsupported constructs raise a clear error", () => {
     [
       "attribute tag outside a tag body",
       `const el = <@header>x</@header>;`,
-      "attribute tag `<@header>` outside a tag body",
+      "@tags must be nested within another element",
     ],
     [
       "raw placeholder mixed with other children",
@@ -363,16 +363,15 @@ describe("whitespace follows Marko, not JSX (review #5)", () => {
     ]);
   });
 
-  it("collapses internal runs and trims at tag boundaries", () => {
+  it("collapses internal runs and preserves boundary spaces", () => {
     expect(childKinds(`const c = <p>  hello   world  </p>;`)).toEqual([
-      "text:hello world",
+      "text: hello world ",
     ]);
   });
 
-  it("does not count comments as content when trimming", () => {
-    // The whitespace trims exactly as if the comments were not written.
+  it("does not count comments as content when preserving spaces", () => {
     expect(childKinds(`const d = <p><!-- c --> hello <!-- e --></p>;`)).toEqual(
-      ["text:hello"],
+      ["text: hello "],
     );
   });
 
@@ -388,19 +387,16 @@ describe("whitespace follows Marko, not JSX (review #5)", () => {
       ]);
     });
 
-    it("leaves no trailing space on an indented word before a sibling element", () => {
-      // The run is "\n  static\n  ": the whitespace sits on lines that trim to
-      // empty, so it is dropped rather than collapsed to a space. The
-      // run-based rule this replaced left "static " here.
+    it("keeps the collapsed separator before a sibling element", () => {
       expect(
         childKinds(`const g = <div>\n  static\n  <span>s</span></div>;`),
-      ).toEqual(["text:static", "JSXElement"]);
+      ).toEqual(["text:static ", "JSXElement"]);
     });
 
-    it("leaves no leading space on a word after a sibling element", () => {
+    it("keeps the collapsed separator after a sibling element", () => {
       expect(
         childKinds(`const h = <div><span>s</span>\n  static\n</div>;`),
-      ).toEqual(["JSXElement", "text:static"]);
+      ).toEqual(["JSXElement", "text: static"]);
     });
 
     it("still drops a whitespace-only run containing a newline", () => {
@@ -427,10 +423,10 @@ describe("whitespace follows Marko, not JSX (review #5)", () => {
       ]);
     });
 
-    it("still drops indentation on a word with no inline sibling spacing", () => {
+    it("collapses indentation before a sibling to one separator", () => {
       expect(
         childKinds(`const o = <div>\n  static\n  <span>s</span></div>;`),
-      ).toEqual(["text:static", "JSXElement"]);
+      ).toEqual(["text:static ", "JSXElement"]);
     });
 
     it("keeps interior spaces in a single-line run between placeholders", () => {
@@ -456,7 +452,7 @@ describe("whitespace follows Marko, not JSX (review #5)", () => {
         childKinds(`const k = <p>a\${" "}\n  b</p>;`).filter(
           (c) => c !== "JSXExpressionContainer",
         ),
-      ).toEqual(["text:a", "text:b"]);
+      ).toEqual(["text:a", "text: b"]);
     });
   });
 });

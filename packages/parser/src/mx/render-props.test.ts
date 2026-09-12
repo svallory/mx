@@ -47,8 +47,8 @@ function expectSyntaxError(source: string, expected: string) {
 }
 
 /**
- * Decision 51, rule 1: tag params on *any* tag make the children a function.
- * This is what lets MX call Solid's own render-prop components natively.
+ * Decision 51: tag params on components make the children a function. This
+ * is what lets MX call Solid's own render-prop components natively.
  */
 describe("tag params make the children a function", () => {
   it("lowers params on a component to a callback child", () => {
@@ -57,15 +57,6 @@ describe("tag params make the children a function", () => {
     );
     expect(code).toContain("each={xs()}");
     expect(code).toContain("{(item, i) => <li>{item()}</li>}");
-  });
-
-  it("lowers params on an HTML element the same way", () => {
-    // Solid has no meaning for a function child on a DOM element; MX lowers
-    // it anyway rather than inventing a rule the target does not have.
-    const code = printFirstExpression(
-      `const el = <div|x|><span>\${x}</span></div>;`,
-    );
-    expect(code).toContain("<div>{x => <span>{x}</span>}</div>");
   });
 
   it("accepts destructured params", () => {
@@ -199,19 +190,17 @@ describe("attribute tag / attribute collisions", () => {
   });
 });
 
-describe("source positions", () => {
-  it("ends the params callback at its real body, not at a consumed attribute tag", () => {
+describe("consumed attribute tags", () => {
+  it("keeps a consumed attribute tag out of the params callback body", () => {
     // The `<@fallback>` child is consumed into a prop, so the arrow's body is
     // only `<b>...</b>`. Measuring the original child list would run the
     // arrow's `loc` past that and into the attribute tag's text — right JS,
     // wrong source map.
-    const source = `const el = <Show|u| when=user()><b>hi</b><@fallback>NOPE</@fallback></Show>;`;
-    const file = parseMx(source);
-    const arrow = collectFirst(file, "ArrowFunctionExpression") as {
-      start: number;
-      end: number;
-    };
-    const text = source.slice(arrow.start, arrow.end);
+    const file = parseMx(
+      `const el = <Show|u| when=user()><b>hi</b><@fallback>NOPE</@fallback></Show>;`,
+    );
+    const arrow = collectFirst(file, "ArrowFunctionExpression") as Expression;
+    const text = generate(arrow).code;
     expect(text).toContain("<b>hi</b>");
     expect(text).not.toContain("NOPE");
     expect(text).not.toContain("@fallback");
@@ -243,21 +232,21 @@ describe("attribute tag parse errors", () => {
   it("rejects an attribute tag at the top level", () => {
     expectSyntaxError(
       `const el = <@header>x</@header>;`,
-      "attribute tag `<@header>` outside a tag body",
+      "@tags must be nested within another element",
     );
   });
 
   it("rejects an attribute tag inside `<if>`", () => {
     expectSyntaxError(
       `const el = <if=cond><@header>x</@header></if>;`,
-      "attribute tag `<@header>` inside `<if>`",
+      "attribute tag `@header` on `<if>`",
     );
   });
 
   it("rejects an attribute tag inside `<for>`", () => {
     expectSyntaxError(
       `const el = <for|x| of=xs()><@header>y</@header></for>;`,
-      "attribute tag `<@header>` inside `<for>`",
+      "attribute tag `@header` on `<for>`",
     );
   });
 

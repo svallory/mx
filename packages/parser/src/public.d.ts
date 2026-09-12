@@ -90,18 +90,6 @@ declare module "@mxlang/parser" {
   /** True for an HTML void element, which takes no closing tag. */
   export function isVoidTag(name: string | null): boolean;
 
-  /**
-   * MX's Marko-derived whitespace rule, shared by every lowering target so the
-   * targets cannot disagree about what an indented template renders: a
-   * whitespace run containing a newline is dropped, one without collapses to a
-   * single space. Returns null when nothing survives.
-   */
-  export function normalizeText(
-    raw: string,
-    atStart: boolean,
-    atEnd: boolean,
-  ): string | null;
-
   /** The vendored `@babel/parser` entry points, for plain `.ts`/`.tsx`. */
   export function parseBabel(input: string, options?: MxParseOptions): File;
   export function parseBabelExpression(

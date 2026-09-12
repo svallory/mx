@@ -8,6 +8,7 @@ import { ParseErrorEnum } from "../babel/parse-error.ts";
  */
 export const MxErrors = ParseErrorEnum`mx`({
   HtmlParserError: ({ message }: { message: string }) => message,
+  HostError: ({ message }: { message: string }) => message,
   UnsupportedConstruct: ({ construct }: { construct: string }) =>
     `${construct} is not supported yet.`,
 });

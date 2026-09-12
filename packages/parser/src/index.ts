@@ -6,7 +6,6 @@ import {
 } from "./babel/index.ts";
 
 export type { ParseError, ParseResult, ParserOptions } from "./babel/index.ts";
-export { normalizeText } from "./mx/lower.ts";
 export type { PrintResult, RawSourceMap } from "./mx/print.ts";
 export { print, printAst } from "./mx/print.ts";
 export type {
@@ -53,6 +52,6 @@ export function parse(
     ...options,
     // Turns the forked `jsxParseElementAt` on. Without it the vendored parser
     // is byte-for-byte upstream Babel.
-    mx: true,
+    mx: filename.endsWith(".solid.mx"),
   } as ParserOptions) as unknown as File;
 }
