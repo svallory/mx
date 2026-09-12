@@ -1,0 +1,67 @@
+==========
+with fence
+==========
+---
+import a from "b";
+---
+<if=a>
+  <div></div>
+</if>
+---
+(source_file
+  (frontmatter
+    (frontmatter_content)
+  )
+  (body)
+)
+
+==========
+without fence
+==========
+<if=a>
+  <div></div>
+</if>
+---
+(source_file
+  (body)
+)
+
+==========
+empty fence
+==========
+---
+---
+<body>
+---
+(source_file
+  (frontmatter)
+  (body)
+)
+
+==========
+fence inside body
+==========
+<if=a>
+---
+Not a fence
+---
+</if>
+---
+(source_file
+  (body)
+)
+
+==========
+CRLF
+==========
+---
+import a from "b";
+---
+<if=a>
+---
+(source_file
+  (frontmatter
+    (frontmatter_content)
+  )
+  (body)
+)

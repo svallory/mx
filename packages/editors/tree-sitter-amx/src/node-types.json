@@ -1,0 +1,49 @@
+[
+  {
+    "type": "frontmatter",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "frontmatter_content",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "source_file",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "body",
+          "named": true
+        },
+        {
+          "type": "frontmatter",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "---",
+    "named": false
+  },
+  {
+    "type": "body",
+    "named": true
+  },
+  {
+    "type": "frontmatter_content",
+    "named": true
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "grammars": [
+    {
+      "name": "amx",
+      "camelcase": "Amx",
+      "scope": "source.amx",
+      "path": ".",
+      "external-files": [
+        "src/scanner.c"
+      ],
+      "file-types": ["amx"],
+      "injection-regex": "^(amx)$"
+    }
+  ],
+  "metadata": {
+    "version": "0.0.0",
+    "license": "MIT",
+    "description": "tree-sitter grammar for AstroMX (.amx)",
+    "authors": [
+      {
+        "name": "mx contributors"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/mxlang/mx"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": false,
+    "node": false,
+    "python": false,
+    "rust": false,
+    "swift": false
+  }
+}

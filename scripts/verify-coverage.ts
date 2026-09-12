@@ -17,6 +17,10 @@ const grammarMarkerPath = join(
   root,
   "packages/editors/tree-sitter-solidmx/.test-ran",
 );
+const amxGrammarMarkerPath = join(
+  root,
+  "packages/editors/tree-sitter-amx/.test-ran",
+);
 const verifyStartPath = join(root, ".verify-start");
 
 interface Package {
@@ -168,7 +172,8 @@ async function main() {
   console.log("-".repeat(75));
 
   const testedPackages = getTestedPackagesFromVitest(verifyStart);
-  const grammarRan = isFreshEvidence(grammarMarkerPath, verifyStart);
+  const solidmxGrammarRan = isFreshEvidence(grammarMarkerPath, verifyStart);
+  const amxGrammarRan = isFreshEvidence(amxGrammarMarkerPath, verifyStart);
 
   let hasFailure = false;
   let ranCount = 0;
@@ -183,8 +188,9 @@ async function main() {
       continue;
     }
 
-    if (shortName === GRAMMAR_MARKER_PACKAGE) {
-      if (grammarRan) {
+    if (shortName === GRAMMAR_MARKER_PACKAGE || shortName === "tree-sitter-amx") {
+      const ran = shortName === GRAMMAR_MARKER_PACKAGE ? solidmxGrammarRan : amxGrammarRan;
+      if (ran) {
         ranCount++;
         console.log(
           formatRow(pkg.name, "moon test task (scripts/test.sh)", "ran"),
