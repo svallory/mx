@@ -9,6 +9,7 @@ import {
   newCtx,
   parseFragment,
   resolve,
+  resolveHostPolicy,
 } from "@mxlang/core";
 import { compile, policy, strictPolicy, translator } from "@mxlang/html";
 import { compileSolidMx } from "@mxlang/solid";
@@ -20,7 +21,6 @@ import type {
 import type {} from "@volar/typescript";
 import type * as ts from "typescript";
 import { codeInformation, decodeMappings, mergeMappings } from "./language.ts";
-import { resolveHostPolicy } from "./resolve-policy.ts";
 
 export const MX_LANGUAGE_ID = "mx";
 export const MX_EXTENSIONS = ["mx", "marko"] as const;

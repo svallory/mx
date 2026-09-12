@@ -1,9 +1,15 @@
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { resolveHostPolicy } from "./resolve-policy.ts";
+import { resolveHostPolicy } from "./host-policy.ts";
 
-const FIXTURES = join(import.meta.dirname, "fixtures");
+const FIXTURES = join(import.meta.dirname, "fixtures/host-policy");
 
+/**
+ * One set of branch tests for the resolver, living with the resolver itself.
+ * Both `@mxlang/language-server` and `@mxlang/typescript-plugin` call this
+ * function, and an editor and a `tsc` run disagreeing about which host owns a
+ * file is the drift a second copy of these cases would invite.
+ */
 describe("resolveHostPolicy", () => {
   it("uses the package.json#mxlang field when present, walking up past a subdirectory with no package.json of its own", () => {
     const filePath = join(FIXTURES, "explicit-field/nested/App.mx");
@@ -42,5 +48,23 @@ describe("resolveHostPolicy", () => {
     );
 
     warnSpy.mockRestore();
+  });
+
+  it("falls back to the default policy when two host dependencies are present", () => {
+    // Ambiguous on purpose: a project depending on both hosts has not said
+    // which one owns this file, so the dependency signal cannot answer and the
+    // default applies. An explicit `mxlang.host` is the way to disambiguate.
+    const filePath = join(FIXTURES, "two-dependencies/App.mx");
+
+    expect(resolveHostPolicy(filePath)).toEqual({ host: "html" });
+  });
+
+  it("falls back to the default policy when the walk reaches the filesystem root with no package.json", () => {
+    // The walk must terminate at the root rather than looping forever on
+    // `dirname("/") === "/"`. A path with no `package.json` anywhere above it
+    // is the case that proves the stop condition fires.
+    expect(resolveHostPolicy("/nonexistent-mx-root/App.mx")).toEqual({
+      host: "html",
+    });
   });
 });

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
  * that API leaves percent-encoding intact and, for a Windows drive-letter
  * URI, keeps a leading slash (`/C:/Users/...`) that neither `path.join` nor
  * `path.dirname` treats as that drive's root — so the `package.json` walk in
- * `resolve-policy.ts` would silently find nothing and fall back to the
+ * `/core`'s `host-policy.ts` would silently find nothing and fall back to the
  * default policy. `fileURLToPath` is the correct primitive for both cases;
  * this test pins its behavior at the string level (no real Windows
  * filesystem needed — `{ windows: true }` forces Windows path semantics

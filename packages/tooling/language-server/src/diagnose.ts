@@ -6,7 +6,7 @@
  * tested directly, as the brief requires, without spawning a process.
  */
 
-import { TranslateError } from "@mxlang/core";
+import { type HostPolicy, TranslateError } from "@mxlang/core";
 import { compile } from "@mxlang/html";
 import { parse } from "@mxlang/parser";
 import { compileSolidMx } from "@mxlang/solid";
@@ -15,10 +15,7 @@ import {
   DiagnosticSeverity,
 } from "vscode-languageserver/node";
 
-export interface HostPolicy {
-  host: "html" | "astro" | "solid";
-  strict?: boolean;
-}
+export type { HostPolicy };
 
 export const SOLID_MX_LANGUAGE_IDS = new Set(["solidmx", "SolidMX"]);
 

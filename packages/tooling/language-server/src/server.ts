@@ -1,6 +1,6 @@
 /**
  * The stdio transport: wires `diagnoseDocument` (see `diagnose.ts`) and
- * `resolveHostPolicy` (see `resolve-policy.ts`) into a `vscode-languageserver`
+ * `resolveHostPolicy` (see `/core`'s `host-policy.ts`) into a `vscode-languageserver`
  * connection.
  *
  * Diagnostics only (decision 71/72): `textDocumentSync` is the one
@@ -12,6 +12,7 @@
  */
 
 import { fileURLToPath } from "node:url";
+import { resolveHostPolicy } from "@mxlang/core";
 import {
   createConnection,
   type Diagnostic,
@@ -21,7 +22,6 @@ import {
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { diagnoseDocument, isSolidMxDocument } from "./diagnose.ts";
-import { resolveHostPolicy } from "./resolve-policy.ts";
 
 /** Milliseconds to wait after the last edit before compiling (brief §3). */
 const DEBOUNCE_MS = 150;
@@ -72,7 +72,7 @@ export function startServer(
         // `%20` etc. percent-encoded and, on Windows, yields a leading-slash
         // form (`/C:/Users/...`) neither `path.join` nor `path.dirname`
         // treats as that drive's root — both would make the package.json
-        // walk in resolve-policy.ts silently find nothing and fall back to
+        // walk in `/core`'s host-policy.ts silently find nothing and fall back to
         // the default policy instead of the file's real one.
         filePath = fileURLToPath(uri);
       } catch {

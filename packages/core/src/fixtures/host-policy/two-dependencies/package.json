@@ -1,0 +1,9 @@
+{
+  "name": "two-dependencies-fixture",
+  "dependencies": {
+    "@mxlang/html": "0.1.0"
+  },
+  "devDependencies": {
+    "@mxlang/astro": "0.1.0"
+  }
+}

@@ -206,7 +206,7 @@ describe("stdio server (e2e)", () => {
 
   it("resolves the policy correctly for a file:// URI with a percent-encoded space in its path", async () => {
     // Regression for the `new URL(uri).pathname` bug: that API leaves
-    // `%20` percent-encoded, so the package.json walk in resolve-policy.ts
+    // `%20` percent-encoded, so the package.json walk in host-policy.ts
     // would look for a directory literally named "space%20in%20name" and
     // find nothing, silently falling back to the default (non-strict)
     // policy instead of this fixture's strict one. `fileURLToPath` decodes

@@ -64,8 +64,9 @@ tags), whatever `strict` says. The Solid host also has a fixed profile:
 that suffix identifies a different file format: TypeScript/TSX with MX
 regions.
 
-See `src/resolve-policy.ts` for the implementation and
-`src/resolve-policy.test.ts` for all three branches.
+The resolver lives in `@mxlang/core` (`src/host-policy.ts`), shared with
+`@mxlang/typescript-plugin`; see `src/host-policy.test.ts` there for every
+branch.
 
 ## Debounce
 
@@ -145,7 +146,7 @@ bunx vitest run --root ../.. --project @mxlang/language-server
 
 `src/diagnose.test.ts` covers HTML policy diagnostics, SolidMX host and parse
 errors with exact positions, clean documents, Solid-host `.mx`, and the
-locationless-error callback. `src/resolve-policy.test.ts` covers explicit,
+locationless-error callback. `@mxlang/core`'s `src/host-policy.test.ts` covers explicit,
 dependency-derived (including `@mxlang/solid`), and fallback policies.
 `src/server.test.ts` exercises stdio routing for `.mx`, `.solid.mx`, and the
 `solidmx` language id. Requires `bun run build` first (see the root

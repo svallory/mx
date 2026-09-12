@@ -6,21 +6,36 @@
  *
  * 1. Walk upward from the file's directory looking for the nearest
  *    `package.json`. If it has a `"mxlang"` field, that field *is* the
- *    answer: `{ host: "html" | "astro" | "solid", strict?: boolean }` (with "translator" accepted as a deprecated alias).
+ *    answer: `{ host: "html" | "astro" | "solid", strict?: boolean }` (with
+ *    "translator" accepted as a deprecated alias for "html").
  * 2. Otherwise, if that same `package.json` depends (in `dependencies` or
  *    `devDependencies`) on exactly one `@mxlang/*` host package
- *    (`@mxlang/html`, `@mxlang/astro`, `@mxlang/solid`; `@mxlang/core` itself does not
- *    count, since every host depends on it too), use that host.
+ *    (`@mxlang/html`, `@mxlang/astro`, `@mxlang/solid`; `@mxlang/core` itself
+ *    does not count, since every host depends on it too), use that host.
  * 3. Otherwise, fall back to the translator's default (non-strict) policy.
  *
  * This mirrors `Project.loadMeta`'s own `createRequire` + upward
  * `package.json` walk in Marko's language server (`host-diagnostics.md` §1),
  * so the technique is not novel to this package.
+ *
+ * It lives in `@mxlang/core` rather than in either consumer because two
+ * entry points ask this same question: `@mxlang/language-server` (to pick the
+ * policy a document is diagnosed under) and `@mxlang/typescript-plugin` (to
+ * pick the host a `.mx` file's virtual TypeScript is compiled through). An
+ * editor and a `tsc` run disagreeing about which host owns a file is exactly
+ * the drift a second copy invites, so there is one implementation and one
+ * set of branch tests. Unlike the rest of this package it touches `node:fs`,
+ * which is why it is its own module rather than part of `core.ts`.
  */
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { HostPolicy } from "./diagnose.ts";
+
+/** The host a file compiles through, plus that host's strictness. */
+export interface HostPolicy {
+  host: "html" | "astro" | "solid";
+  strict?: boolean;
+}
 
 const HOST_PACKAGES: Record<string, HostPolicy["host"]> = {
   "@mxlang/html": "html",

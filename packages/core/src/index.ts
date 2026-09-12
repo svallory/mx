@@ -45,6 +45,7 @@ export {
   type FragmentResult,
   parseFragment,
 } from "./fragment.ts";
+export { type HostPolicy, resolveHostPolicy } from "./host-policy.ts";
 export type {
   Attr,
   AttributeTag,
