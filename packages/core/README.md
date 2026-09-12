@@ -171,6 +171,25 @@ for the bridge's own side of that hand-off. Documented limits:
 - Marko never populates Babel's file-level `comments` array; `MarkoComment`
   nodes in the body shift like any other node.
 
+## Host-policy resolution
+
+**`resolveHostPolicy(filePath)`** (`src/host-policy.ts`) answers which host a
+file compiles through, and whether strictly: walk up to the nearest
+`package.json`, take its `"mxlang"` field if present (`{ host, strict? }`, with
+`"translator"` accepted as a deprecated alias for `"html"`); failing that, use
+its sole `@mxlang/*` host dependency if there is exactly one; otherwise fall
+back to the default non-strict HTML policy.
+
+It lives here rather than in either caller because two entry points ask the
+same question — `@mxlang/language-server` (which policy to diagnose a document
+under) and `@mxlang/typescript-plugin` (which host to compile a `.mx` file's
+virtual TypeScript through). An editor and a `tsc --noEmit` resolving a file to
+different hosts is exactly the drift a second copy invites, so there is one
+implementation and one set of branch tests (`src/host-policy.test.ts`, covering
+all six branches including two-host ambiguity and a walk that reaches the
+filesystem root). Unlike the rest of this package it reads the filesystem,
+which is why it is its own module rather than part of `core.ts`.
+
 ## The IR, and what a host implements (decision 79)
 
 The core **resolves** a Marko template into a small host-independent tree, and
@@ -209,6 +228,19 @@ An expression arrives as `Expr`: the printed `code` (already rewritten through
 the binding registry, so an emitter stays dumb) plus the original `node`, for a
 host that must inspect the shape — `class={a: true}` versus `class=someCall()`
 is an `ObjectExpression` test, not a string test.
+
+The five statement kinds — `Static`, `Import`, `Export`, `InputInterface` and
+`Hoisted` — carry their code as a plain string, with no `Expr` and so no Babel
+node to read a span from. They therefore carry an **`end` position** beside
+`loc`, giving each one a full source range. `Ir`'s own `imports`, `hoisted`,
+`inputInterface` and `prelude` fields hold these nodes rather than bare
+strings, so a consumer that needs positions has them and an emitter that does
+not simply reads `.code`. `ctx.hoist(code, node)` takes the producing node for
+the same reason: a statement a host hook synthesizes still maps back to the tag
+that produced it. Without these ranges a type error inside a `static` block or
+an `export const` cannot be placed, which is what
+`@mxlang/typescript-plugin` maps whole-block (see its README's mapping-coverage
+section).
 
 ### Writing a host, in order
 

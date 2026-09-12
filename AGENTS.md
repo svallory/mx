@@ -887,7 +887,8 @@ paths are unit-tested directly against `diagnoseDocument`, no server needed.
 superseded run's timer is cleared, never raced) on `didOpen`/`didChange`/
 `didSave`, and clears diagnostics on `didClose`.
 
-**Policy resolution** (`src/resolve-policy.ts`) answers the question an
+**Policy resolution** (`@mxlang/core`'s `src/host-policy.ts`, shared with
+`@mxlang/typescript-plugin`) answers the question an
 editor's `didOpen` cannot: which host, and whether `strict`, applies to this
 file. Three branches, in order, walking upward from the file for the nearest
 `package.json`: (1) a `"mxlang": { "host": ..., "strict"?: ... }` field, the
@@ -934,8 +935,12 @@ Code still ships no dedicated extension.)*
 
 **Tests**: `src/diagnose.test.ts` (direct, no server: `<let>` under strict,
 a valid file, `<let>`'s initial value under the non-strict policy, the
-unexpected-exception path), `src/resolve-policy.test.ts` (all three
-resolution branches against fixture directories under `src/fixtures/`), and
+unexpected-exception path), `@mxlang/core`'s `src/host-policy.test.ts` (all six
+resolution branches — explicit `mxlang`, the deprecated `translator` alias,
+one host dependency, two host dependencies, no `package.json`, and the
+walk-up stop at the filesystem root — against fixture directories under
+`packages/core/src/fixtures/host-policy/`; this package keeps its own
+`src/fixtures/` for `server.test.ts`'s end-to-end documents), and
 `src/server.test.ts` (the one stdio end-to-end test the brief asks for:
 spawns the real built `dist/bin.js` with `bun run ... --stdio`, exchanges
 `initialize`/`didOpen` via `vscode-jsonrpc`'s `createMessageConnection`, and
@@ -963,9 +968,12 @@ entry.
   error, appended to `getSyntacticDiagnostics` so a bad region reports once,
   at its own position, instead of silently becoming an empty file.
   `src/mx-language.ts` compiles whole-file `.mx`/`.marko` through the host
-  resolved from the nearest `package.json`; because the HTML compiler's map is
-  empty, exact expression mappings come from the positioned IR nodes the
-  emitter consumed. `{ astro: true }` lazily composes Astro's language plugin
+  `@mxlang/core`'s `resolveHostPolicy` picks from the nearest `package.json`
+  (one resolver, shared with the language server, so an editor and a `tsc` run
+  cannot disagree about a file's host); because the HTML compiler's map is
+  empty, mappings come from the positioned IR nodes the emitter consumed — see
+  the mapping-coverage bullet below for what is mapped per expression and what
+  whole-block. `{ astro: true }` lazily composes Astro's language plugin
   from the optional exact `@astrojs/language-server@2.16.16` peer.
 - **`@mxlang/tsc`** is the CI half — `mx-tsc`, Volar's `runTsc` handed the
   *same* language plugin. It exists because `tsc` ignores
@@ -996,7 +1004,24 @@ Four facts worth knowing before editing either:
   source expression it was copied from. `decodeMappings` then keeps only spans
   whose generated and source text match, and merges contiguous ones.
   Whole-file `.mx`/`.marko` is the exception: its HTML map is empty, so the
-  plugin maps exact expression text from the core IR node locations.
+  plugin maps from the core IR node locations — per expression for every
+  `Expr`, and **whole-block** for the five statement kinds (`Static`,
+  `Import`, `Export`, `InputInterface`, `Hoisted`), which carry an `end`
+  position beside `loc` for exactly this reason. A mapping is emitted only
+  when the code is found in both texts, the generated search running forward
+  and keyed per code string so repeated text cannot cross-map; when either
+  lookup fails nothing is emitted, since a plausible-but-wrong column is worse
+  than none. A diagnostic outside every mapping is not surfaced against the
+  `.mx` file.
+- **`preventLeadingOffset` must stay unset for whole-file `.mx`.** A compiled
+  `.mx` module does not preserve the source's line structure, and with that
+  flag set Volar's `runTsc` parses its `SourceFile` from the generated text
+  alone — so `tsc` converts a correctly mapped source *offset* into line and
+  column against the *generated* file's line table, putting every `.mx`
+  diagnostic on the wrong line (measured: a two-error fixture reported
+  (3,15)/(4,22) for errors on source lines 2 and 3). Unset, Volar pads the
+  virtual contents to the source's own lines. `.solid.mx` keeps the flag,
+  because its printed output does preserve source lines.
 
 **No ambient `declare module "*.solid.mx"` shim, anywhere.** A shim asserts
 types rather than deriving them, so it hides both a file's real exports and

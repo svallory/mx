@@ -24,11 +24,13 @@ whether a file compiles.
   the virtual code as `.tsx`.
 
 `createMxLanguagePlugin(ts)` does the same job for whole-file `.mx` and
-`.marko` templates. It walks upward to the nearest `package.json`, applies its
-`mxlang.host` (`html`, `astro`, or `solid`; default `html`) and strictness, and
-serves the compiled module as TypeScript. Astro always uses strict HTML
-lowering and projects MX's runtime `content` slot as JSX `children` at the
-type boundary.
+`.marko` templates. It resolves the host with `@mxlang/core`'s
+`resolveHostPolicy` — the same resolver `@mxlang/language-server` uses, so an
+editor, this plugin and a `tsc` run cannot disagree about which host owns a
+file — applying the nearest `package.json`'s `mxlang.host` (`html`, `astro`, or
+`solid`; default `html`) and strictness, then serves the compiled module as
+TypeScript. Astro always uses strict HTML lowering and projects MX's runtime
+`content` slot as JSX `children` at the type boundary.
 
 When `print` throws — a syntax error in an MX region, raised by the parser
 bridge with a `loc` — the virtual code is empty and the error is recorded
@@ -54,9 +56,9 @@ repositioning each Babel node onto the source expression it was copied from
 match and merging contiguous ones.
 
 The HTML compiler's map is currently an empty placeholder. Whole-file `.mx`
-mappings therefore come from the positioned expression nodes in the core IR
-that the HTML emitter already consumes; unchanged expression text is mapped
-directly into the generated TypeScript.
+mappings therefore come from the positioned nodes in the core IR that the HTML
+emitter already consumes; unchanged code text is mapped directly into the
+generated TypeScript.
 
 A type error inside an MX attribute expression therefore reports where the
 expression is:
@@ -66,6 +68,34 @@ export const el = <button onClick() { setCount(count() + "x") }>x</button>;
 //                                             ~~~~~~~~~~~~~
 // TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.
 ```
+
+### What is mapped, and what happens when something is not
+
+Whole-file `.mx`/`.marko` mapping covers two shapes:
+
+- **Per expression**, exactly. Every `Expr` in the IR carries its original
+  Babel node, so a placeholder, an attribute value, an `<if>` condition, a
+  `<for>` iterable and a tag-param use each map to their own source span.
+- **Per whole block**, for the five IR kinds whose code is a statement rather
+  than an expression: `Static` (a `static`/`server` block), `Import`,
+  `Export`, `InputInterface` (`export interface Input`) and `Hoisted` (a
+  statement a host hook lifted). Each maps as one span covering the
+  statement's own source range, so a diagnostic inside it lands within the
+  author's own line instead of being dropped. TypeScript still anchors an
+  error where it normally would — for `static const n: number = "x"` that is
+  the declaration name `n`, not the initializer.
+
+A mapping is emitted only when the code is located in both texts: the source
+span must contain the code, and the generated text must still contain it (the
+search runs forward, keyed per code string, so repeated text cannot cross-map
+onto an earlier occurrence). When either lookup fails, **no mapping is
+emitted** — deliberately, because mapping to a plausible-but-wrong column is
+worse than not mapping. A diagnostic falling outside every mapping is not
+surfaced against the `.mx` file, so an emitted construct that needs positions
+must carry them in the IR rather than rely on a text search.
+
+MX syntax errors are separate: `compile` throwing produces one positioned
+syntax diagnostic (see above), not a mapping.
 
 ## Using it
 
@@ -106,6 +136,20 @@ List only the MX plugin and ask it to compose Astro's language plugin:
 Do not also list `@astrojs/ts-plugin`. Astro composition lazily loads the
 optional peer `@astrojs/language-server@2.16.16`; a project that enables
 `astro: true` must install that package beside this plugin.
+
+Two behaviours of the composed Astro plugin are worth knowing:
+
+- **`.astro` files under `node_modules` are associated-only.** They are
+  Astro's own package-owned component sources, not the consumer's code, so
+  they stay resolvable for imports while `mx-tsc` does not report diagnostics
+  for files the consumer cannot edit. The check normalizes Windows separators
+  before testing for the `/node_modules/` segment, so both path styles behave
+  the same.
+- **`children` is offered only where there is a slot.** An Astro-hosted `.mx`
+  component's projected type replaces `content` with JSX's `children` only
+  when its `Input` actually declares `content`. A component with no content
+  slot keeps its `Input` unchanged, so passing children to it is a type error
+  rather than silently accepted and dropped at runtime.
 
 `tsc` itself ignores `plugins`, so a command-line typecheck needs
 [`@mxlang/tsc`](../tsc/README.md)'s `mx-tsc` instead.
