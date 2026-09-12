@@ -129,6 +129,13 @@
         "@marko/compiler": "5.42.5",
       },
     },
+    "packages/editors/tree-sitter-amx": {
+      "name": "@mxlang/tree-sitter-amx",
+      "version": "0.0.0",
+      "devDependencies": {
+        "tree-sitter-cli": "0.26.9",
+      },
+    },
     "packages/editors/tree-sitter-solidmx": {
       "name": "@mxlang/tree-sitter-solidmx",
       "version": "0.0.0",
@@ -598,6 +605,8 @@
     "@mxlang/parser": ["@mxlang/parser@workspace:packages/parser"],
 
     "@mxlang/solid": ["@mxlang/solid@workspace:packages/hosts/solid"],
+
+    "@mxlang/tree-sitter-amx": ["@mxlang/tree-sitter-amx@workspace:packages/editors/tree-sitter-amx"],
 
     "@mxlang/tree-sitter-solidmx": ["@mxlang/tree-sitter-solidmx@workspace:packages/editors/tree-sitter-solidmx"],
 
