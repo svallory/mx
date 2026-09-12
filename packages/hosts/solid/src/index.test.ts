@@ -87,6 +87,16 @@ describe("Solid IR lowering", () => {
       ["keyed={x => x.id}"],
     ],
     [
+      "identity-keyed list loop",
+      `<for|item| of=items by=identity><p>\${item}</p></for>`,
+      ["<For each={items}>{(item) => <p>{item}</p>}</For>"],
+    ],
+    [
+      "function-keyed list loop",
+      `<for|item| of=items by=myKeyFn><p>\${item}</p></for>`,
+      ["keyed={myKeyFn}"],
+    ],
+    [
       "object loop",
       `<for|key, value| in=record><p>\${key}</p></for>`,
       [

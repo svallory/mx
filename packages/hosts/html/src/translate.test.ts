@@ -175,6 +175,14 @@ describe("inert constructs (decision 65): accepted, no output", () => {
       compile(src(without), file).code,
     );
   });
+
+  it("rejects step= on <for>: the core carries it for Solid's <Repeat>, this host has no computed-array lowering", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: Marko placeholder syntax in template source
+    const body = "<for|i| from=0 to=3 step=2><p>${i}</p></for>";
+    expect(() => compile(src(body), file)).toThrow(
+      "`<for step=...>`: step is not supported; use a computed array",
+    );
+  });
 });
 
 describe("statement blocks", () => {
