@@ -7,7 +7,7 @@ import a from "b";
 <if=a>
   <div></div>
 </if>
----
+----
 (source_file
   (frontmatter
     (frontmatter_content)
@@ -21,7 +21,7 @@ without fence
 <if=a>
   <div></div>
 </if>
----
+----
 (source_file
   (body)
 )
@@ -32,7 +32,7 @@ empty fence
 ---
 ---
 <body>
----
+----
 (source_file
   (frontmatter)
   (body)
@@ -46,7 +46,7 @@ fence inside body
 Not a fence
 ---
 </if>
----
+----
 (source_file
   (body)
 )
@@ -58,7 +58,7 @@ CRLF
 import a from "b";
 ---
 <if=a>
----
+----
 (source_file
   (frontmatter
     (frontmatter_content)
