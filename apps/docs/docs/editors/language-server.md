@@ -22,7 +22,7 @@ An editor only hands the server a file path and its text — nothing about which
 1. **An explicit `mxlang` field**, if present — the authoritative source:
 
    ```json
-   { "mxlang": { "host": "translator", "strict": true } }
+   { "mxlang": { "host": "html", "strict": true } }
    ```
 
 2. Otherwise, if that `package.json` depends on exactly one `@mxlang/*` host package, that host's default (non-strict) policy applies.

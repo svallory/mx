@@ -82,7 +82,7 @@ under the sandbox (always "not found," silently falling through to `bunx`).
    above).
 3. Create a small test project with a `package.json` declaring:
    ```json
-   { "mxlang": { "host": "translator", "strict": true } }
+   { "mxlang": { "host": "html", "strict": true } }
    ```
    and an `.mx` file containing a `<let>` tag (rejected under `strict`, per
    `@mxlang/html`'s `strictPolicy` — see its own README).

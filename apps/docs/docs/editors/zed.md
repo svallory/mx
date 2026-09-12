@@ -38,7 +38,7 @@ The extension registers `@mxlang/language-server` for the `MX` language only. It
 3. In a test project, add to `package.json`:
 
    ```json
-   { "mxlang": { "host": "translator", "strict": true } }
+   { "mxlang": { "host": "html", "strict": true } }
    ```
 
 4. Open an `.mx` file containing a `<let>` tag. Under a `strict` host policy this is rejected — you should see one diagnostic naming the construct. See [Language server](/editors/language-server/) for exactly how policy resolution works.

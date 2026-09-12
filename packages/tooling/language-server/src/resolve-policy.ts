@@ -6,7 +6,7 @@
  *
  * 1. Walk upward from the file's directory looking for the nearest
  *    `package.json`. If it has a `"mxlang"` field, that field *is* the
- *    answer: `{ host: "translator" | "astro" | "solid", strict?: boolean }`.
+ *    answer: `{ host: "html" | "astro" | "solid", strict?: boolean }` (with "translator" accepted as a deprecated alias).
  * 2. Otherwise, if that same `package.json` depends (in `dependencies` or
  *    `devDependencies`) on exactly one `@mxlang/*` host package
  *    (`@mxlang/html`, `@mxlang/astro`; `@mxlang/core` itself does not

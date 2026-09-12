@@ -39,8 +39,8 @@ An editor hands the server a file path and text — nothing about which host
 compiles it, or whether that host runs a `strict` policy. The server resolves
 this by walking upward from the file, looking for the nearest `package.json`:
 
-1. **`package.json#mxlang`**, if present: `{ "host": "translator" | "astro" |
-   "solid", "strict"?: boolean }`. This is the authoritative source, and
+1. **`package.json#mxlang`**, if present: `{ "host": "html" | "astro" |
+   "solid", "strict"?: boolean }` (with `"translator"` accepted as a deprecated alias). This is the authoritative source, and
    doubles as the routing config `@mxlang/vite-plugin`/the Bun loader already
    need for a mixed project (decision 71's "mixed projects" case).
 2. Otherwise, if that `package.json` depends on **exactly one** `@mxlang/*`
@@ -132,7 +132,7 @@ stdio transport when no other transport flag is given.
 
 `resolve-policy.ts`'s `HOST_PACKAGES` map and `diagnose.ts`'s
 `resolvePolicyObject` are the two places a new host's `Policy` object gets
-wired in. Today only `"translator"` resolves to a real, importable `Policy`
+wired in. Today only `"html"` resolves to a real, importable `Policy`
 (`@mxlang/html`'s `policy`/`strictPolicy`); `"astro"` reuses the
 translator's `strictPolicy` (its own fixed behavior) rather than importing a
 policy from `@mxlang/astro`, since that package does not export one
