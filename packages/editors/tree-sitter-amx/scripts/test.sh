@@ -12,7 +12,9 @@ echo
 echo "==> parse every .amx example"
 EXAMPLES_DIR="../../../examples/astro-static/src"
 if [ -d "$EXAMPLES_DIR" ]; then
-  find "$EXAMPLES_DIR" -name "*.amx" -print0 | xargs -0 -I {} bash -c 'bunx tree-sitter parse "{}" | grep -q "ERROR" && echo "ERROR in {}" && exit 1 || echo "OK {}"'
+  find "$EXAMPLES_DIR" -name "*.amx" -print0 | while IFS= read -r -d '' file; do
+    bunx tree-sitter parse "$file" | grep -q "ERROR" && echo "ERROR in $file" && exit 1 || echo "OK $file"
+  done
 fi
 
 echo
