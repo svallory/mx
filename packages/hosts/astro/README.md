@@ -328,20 +328,30 @@ resolver returns and `load` returns the lowered source, the same shape
 
 ## Typing `.mx` imports
 
-Add the ambient declarations to your project's `src/env.d.ts`:
+Use `@mxlang/typescript-plugin`; it compiles each `.mx`/`.marko` file to a
+virtual TypeScript module and derives component props from that file's real
+`Input` interface. Because Astro and MX both use Volar, they must be composed
+inside one tsserver plugin:
 
-```ts
-/// <reference types="astro/client" />
-/// <reference types="@mxlang/astro/types" />
+```json
+{
+  "compilerOptions": {
+    "plugins": [
+      { "name": "@mxlang/typescript-plugin", "astro": true }
+    ]
+  }
+}
 ```
 
-This types every `.mx` (and `.marko`) import as `(input: any) => string` —
-one generic shape for every file, not each file's own `Input` interface.
-Per-file typing needs a virtual-file projection of the compiled module inside
-tsserver's language-service layer, which is the `astro-ts-plugin` task;
-`@astrojs/ts-plugin` is not reusable for it, since it adds `.astro` imports
-*within* `.ts` files — the opposite direction. An ambient `any` until the
-language service exists follows decision 62's precedent.
+List only `@mxlang/typescript-plugin`; a separate `@astrojs/ts-plugin` entry is
+silently skipped because two Volar tsserver plugins cannot decorate one
+project. Enabling `astro: true` lazily loads the optional
+`@astrojs/language-server@2.16.16` peer and composes its Astro language plugin.
+
+Do not add an ambient `declare module "*.mx"` shim or reference
+`@mxlang/astro/types`. The old wildcard erased each component's real props and
+has been removed. For command-line checks use `mx-tsc --astro --noEmit`, since
+plain `tsc` does not load tsserver plugins.
 
 ## Example
 
@@ -355,5 +365,6 @@ separately, that both expected-to-fail builds fail for the right reason.
 ```
 cd examples/astro-static
 bun run build      # astro build -> dist/
+bun run typecheck  # mx-tsc --astro --noEmit
 bun run e2e        # headless Chromium over dist/, plus the two error builds
 ```

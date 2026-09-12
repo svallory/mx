@@ -1,14 +1,14 @@
 ---
 title: "TypeScript"
-description: "Type-check .solid.mx files in editors and in CI."
+description: "Type-check SolidMX and whole-file MX imports in editors and CI."
 ---
 
 # TypeScript
 
-A `.solid.mx` file is a TypeScript module whose MX regions lower to Solid JSX.
-TypeScript itself knows none of that: it cannot parse the file, so without help
-an editor shows nothing inside one, and an `import` of one is an unresolved
-module.
+TypeScript cannot parse either a `.solid.mx` module or a whole-file `.mx` /
+`.marko` template. Without help, an editor cannot derive their exports and an
+import is unresolved. MX projects the source to the host's generated
+TypeScript and keeps diagnostics mapped to the original file.
 
 Two packages fix that, sharing a single lowering so an editor and a build can
 never disagree about whether a file compiles:
@@ -18,9 +18,9 @@ never disagree about whether a file compiles:
 | Editors | `@mxlang/typescript-plugin` | inside tsserver |
 | CI | `@mxlang/tsc` (`mx-tsc`) | on the command line |
 
-Both project each `.solid.mx` file to its lowered TSX and type-check that,
-mapping every diagnostic back to the original file — at the exact column, not
-the start of the region:
+Both project each MX file to its lowered TS/TSX and type-check that, mapping
+diagnostics back to the original file — at the exact column, not the start of
+the expression:
 
 ```tsx
 export const el = <button onClick() { setCount(count() + "x") }>x</button>;
@@ -44,6 +44,41 @@ Editor-specific wiring — Zed's `vtsls` `globalPlugins` entry, VS Code's
 `typescript.tsserver.pluginPaths` — is on the [Zed](/editors/zed/) and
 [VS Code](/editors/vscode/) pages.
 
+VS Code can force-load the package for the workspace TypeScript server:
+
+```json
+{
+  "typescript.tsserver.pluginPaths": [
+    "./node_modules/@mxlang/typescript-plugin"
+  ]
+}
+```
+
+Zed's `vtsls` equivalent is:
+
+```json
+{
+  "lsp": {
+    "vtsls": {
+      "settings": {
+        "vtsls": {
+          "typescript": {
+            "globalPlugins": [
+              {
+                "name": "@mxlang/typescript-plugin",
+                "location": "/absolute/path/to/node_modules/@mxlang/typescript-plugin",
+                "languages": ["solidmx", "mx", "astro"],
+                "enableForWorkspaceTypeScriptVersions": true
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
 Once it is loaded, an import from ordinary `.ts`/`.tsx` code is typed from the
 file's real exports:
 
@@ -54,10 +89,30 @@ export const bad = <Counter nope={1} />;
 // TS2322: Property 'nope' does not exist on type 'IntrinsicAttributes'.
 ```
 
-Do **not** also write an ambient `declare module "*.solid.mx"` shim. A shim
+Do **not** also write an ambient `declare module "*.solid.mx"`, `"*.mx"`, or
+`"*.marko"` shim. A shim
 asserts types rather than deriving them, so it hides the real signature and
 every error the plugin would have found. If a project has one from before, delete
 it.
+
+### Astro projects: one composed plugin
+
+Astro's TypeScript plugin and MX's are both built on Volar. Two separate Volar
+tsserver plugins cannot coexist in one project: the second is silently
+skipped. Configure only MX's plugin and let it compose Astro's language plugin:
+
+```json
+{
+  "compilerOptions": {
+    "plugins": [
+      { "name": "@mxlang/typescript-plugin", "astro": true }
+    ]
+  }
+}
+```
+
+Do not also list `@astrojs/ts-plugin`. Install the optional
+`@astrojs/language-server@2.16.16` peer when enabling `astro: true`.
 
 ## In CI
 
@@ -69,6 +124,9 @@ command-line typecheck would silently miss what the editor reports. Use
 ```json
 { "scripts": { "typecheck": "mx-tsc --noEmit" } }
 ```
+
+Astro projects use `mx-tsc --astro --noEmit` so `.astro` files and the MX
+components they import enter the same check.
 
 The difference is total rather than partial — plain `tsc` never opens a
 `.solid.mx` file at all:

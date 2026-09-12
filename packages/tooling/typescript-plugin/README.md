@@ -1,9 +1,9 @@
 # `@mxlang/typescript-plugin`
 
-A [Volar](https://volarjs.dev) language plugin and tsserver plugin that make a
-`.solid.mx` file type-check as the TSX it lowers to, so an editor reports real
-TypeScript errors inside MX regions and types an `import` of one from ordinary
-`.ts`/`.tsx` code.
+A [Volar](https://volarjs.dev) language plugin and tsserver plugin that type
+`.solid.mx`, whole-file `.mx` and its `.marko` alias from their generated
+TypeScript. Editors report errors inside templates and type imports from the
+file's real exported `Input` interface.
 
 This is the editor half of decision 81. The CI half is
 [`@mxlang/tsc`](../tsc/README.md), which hands the *same* language plugin to
@@ -23,6 +23,13 @@ whether a file compiles.
   `{ isMixedContent: false, scriptKind: TSX }`, and `getServiceScript` serves
   the virtual code as `.tsx`.
 
+`createMxLanguagePlugin(ts)` does the same job for whole-file `.mx` and
+`.marko` templates. It walks upward to the nearest `package.json`, applies its
+`mxlang.host` (`html`, `astro`, or `solid`; default `html`) and strictness, and
+serves the compiled module as TypeScript. Astro always uses strict HTML
+lowering and projects MX's runtime `content` slot as JSX `children` at the
+type boundary.
+
 When `print` throws — a syntax error in an MX region, raised by the parser
 bridge with a `loc` — the virtual code is empty and the error is recorded
 instead. The tsserver plugin appends it to `getSyntacticDiagnostics` so it
@@ -39,12 +46,17 @@ install it, so an editor and CI resolve imports identically.
 
 ## Mapping accuracy
 
-Diagnostics land on the exact source column, not the start of the region. The
-printer's own map is line-based, so the columns come from the parser bridge
+Diagnostics land on the exact source column, not the start of the region. For
+`.solid.mx`, the printer's map is line-based, so columns come from the bridge
 repositioning each Babel node onto the source expression it was copied from
 (`packages/parser/src/mx/bridge.ts`). `decodeMappings` then turns that map into
 `CodeMapping`s, keeping only spans whose generated and source text actually
 match and merging contiguous ones.
+
+The HTML compiler's map is currently an empty placeholder. Whole-file `.mx`
+mappings therefore come from the positioned expression nodes in the core IR
+that the HTML emitter already consumes; unchanged expression text is mapped
+directly into the generated TypeScript.
 
 A type error inside an MX attribute expression therefore reports where the
 expression is:
@@ -73,6 +85,28 @@ needed — and adding one is actively harmful, since it replaces each file's rea
 exported types with whatever the shim asserts. `examples/counter-app` and
 `examples/todomvc` both dropped theirs.
 
+The same rule applies to `*.mx` and `*.marko`: do not add a wildcard shim.
+
+### Astro projects
+
+Astro and MX both use Volar. Two separate Volar tsserver plugins cannot
+decorate the same project: whichever initializes second is silently skipped.
+List only the MX plugin and ask it to compose Astro's language plugin:
+
+```json
+{
+  "compilerOptions": {
+    "plugins": [
+      { "name": "@mxlang/typescript-plugin", "astro": true }
+    ]
+  }
+}
+```
+
+Do not also list `@astrojs/ts-plugin`. Astro composition lazily loads the
+optional peer `@astrojs/language-server@2.16.16`; a project that enables
+`astro: true` must install that package beside this plugin.
+
 `tsc` itself ignores `plugins`, so a command-line typecheck needs
 [`@mxlang/tsc`](../tsc/README.md)'s `mx-tsc` instead.
 
@@ -91,7 +125,7 @@ Zed's TypeScript support runs `vtsls`. Register the plugin globally:
               {
                 "name": "@mxlang/typescript-plugin",
                 "location": "/absolute/path/to/node_modules/@mxlang/typescript-plugin",
-                "languages": ["solidmx"],
+                "languages": ["solidmx", "mx", "astro"],
                 "enableForWorkspaceTypeScriptVersions": true
               }
             ]
@@ -103,7 +137,7 @@ Zed's TypeScript support runs `vtsls`. Register the plugin globally:
 }
 ```
 
-**`languages` must be `solidmx`, lowercase.** `vtsls` matches this against the
+Language ids are lowercase. `vtsls` matches this array against the
 LSP language id, not against the name in Zed's language config. Zed derives
 that id by lowercasing the language's name — `LanguageName::lsp_id()` in
 `crates/language_core/src/language_name.rs` is
@@ -126,7 +160,7 @@ With `typescript-language-server` instead of `vtsls`, the equivalent is its
           {
             "name": "@mxlang/typescript-plugin",
             "location": "/absolute/path/to/node_modules/@mxlang/typescript-plugin",
-            "languages": ["solidmx"]
+            "languages": ["solidmx", "mx", "astro"]
           }
         ]
       }
@@ -171,10 +205,9 @@ coexist in one editor.
 ## Tests
 
 `src/index.test.ts` drives a real `ts.LanguageService` built over the plugin:
-the virtual code's shape and service script, mapping decode, the two
-column-accuracy cases (an error inside an attribute method, and one on the
-region's first line), the syntax-error diagnostic, and resolving plus typing a
-`.solid.mx` import from a `.ts` file.
+the SolidMX and whole-file MX virtual-code shapes, IR-backed mapping accuracy,
+syntax diagnostics, host resolution, import typing, and optional Astro
+composition (enabled, disabled, and missing-peer cases).
 
 ```
 bunx vitest run --root ../../.. --project @mxlang/typescript-plugin

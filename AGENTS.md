@@ -16,7 +16,7 @@ bun run verify      # or: moon run :verify   -- delegates straight to `bun run v
 bun run build       # or: moon run parser:build -- builds packages/parser to dist/
 ```
 
-moon's root `typecheck`/`test` tasks are thin aggregates (`deps: ["^:typecheck"]` / `["^:test"]`) that fan out to each package's own task; `lint` runs once at the root over the whole tree via biome. `bun run typecheck`/`test` take the other layer — a single shell loop/vitest run at the root (the typecheck loop defers to a package's own `typecheck` script when it has one, which is what lets `examples/counter-app` and `examples/todomvc` run `mx-tsc` while everything else runs plain `tsc`) — so pick one command style (bun or moon) per invocation rather than mixing them. `verify` is the one exception: moon's `verify` task is a single `bun run verify` command, not a `deps` list, because `bun run verify`'s own chain (pre-verify must run before test; the coverage script must run last, after everything else) isn't expressible as an unordered `deps` set — delegating keeps the two entry points from silently drifting into two different definitions of "verified".
+moon's root `typecheck`/`test` tasks are thin aggregates (`deps: ["^:typecheck"]` / `["^:test"]`) that fan out to each package's own task; `lint` runs once at the root over the whole tree via biome. `bun run typecheck`/`test` take the other layer — a single shell loop/vitest run at the root (the typecheck loop defers to a package's own `typecheck` script when it has one, which is what lets `examples/counter-app` and `examples/todomvc` run `mx-tsc`, and `examples/astro-static` run `mx-tsc --astro`, while everything else runs plain `tsc`) — so pick one command style (bun or moon) per invocation rather than mixing them. `verify` is the one exception: moon's `verify` task is a single `bun run verify` command, not a `deps` list, because `bun run verify`'s own chain (pre-verify must run before test; the coverage script must run last, after everything else) isn't expressible as an unordered `deps` set — delegating keeps the two entry points from silently drifting into two different definitions of "verified".
 
 ## Test Coverage Verification (decision 64)
 
@@ -842,13 +842,13 @@ The lowering table and the full error list live in
 degrades: every construct this target cannot express is a build error naming
 the construct, the reason and the `.amx` line.
 
-`packages/hosts/astro/types/mx.d.ts` declares `*.mx`/`*.marko` as
-`(input: any) => string`, referenced by a consumer from its own `env.d.ts`
-(`/// <reference types="@mxlang/astro/types" />`). `any` for the same reason
-`@mxlang/html`'s own `types/marko.d.ts` does it: per-file `Input` typing
-needs a virtual-file projection inside tsserver, which is the `astro-ts-plugin`
-task. `@astrojs/ts-plugin` is not reusable for it — it adds `.astro` imports
-*within* `.ts` files, the opposite direction.
+Astro projects get per-file `.mx`/`.marko` types from
+`@mxlang/typescript-plugin`, not an ambient wildcard. The old
+`packages/hosts/astro/types/mx.d.ts` and `@mxlang/astro/types` export are
+deleted: they erased every component's real `Input`. Configure one Volar
+plugin entry, `{ "name": "@mxlang/typescript-plugin", "astro": true }`; do
+not also list `@astrojs/ts-plugin`, because the second Volar tsserver plugin is
+silently skipped. Command-line checks use `mx-tsc --astro --noEmit`.
 
 ## `@mxlang/language-server`: diagnostics-only LSP server (decision 71/72)
 
@@ -946,10 +946,11 @@ fresh-worktree caveat as `@mxlang/parser`'s `dist/index.js` (see "Running
 tests in a fresh worktree" above): `bun run verify` builds before it tests,
 so this only bites a standalone `vitest run` of this package.
 
-## `@mxlang/typescript-plugin` and `@mxlang/tsc`: TypeScript for `.solid.mx` (decision 81)
+## `@mxlang/typescript-plugin` and `@mxlang/tsc`: TypeScript for MX files (decision 81)
 
 `packages/tooling/typescript-plugin` and `packages/tooling/tsc` are the two
-halves of one job: type-check a `.solid.mx` file as the TSX it lowers to.
+halves of one job: type-check `.solid.mx`, `.mx`, and `.marko` from the TS/TSX
+each host emits.
 Each package's own `README.md` carries the full story; this is the package-map
 entry.
 
@@ -961,10 +962,16 @@ entry.
   map. A `print` failure yields empty virtual code plus one recorded syntax
   error, appended to `getSyntacticDiagnostics` so a bad region reports once,
   at its own position, instead of silently becoming an empty file.
+  `src/mx-language.ts` compiles whole-file `.mx`/`.marko` through the host
+  resolved from the nearest `package.json`; because the HTML compiler's map is
+  empty, exact expression mappings come from the positioned IR nodes the
+  emitter consumed. `{ astro: true }` lazily composes Astro's language plugin
+  from the optional exact `@astrojs/language-server@2.16.16` peer.
 - **`@mxlang/tsc`** is the CI half — `mx-tsc`, Volar's `runTsc` handed the
   *same* language plugin. It exists because `tsc` ignores
   `compilerOptions.plugins` entirely, so without it an editor would report
-  errors a build silently missed. One lowering, two hosts; they cannot drift.
+  errors a build silently missed. `--astro` adds Astro's plugin and extension,
+  and is removed before TypeScript parses its own arguments.
 
 Four facts worth knowing before editing either:
 
@@ -988,6 +995,8 @@ Four facts worth knowing before editing either:
   `packages/parser/src/mx/bridge.ts` repositioning each Babel node onto the
   source expression it was copied from. `decodeMappings` then keeps only spans
   whose generated and source text match, and merges contiguous ones.
+  Whole-file `.mx`/`.marko` is the exception: its HTML map is empty, so the
+  plugin maps exact expression text from the core IR node locations.
 
 **No ambient `declare module "*.solid.mx"` shim, anywhere.** A shim asserts
 types rather than deriving them, so it hides both a file's real exports and
@@ -995,10 +1004,11 @@ every error inside it. Both examples' `src/mx.d.ts` are deleted; dropping
 `todomvc`'s surfaced a real bug it had been masking (a `<fragment>` wrapper,
 removed by decision 72, rendering as a literal unknown element).
 
-`packages/tooling/tsc/src/fixtures/` holds two projects differing in one
-expression, and is excluded from that package's own `tsconfig.json` — the
-failing fixture is *meant* to be a type error and must not fail the package's
-typecheck.
+`packages/tooling/tsc/src/fixtures/` holds two SolidMX projects differing in
+one expression. The suite also runs the Astro example's paired
+`typecheck-fixtures`: `<Card title="..." />` passes and `<Card title={1} />`
+reports TS2322. The failing fixtures stay outside their packages' normal
+typecheck inputs.
 
 
 ## Bun loader

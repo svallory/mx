@@ -1,6 +1,8 @@
 # `@mxlang/tsc`
 
-`mx-tsc` — `tsc` with `.solid.mx` files type-checked as the TSX they lower to.
+`mx-tsc` — `tsc` with `.solid.mx`, `.mx`, and `.marko` files type-checked as
+the TypeScript they lower to. `--astro` additionally composes Astro's language
+plugin so `.astro` files and their MX imports are checked together.
 
 This is the CI half of decision 81. `tsc` ignores `compilerOptions.plugins`, so
 [`@mxlang/typescript-plugin`](../typescript-plugin/README.md) does nothing on
@@ -13,19 +15,26 @@ the tsserver plugin uses, so both halves share one lowering and cannot drift.
 ```
 mx-tsc --noEmit
 mx-tsc --noEmit -p path/to/tsconfig.json
+mx-tsc --astro --noEmit
 ```
 
 It takes `tsc`'s own arguments and produces `tsc`'s own output and exit codes —
 it *is* `tsc`, with Volar's program proxy spliced in. Point a package's
-`typecheck` script at it wherever `.solid.mx` files are in the program:
+`typecheck` script at it wherever MX files are in the program:
 
 ```json
 { "scripts": { "typecheck": "mx-tsc --noEmit" } }
 ```
 
-`examples/counter-app` and `examples/todomvc` both do. The root `typecheck`
+`examples/counter-app` and `examples/todomvc` both do. Astro projects pass
+`--astro`; `examples/astro-static` runs the built workspace entry as
+`node ../../packages/tooling/tsc/dist/bin.cjs --astro --noEmit`. The root `typecheck`
 script defers to a package's own `typecheck` script when it has one, so those
-two run `mx-tsc` while every other package keeps running plain `tsc`.
+three run `mx-tsc` while every other package keeps running plain `tsc`.
+
+`--astro` is an `mx-tsc` flag, removed before TypeScript parses the rest of the
+command line. It lazily loads the same optional
+`@astrojs/language-server@2.16.16` peer as the tsserver plugin.
 
 ## What it proves
 
@@ -52,14 +61,16 @@ reports it at the offending argument's own line and column.
 
 ## How it works
 
-`runMxTsc()` calls `runTsc(tscPath, [".solid.mx"], getLanguagePlugins, tsObject)`:
+`runMxTsc()` calls `runTsc` with `.solid.mx`, `.mx`, and `.marko`; `--astro`
+adds `.astro` and Astro's language plugin:
 
 - **`tscPath`** is `typescript/lib/tsc.js`, resolved relative to this package.
   `runTsc` does not spawn `tsc`; it reads that file, rewrites `createProgram`
   to route through Volar, and evaluates the result. So it needs the real entry
   point's path, not the `typescript` module's exports.
-- **`getLanguagePlugins`** returns `createSolidMxLanguagePlugin(ts)` plus
-  `createCompoundExtensionResolver(ts)`. The second is what makes
+- **`getLanguagePlugins`** returns the SolidMX and whole-file MX plugins plus
+  `createCompoundExtensionResolver(ts)`, and optionally Astro's plugin. The
+  resolver is what makes
   `import "./X.solid.mx"` resolve; without it every import is `TS2307`, even
   though each file compiles fine on its own.
 - **`tsObject`** is the string `"require('typescript')"`. This one is not
@@ -77,9 +88,10 @@ and `__filename`, none of which exist in an ES module.
 
 ## Tests
 
-`src/index.test.ts` runs the built binary against both fixtures and asserts the
-diagnostics and exit codes above, plus that plain `tsc` does *not* catch the
-same error. It needs `bun run build` to have produced `dist/bin.cjs` first —
+`src/index.test.ts` runs the built binary against the SolidMX fixtures and the
+Astro example's correct/wrong prop fixtures, asserting diagnostics and exit
+codes (plus that plain `tsc` does *not* catch the SolidMX error). It needs
+`bun run build` to have produced `dist/bin.cjs` first —
 the same fresh-worktree caveat `@mxlang/parser`'s `dist/index.js` carries;
 `bun run verify` builds before it tests.
 
