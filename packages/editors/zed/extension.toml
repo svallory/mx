@@ -50,5 +50,5 @@ path = "packages/editors/tree-sitter-solidmx"
 # DEV FORM. Same rules as solidmx.
 # AT PUBLISH TIME: swap to real GitHub URL and drop `path`.
 repository = "file:///Users/svallory/work/mx"
-rev = "HEAD" # We'll replace with the latest commit SHA later if needed, but Zed might need an exact commit. Wait, "rev" must be the current HEAD.
+rev = "355b02455da2937443768a9a0c6a4887524fb6dd"
 path = "packages/editors/tree-sitter-amx"

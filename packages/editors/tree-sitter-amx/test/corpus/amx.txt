@@ -65,3 +65,19 @@ import a from "b";
   )
   (body)
 )
+
+==========
+text and mid-line fence
+==========
+---
+var x = 1;
+---
+  --- mid-line
+text---
+----
+(source_file
+  (frontmatter
+    (frontmatter_content)
+  )
+  (body)
+)
