@@ -22,6 +22,7 @@ import { mxParseElementAt } from "../../../mx/bridge.ts";
 
 /* eslint sort-keys: "error" */
 const JsxErrors = ParseErrorEnum`jsx`({
+  InterpolationOutsideRegion: "MX interpolation `${...}` is only valid inside an MX region. In a TSX fragment, use `{...}` instead.",
   AttributeIsEmpty:
     "JSX attributes must only be assigned a non-empty expression.",
   MissingClosingTagElement: ({ openingTagName }: { openingTagName: string }) =>
@@ -509,6 +510,13 @@ export default (superClass: typeof Parser) =>
               break;
 
             case tt.jsxText:
+              if (
+                this.mxEnabled() &&
+                this.state.value.endsWith("$") &&
+                this.input.charCodeAt(this.state.pos) === charCodes.leftCurlyBrace
+              ) {
+                throw this.raise(JsxErrors.InterpolationOutsideRegion, this.state.startLoc);
+              }
               children.push(this.parseLiteral(this.state.value, "JSXText"));
               break;
 

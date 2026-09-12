@@ -34,6 +34,37 @@ describe("TSX fragments in .solid.mx", () => {
     expect(elements[1]?.openingElement.name.name).toBe("p");
   });
 
+  it("parses a fragment with three consecutive MX children", () => {
+    const file = parseMx(`const el = <><p>1</p><div>2</div><span>3</span></>;`);
+    const elements = collect(file, "JSXElement") as {
+      openingElement: { name: { name: string } };
+    }[];
+    expect(elements).toHaveLength(3);
+    expect(elements[0]?.openingElement.name.name).toBe("p");
+    expect(elements[1]?.openingElement.name.name).toBe("div");
+    expect(elements[2]?.openingElement.name.name).toBe("span");
+  });
+
+  it("parses an MX child followed by a JSX expression container", () => {
+    const file = parseMx(`const el = <><p>x</p>{expr}</>;`);
+    const elements = collect(file, "JSXElement");
+    const expressions = collect(file, "JSXExpressionContainer");
+    expect(elements).toHaveLength(1);
+    expect(expressions).toHaveLength(1);
+  });
+
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: testing MX interpolation
+  it("throws for `${}` inside a fragment text child", () => {
+    let error: unknown;
+    try {
+      parseMx(`const el = <> \${x} </>;`);
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toBeInstanceOf(SyntaxError);
+    expect((error as Error).message).toContain("MX interpolation");
+  });
+
   it("lowers MX constructs like <if> and <for> inside the fragment", () => {
     const file = parseMx(
       `const el = <><if=cond><p>a</p></if><for|x| of=xs><li>\${x}</li></for></>;`,
@@ -66,7 +97,7 @@ describe("TSX fragments in .solid.mx", () => {
     }
     expect(error).toBeInstanceOf(SyntaxError);
     expect((error as Error).message).toContain(
-      "Expected corresponding JSX closing tag for <>",
+      'The closing "div" tag was not expected',
     );
   });
 
@@ -84,7 +115,8 @@ describe("TSX fragments in .solid.mx", () => {
     expect(err.message).toContain(
       "Expected corresponding JSX closing tag for <>",
     );
-    expect(err.loc).toBeTruthy();
+    expect(err.loc?.line).toBe(1);
+    expect(err.loc?.index).toBe(21);
   });
 
   it("keeps source-map positions for a child region past the `<>` file-absolute", () => {

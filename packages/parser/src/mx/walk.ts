@@ -146,6 +146,7 @@ export function walkMxRegion(source: string, start: number): MxWalkResult {
   let end = -1;
   let done = false;
   let closeStart: number | null = null;
+  let closeName: string | undefined;
 
   const top = (): MxElement | null =>
     stack.length > 0 ? (stack[stack.length - 1] as MxElement) : null;
@@ -327,10 +328,26 @@ export function walkMxRegion(source: string, start: number): MxWalkResult {
     onCloseTagStart(range) {
       if (done) return;
       closeStart = range.start;
+      closeName = undefined;
+    },
+
+    onCloseTagName(range) {
+      if (done) return;
+      closeName = source.slice(start + range.start, start + range.end);
     },
 
     onCloseTagEnd(range) {
       if (done) return;
+
+      const top = stack[stack.length - 1];
+      // htmljs-parser treats `</>` as closing the current tag, but MX only allows nameless close tags
+      // for dynamic tags (`<${Foo}>...</>`). For static tags, we ignore nameless close tags
+      // so htmljs-parser can emit its own error later when the real close tag is encountered.
+      if (!closeName && top && top.staticName !== null) {
+        closeStart = null;
+        return;
+      }
+
       const el = stack.pop();
       if (el) {
         el.range = { start: el.range.start, end: range.end + start };

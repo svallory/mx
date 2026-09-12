@@ -46,8 +46,8 @@ build didn't force dropping any of these.
 
 5. **`plugins/jsx/index.ts` — the MX fork itself** (the only behavioral change to the vendored tree). Three edits:
    - One import added at the top of the file: `import { mxParseElementAt } from "../../../mx/bridge.ts";`.
-   - `jsxParseElementAt(startLoc)` is now a five-line dispatcher: when the `mx` option is on it returns `mxParseElementAt(this, startLoc)`, otherwise it calls `jsxParseElementAtOriginal(startLoc)`. Babel's original ~90-line body is **preserved verbatim** under the new name `jsxParseElementAtOriginal`, so re-vendoring is a rename plus this dispatcher rather than a merge of rewritten logic.
-   - The one recursive call inside that original body (`children.push(this.jsxParseElementAt(startLoc))`, for nested JSX children) now calls `jsxParseElementAtOriginal`, keeping a non-MX parse entirely on upstream's path.
+   - `jsxParseElementAt(startLoc)` is now a dispatcher: when the `mx` option is on and the tag is not a fragment (`!this.match(tt.jsxTagEnd)`), it returns `mxParseElementAt(this, startLoc)`. Otherwise (including for `<>` fragments), it calls `jsxParseElementAtOriginal(startLoc)`. Babel's original body is **preserved verbatim** under the new name `jsxParseElementAtOriginal`.
+   - The one recursive call inside that original body (`children.push(this.jsxParseElementAtOriginal(startLoc))`, for nested JSX children) now calls `jsxParseElementAt(startLoc)`, so that fragment children are routed back into the MX hook.
 
    `parseExprAtom` and the `.tsx` generic-arrow disambiguation are untouched: MX relies on both to route `<` in expression position here in the first place, and on the TypeScript plugin's `tryParse` to back out when a `<` turns out to be a generic arrow.
 

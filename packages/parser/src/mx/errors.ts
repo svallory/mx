@@ -11,4 +11,7 @@ export const MxErrors = ParseErrorEnum`mx`({
   HostError: ({ message }: { message: string }) => message,
   UnsupportedConstruct: ({ construct }: { construct: string }) =>
     `${construct} is not supported yet.`,
+  InterpolationOutsideRegion: () =>
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: error message text
+    "MX interpolation `${...}` is only valid inside an MX region. In a TSX fragment, use `{...}` instead.",
 });
