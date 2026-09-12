@@ -471,7 +471,7 @@ export default (superClass: typeof Parser) =>
     // is preserved verbatim as `jsxParseElementAtOriginal` below and is still
     // reachable for plain-TSX parses (see src/index.ts `parse`/`parseExpression`).
     jsxParseElementAt(startLoc: Position): N.JSXElement | N.JSXFragment {
-      if (this.mxEnabled()) {
+      if (this.mxEnabled() && !this.match(tt.jsxTagEnd)) {
         return mxParseElementAt(
           this as unknown as Parameters<typeof mxParseElementAt>[0],
           startLoc,
@@ -505,7 +505,7 @@ export default (superClass: typeof Parser) =>
                 closingElement = this.jsxParseClosingElementAt(startLoc);
                 break contents;
               }
-              children.push(this.jsxParseElementAtOriginal(startLoc));
+              children.push(this.jsxParseElementAt(startLoc));
               break;
 
             case tt.jsxText:

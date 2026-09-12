@@ -1,5 +1,6 @@
 import { compileSolidMx } from "@mxlang/solid";
 import { parseExpression } from "../babel/index.ts";
+import { types as tc } from "../babel/tokenizer/context.ts";
 import { Position } from "../babel/util/location.ts";
 import { MxErrors } from "./errors.ts";
 import { type MxElement, type MxRange, walkMxRegion } from "./walk.ts";
@@ -428,6 +429,10 @@ function repositionTokenizer(
   state.endLoc = new Position(line, end - lineStart, end + state.startIndex);
 
   state.context.length = contextDepth;
+  if (state.context[state.context.length - 1] === tc.j_expr) {
+    // biome-ignore lint/suspicious/noExplicitAny: state is internal
+    (parser.state as any).canStartJSXElement = true;
+  }
   parser.next();
 }
 
