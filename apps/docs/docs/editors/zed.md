@@ -59,3 +59,63 @@ Only needed if you're building `mxlang` itself, not for using it once installed.
 ```bash
 rustup target add wasm32-wasip1
 ```
+
+## TypeScript
+
+The language server above checks MX constructs against a host policy.
+TypeScript errors *inside* a `.solid.mx` file are a separate job, handled by
+`@mxlang/typescript-plugin` inside Zed's TypeScript server (`vtsls`).
+
+```json
+{
+  "lsp": {
+    "vtsls": {
+      "settings": {
+        "vtsls": {
+          "typescript": {
+            "globalPlugins": [
+              {
+                "name": "@mxlang/typescript-plugin",
+                "location": "/absolute/path/to/node_modules/@mxlang/typescript-plugin",
+                "languages": ["solidmx"],
+                "enableForWorkspaceTypeScriptVersions": true
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+`languages` must be `solidmx`, lowercase. `vtsls` matches that entry against
+the **LSP language id**, not against the name in the language's
+`config.toml`. Zed derives the id by lowercasing the language name
+(`LanguageName::lsp_id()` in `crates/language_core/src/language_name.rs`
+returns `name.to_lowercase()`, special-casing only `Plain Text`), so this
+extension's `SolidMX` language is sent over LSP as `solidmx`.
+
+With `typescript-language-server` in place of `vtsls`, the same plugin goes in
+its `plugins` array:
+
+```json
+{
+  "lsp": {
+    "typescript-language-server": {
+      "initialization_options": {
+        "plugins": [
+          {
+            "name": "@mxlang/typescript-plugin",
+            "location": "/absolute/path/to/node_modules/@mxlang/typescript-plugin",
+            "languages": ["solidmx"]
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+For a command-line typecheck, `tsc` ignores `compilerOptions.plugins` — use
+`mx-tsc` from `@mxlang/tsc` instead.

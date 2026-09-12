@@ -16,7 +16,7 @@ bun run verify      # or: moon run :verify   -- delegates straight to `bun run v
 bun run build       # or: moon run parser:build -- builds packages/parser to dist/
 ```
 
-moon's root `typecheck`/`test` tasks are thin aggregates (`deps: ["^:typecheck"]` / `["^:test"]`) that fan out to each package's own task; `lint` runs once at the root over the whole tree via biome. `bun run typecheck`/`test` take the other layer — a single shell loop/vitest run at the root — so pick one command style (bun or moon) per invocation rather than mixing them. `verify` is the one exception: moon's `verify` task is a single `bun run verify` command, not a `deps` list, because `bun run verify`'s own chain (pre-verify must run before test; the coverage script must run last, after everything else) isn't expressible as an unordered `deps` set — delegating keeps the two entry points from silently drifting into two different definitions of "verified".
+moon's root `typecheck`/`test` tasks are thin aggregates (`deps: ["^:typecheck"]` / `["^:test"]`) that fan out to each package's own task; `lint` runs once at the root over the whole tree via biome. `bun run typecheck`/`test` take the other layer — a single shell loop/vitest run at the root (the typecheck loop defers to a package's own `typecheck` script when it has one, which is what lets `examples/counter-app` and `examples/todomvc` run `mx-tsc` while everything else runs plain `tsc`) — so pick one command style (bun or moon) per invocation rather than mixing them. `verify` is the one exception: moon's `verify` task is a single `bun run verify` command, not a `deps` list, because `bun run verify`'s own chain (pre-verify must run before test; the coverage script must run last, after everything else) isn't expressible as an unordered `deps` set — delegating keeps the two entry points from silently drifting into two different definitions of "verified".
 
 ## Test Coverage Verification (decision 64)
 
@@ -950,6 +950,61 @@ fresh-worktree caveat as `@mxlang/parser`'s `dist/index.js` (see "Running
 tests in a fresh worktree" above): `bun run verify` builds before it tests,
 so this only bites a standalone `vitest run` of this package.
 
+## `@mxlang/typescript-plugin` and `@mxlang/tsc`: TypeScript for `.solid.mx` (decision 81)
+
+`packages/tooling/typescript-plugin` and `packages/tooling/tsc` are the two
+halves of one job: type-check a `.solid.mx` file as the TSX it lowers to.
+Each package's own `README.md` carries the full story; this is the package-map
+entry.
+
+- **`@mxlang/typescript-plugin`** is the editor half — a Volar
+  `LanguagePlugin` (`src/language.ts`) plus a tsserver plugin
+  (`src/index.ts`, loaded via `compilerOptions.plugins`).
+  `createVirtualCode` runs `@mxlang/parser`'s `print()` and wraps the printed
+  TSX in a `VirtualCode` whose `CodeMapping`s are decoded from the returned
+  map. A `print` failure yields empty virtual code plus one recorded syntax
+  error, appended to `getSyntacticDiagnostics` so a bad region reports once,
+  at its own position, instead of silently becoming an empty file.
+- **`@mxlang/tsc`** is the CI half — `mx-tsc`, Volar's `runTsc` handed the
+  *same* language plugin. It exists because `tsc` ignores
+  `compilerOptions.plugins` entirely, so without it an editor would report
+  errors a build silently missed. One lowering, two hosts; they cannot drift.
+
+Four facts worth knowing before editing either:
+
+- **`runTsc` needs `require('typescript')` passed as its fourth argument.**
+  Its default `typescriptObject` is a proxy resolving names by `eval` inside
+  `tsc.js`'s own scope, so it sees only that bundle's locals. `ScriptSnapshot`
+  is not one — it is on the public `typescript` module but not the `tsc` entry
+  point — and the language plugin dies with `ReferenceError: ScriptSnapshot is
+  not defined` before a single file is checked.
+- **`createCompoundExtensionResolver` is load-bearing and shared.** Volar
+  2.4.28 assumes a custom extension is one suffix, so for `X.solid.mx`
+  TypeScript probes `X.solid.d.mx.ts`. The resolver claims no file
+  (`getLanguageId` and `getServiceScript` both return undefined) and only
+  advertises the terminal `mx` suffix; without it every `import
+  "./X.solid.mx"` is `TS2307`. It lives in `language.ts` and is installed by
+  both entry points, so an editor and CI resolve imports identically.
+- **`mx-tsc` must be CJS.** `runTsc` uses `require`, `require.resolve` and
+  `__filename`, none of which exist in an ES module — hence `dist/bin.cjs`.
+- **Column accuracy comes from the parser bridge, not from this package.**
+  `print`'s map is line-based; the exact columns come from
+  `packages/parser/src/mx/bridge.ts` repositioning each Babel node onto the
+  source expression it was copied from. `decodeMappings` then keeps only spans
+  whose generated and source text match, and merges contiguous ones.
+
+**No ambient `declare module "*.solid.mx"` shim, anywhere.** A shim asserts
+types rather than deriving them, so it hides both a file's real exports and
+every error inside it. Both examples' `src/mx.d.ts` are deleted; dropping
+`todomvc`'s surfaced a real bug it had been masking (a `<fragment>` wrapper,
+removed by decision 72, rendering as a literal unknown element).
+
+`packages/tooling/tsc/src/fixtures/` holds two projects differing in one
+expression, and is excluded from that package's own `tsconfig.json` — the
+failing fixture is *meant* to be a type error and must not fail the package's
+typecheck.
+
+
 ## Bun loader
 
 `packages/hosts/html/src/bun.ts` (`@mxlang/html/bun`) is the Bun-side
@@ -995,10 +1050,10 @@ own `vitest.config.ts` excludes it from the vitest project so the root
 `packages/hosts/html/types/marko.d.ts` declares `declare module "*.mx"` and
 `declare module "*.marko"`, both typing the import as `(input: any) =>
 string`. `any`, not each file's real `Input` interface: per-file typing
-needs a virtual-file projection of the compiled module (mirroring
-`@mxlang/typescript-plugin`'s role for `.solid.mx`), which is the phase-3
-language server's job, not something an ambient wildcard declaration can
-derive. A consumer references it by adding the file to its own
+needs a virtual-file projection of the compiled module (the same shape
+`@mxlang/typescript-plugin` now does for `.solid.mx` — see its own section
+below), which is the phase-3 language server's job for this file kind, not
+something an ambient wildcard declaration can derive. A consumer references it by adding the file to its own
 `tsconfig.json` `include` (see `examples/mx-site` and `examples/mx-vite`);
 there is no package-level `types` wiring that pulls it in automatically,
 since a `.solid.mx`-only project (the Solid examples) has no reason to load
@@ -1047,10 +1102,14 @@ independent of the root pins, which still track Solid 1 for the oracle's
 `babel-preset-solid` comparison. Root and example pins are expected to
 disagree; do not "fix" one to match the other.
 
-Type-checking `.solid.mx` imports from `.tsx` relies on the ambient
-`src/mx.d.ts` declaration in the example. It types every MX export as a Solid
-component; real per-export types arrive with `@mxlang/typescript-plugin`'s
-virtual-`.tsx` projection (spec section 7.2).
+Type-checking `.solid.mx` imports from `.tsx` uses
+`@mxlang/typescript-plugin`'s virtual-`.tsx` projection (spec section 7.2,
+decision 81), loaded through `compilerOptions.plugins` in each example's
+`tsconfig.json`. The old ambient `src/mx.d.ts` shims are **deleted** and must
+not come back: a shim asserts types instead of deriving them, so it hides both
+each file's real exports and every error inside the file. Each example's
+`typecheck` script is `mx-tsc --noEmit`, not `tsc --noEmit` — `tsc` ignores
+`compilerOptions.plugins`.
 
 `examples/mx-site` is a plain-string example: a Hono-on-Bun server and a
 static build both rendering MX (`.mx`) templates via

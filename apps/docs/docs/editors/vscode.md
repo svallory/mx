@@ -70,3 +70,50 @@ client.start();
 ```
 
 This runs alongside Marko's own language server, not in place of it — see [Language server](/editors/language-server/) for what it adds.
+
+## TypeScript
+
+Diagnostics above come from `@mxlang/language-server`, which checks MX
+constructs against a host policy. TypeScript errors *inside* a `.solid.mx`
+file — a wrong argument type in an attribute expression, a misspelled prop on a
+component imported from one — are a separate job, handled by
+`@mxlang/typescript-plugin` inside tsserver.
+
+Add it to the project's `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "plugins": [{ "name": "@mxlang/typescript-plugin" }]
+  }
+}
+```
+
+VS Code honours this for the workspace TypeScript version. To load the plugin
+regardless of which version is selected, point at it explicitly:
+
+```json
+{
+  "typescript.tsserver.pluginPaths": ["./node_modules/@mxlang/typescript-plugin"]
+}
+```
+
+A dedicated MX extension would contribute the plugin from its own
+`package.json` instead, which needs no user setting at all:
+
+```json
+{
+  "contributes": {
+    "typescriptServerPlugins": [{ "name": "@mxlang/typescript-plugin" }]
+  }
+}
+```
+
+No such extension ships yet.
+
+Do **not** also add an ambient `declare module "*.solid.mx"` shim. It replaces
+each file's real exported types with whatever the shim asserts, which is
+exactly what the plugin exists to stop.
+
+`tsc` ignores `compilerOptions.plugins`, so a command-line typecheck needs
+[`mx-tsc`](/editors/typescript/) rather than `tsc`.

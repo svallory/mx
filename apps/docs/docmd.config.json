@@ -77,7 +77,8 @@
       "children": [
         { "title": "Zed", "path": "/editors/zed/" },
         { "title": "VS Code", "path": "/editors/vscode/" },
-        { "title": "Language server", "path": "/editors/language-server/" }
+        { "title": "Language server", "path": "/editors/language-server/" },
+        { "title": "TypeScript", "path": "/editors/typescript/" }
       ]
     },
     { "title": "Contributing", "path": "/contributing/", "icon": "git-branch" },

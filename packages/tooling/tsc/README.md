@@ -1,0 +1,92 @@
+# `@mxlang/tsc`
+
+`mx-tsc` — `tsc` with `.solid.mx` files type-checked as the TSX they lower to.
+
+This is the CI half of decision 81. `tsc` ignores `compilerOptions.plugins`, so
+[`@mxlang/typescript-plugin`](../typescript-plugin/README.md) does nothing on
+the command line: an editor would report an error that a build silently missed.
+`mx-tsc` closes that gap by handing Volar's `runTsc` the *same* language plugin
+the tsserver plugin uses, so both halves share one lowering and cannot drift.
+
+## Usage
+
+```
+mx-tsc --noEmit
+mx-tsc --noEmit -p path/to/tsconfig.json
+```
+
+It takes `tsc`'s own arguments and produces `tsc`'s own output and exit codes —
+it *is* `tsc`, with Volar's program proxy spliced in. Point a package's
+`typecheck` script at it wherever `.solid.mx` files are in the program:
+
+```json
+{ "scripts": { "typecheck": "mx-tsc --noEmit" } }
+```
+
+`examples/counter-app` and `examples/todomvc` both do. The root `typecheck`
+script defers to a package's own `typecheck` script when it has one, so those
+two run `mx-tsc` while every other package keeps running plain `tsc`.
+
+## What it proves
+
+From `src/fixtures/`, two projects differing only in one expression:
+
+```
+$ mx-tsc --noEmit -p src/fixtures/passing
+exit=0
+
+$ mx-tsc --noEmit -p src/fixtures/failing
+src/fixtures/failing/src/Widget.solid.mx(7,32): error TS2345: Argument of type
+  'string' is not assignable to parameter of type 'number'.
+exit=2
+
+$ tsc --noEmit -p src/fixtures/failing
+src/fixtures/failing/src/index.ts(1,23): error TS2307: Cannot find module
+  './Widget.solid.mx' or its corresponding type declarations.
+exit=2
+```
+
+Plain `tsc` never opens the `.solid.mx` file at all — it fails at the import,
+and reports nothing about the type error the module actually contains. `mx-tsc`
+reports it at the offending argument's own line and column.
+
+## How it works
+
+`runMxTsc()` calls `runTsc(tscPath, [".solid.mx"], getLanguagePlugins, tsObject)`:
+
+- **`tscPath`** is `typescript/lib/tsc.js`, resolved relative to this package.
+  `runTsc` does not spawn `tsc`; it reads that file, rewrites `createProgram`
+  to route through Volar, and evaluates the result. So it needs the real entry
+  point's path, not the `typescript` module's exports.
+- **`getLanguagePlugins`** returns `createSolidMxLanguagePlugin(ts)` plus
+  `createCompoundExtensionResolver(ts)`. The second is what makes
+  `import "./X.solid.mx"` resolve; without it every import is `TS2307`, even
+  though each file compiles fine on its own.
+- **`tsObject`** is the string `"require('typescript')"`. This one is not
+  optional, and is the subtlety worth knowing before editing `src/index.ts`:
+  `runTsc`'s default is a proxy that resolves property names by `eval` inside
+  `tsc.js`'s own scope, so it sees only that bundle's locals. `ScriptSnapshot`
+  is not one of them — it is part of the public `typescript` module but not of
+  the `tsc` entry point — so the language plugin's `ScriptSnapshot.fromString`
+  call dies with `ReferenceError: ScriptSnapshot is not defined` before a
+  single file is checked. Requiring the real module gives the same surface the
+  tsserver plugin gets.
+
+The binary is CJS (`dist/bin.cjs`): `runTsc` uses `require`, `require.resolve`
+and `__filename`, none of which exist in an ES module.
+
+## Tests
+
+`src/index.test.ts` runs the built binary against both fixtures and asserts the
+diagnostics and exit codes above, plus that plain `tsc` does *not* catch the
+same error. It needs `bun run build` to have produced `dist/bin.cjs` first —
+the same fresh-worktree caveat `@mxlang/parser`'s `dist/index.js` carries;
+`bun run verify` builds before it tests.
+
+```
+bunx vitest run --root ../../.. --project @mxlang/tsc
+```
+
+`src/fixtures/` is excluded from this package's own `tsconfig.json`: the
+failing fixture is *meant* to be a type error, and must not fail the package's
+own typecheck.
