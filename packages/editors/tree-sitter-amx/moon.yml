@@ -1,0 +1,16 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+language: "javascript"
+
+tasks:
+  test:
+    command: "bash"
+    args: ["scripts/test.sh"]
+    inputs:
+      - "grammar.js"
+      - "src/**/*"
+      - "test/**/*"
+      - "scripts/**/*"
+
+  typecheck:
+    command: "true"
+    inputs: []

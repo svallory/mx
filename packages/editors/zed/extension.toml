@@ -45,3 +45,10 @@ languages = ["MX", "SolidMX"]
 repository = "file:///Users/svallory/work/mx"
 rev = "e8bb6e170fb306dcc8c7315f5d5aaa36e5585dfa"
 path = "packages/editors/tree-sitter-solidmx"
+
+[grammars.amx]
+# DEV FORM. Same rules as solidmx.
+# AT PUBLISH TIME: swap to real GitHub URL and drop `path`.
+repository = "file:///Users/svallory/work/mx"
+rev = "HEAD" # We'll replace with the latest commit SHA later if needed, but Zed might need an exact commit. Wait, "rev" must be the current HEAD.
+path = "packages/editors/tree-sitter-amx"

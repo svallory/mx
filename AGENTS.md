@@ -271,11 +271,7 @@ Goldens live at `packages/hosts/html/fixtures-marko/<name>/` with
 
 `packages/editors/zed` (`mxlang`) ships three languages for Zed: `MX`
 (`.mx`, restored per decision 72), `AstroMX` (`.amx`, decisions 76c/78) and
-`SolidMX` (`.solid.mx`). `AstroMX` rides the same `marko` grammar and the
-same queries as `MX` — an `.amx` file's template half *is* MX — so it adds no
-`[grammars.*]` entry; see the `.amx` subsection under `@mxlang/astro` above,
-and `packages/editors/zed/README.md` for its one limitation (Marko's
-grammar has no `---` frontmatter notion, so the fence highlights as markup).
+`SolidMX` (`.solid.mx`). `AstroMX` rides the `amx` grammar (from `packages/editors/tree-sitter-amx`, which splits the file into a TypeScript fence and an MX template body) and injects Marko queries into the body, so the frontmatter highlights as TypeScript.
 
 `MX` rides Marko's own unmodified tree-sitter grammar (`[grammars.marko]` in
 `extension.toml`, pinned to the same rev the official `marko-js/zed`

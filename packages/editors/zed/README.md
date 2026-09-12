@@ -14,7 +14,7 @@ Ships three languages:
 - `SolidMX` (`.solid.mx`), backed by `packages/editors/tree-sitter-solidmx` (a
   patched `tree-sitter-typescript` tsx dialect with an `mx_element` external
   token in expression position).
-- `AstroMX` (`.amx`) on the same Marko grammar and queries as `MX`.
+- `AstroMX` (`.amx`) backed by `packages/editors/tree-sitter-amx` (a small grammar that splits the file into an optional `---` TypeScript fence and an MX template body) and Marko's queries for the body region.
 
 Also registers a language server: `src/lib.rs` (a minimal Rust extension,
 `Cargo.toml`) implements `zed::Extension::language_server_command` for
@@ -131,19 +131,7 @@ this precedence correct when `MX` was added back.
   Marko's own grammar and queries — plus MX host diagnostics from
   `@mxlang/language-server`. Marko's own server still supplies its broader
   language features for files associated with its `Marko` language.
-- `AstroMX` (`.amx`): syntax highlighting, brackets, outline, from the same
-  Marko grammar and queries as `MX` — an `.amx` file's template half *is* MX
-  (decisions 76c/78), so Marko's queries apply unchanged. **Known limitation**:
-  Marko's grammar has no `---` frontmatter notion, so the TypeScript fence at
-  the top of an `.amx` file highlights as Marko markup rather than TypeScript.
-  The official Astro grammar (`virchau13/tree-sitter-astro`, pinned by
-  `zeds/astro`) is the worse trade, not the fix: it parses a fence
-  followed by an **HTML/JSX** body, so it would mis-parse the entire MX
-  template — the larger half of the file. A proper fix is an `.amx` grammar
-  composing the two, in the shape of `packages/editors/tree-sitter-solidmx`'s scanner
-  (whose split, fence versus body, is simpler than SolidMX's
-  expression-position problem); follow-up work, not done here. No language
-  server.
+- `AstroMX` (`.amx`): syntax highlighting, brackets, outline, via injections mapping the `---` fence to TypeScript and the body to Marko. The fence properly highlights as TypeScript. No language server yet.
 - `SolidMX` (`.solid.mx`): syntax highlighting, brackets, outline, syntax
   highlighting inside `mx_element` regions via the official Marko extension's
   injection (see "Prerequisite" below), and Solid host diagnostics from

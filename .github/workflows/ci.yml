@@ -94,8 +94,15 @@ jobs:
       # patch it to skip green. See UPSTREAM.md and the task report for why:
       # a gate that goes silently green when its toolchain is missing is
       # exactly the defect class this whole check exists to catch.
-      - name: "zed-compile-check.sh (forced fallback: tree-sitter build --wasm --docker)"
+      - name: "solidmx: zed-compile-check.sh (forced fallback: tree-sitter build --wasm --docker)"
         working-directory: packages/editors/tree-sitter-solidmx
+        env:
+          ZED_COMPILE_CHECK_FORCE_FALLBACK: "1"
+          ZED_COMPILE_CHECK_WASM_BUILD_ARGS: "--docker"
+        run: ./scripts/zed-compile-check.sh
+
+      - name: "amx: zed-compile-check.sh (forced fallback: tree-sitter build --wasm --docker)"
+        working-directory: packages/editors/tree-sitter-amx
         env:
           ZED_COMPILE_CHECK_FORCE_FALLBACK: "1"
           ZED_COMPILE_CHECK_WASM_BUILD_ARGS: "--docker"

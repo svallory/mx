@@ -9,7 +9,7 @@ The `mxlang` extension ships three languages:
 
 - **MX** (`.mx`, and its `.marko` alias) — rides Marko's own tree-sitter grammar and queries unmodified. No overlay: MX 1.0 is a strict subset of Marko syntax, so Marko's own highlighting, brackets, and outline already apply.
 - **SolidMX** (`.solid.mx`) — its own grammar, a patched TypeScript/TSX grammar with MX recognized in expression position.
-- **AstroMX** (`.amx`) — rides the same Marko grammar as MX, since an `.amx` file's template half *is* MX.
+- **AstroMX** (`.amx`) — its own small grammar to separate the TypeScript fence from the MX body, with injected highlighting for both.
 
 ## Install the official Marko extension too
 
