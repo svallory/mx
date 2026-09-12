@@ -103,13 +103,16 @@ export function decodeMappings(
 ): CodeMapping[] {
   const generatedLineOffsets = lineOffsets(generated);
   const sourceLineOffsets = lineOffsets(source);
-  const mappings: CodeMapping[] = [];
+  const rawMappings: CodeMapping[] = [];
 
   for (const [generatedLine, segments] of decode(map.mappings).entries()) {
     const generatedLineOffset = generatedLineOffsets[generatedLine];
     if (generatedLineOffset === undefined) continue;
+    const nextLineOffset =
+      generatedLineOffsets[generatedLine + 1] ?? generated.length;
 
-    for (const segment of segments) {
+    for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+      const segment = segments[segIdx]!;
       if (segment.length < 4) continue;
       const sourceLine = segment[2];
       const sourceColumn = segment[3];
@@ -119,15 +122,22 @@ export function decodeMappings(
 
       const generatedOffset = generatedLineOffset + segment[0];
       const sourceOffset = sourceLineOffset + sourceColumn;
-      const length = equalLength(
-        generated,
-        generatedOffset,
-        source,
-        sourceOffset,
+
+      // Bound the span by the next segment's start or end of generated line.
+      const nextSegGenCol = segments[segIdx + 1]?.[0];
+      const maxGen =
+        nextSegGenCol !== undefined
+          ? generatedLineOffset + nextSegGenCol
+          : nextLineOffset;
+      const maxLength = maxGen - generatedOffset;
+
+      const length = Math.min(
+        maxLength,
+        equalLength(generated, generatedOffset, source, sourceOffset),
       );
       if (length === 0) continue;
 
-      mappings.push({
+      rawMappings.push({
         sourceOffsets: [sourceOffset],
         generatedOffsets: [generatedOffset],
         lengths: [length],
@@ -136,7 +146,39 @@ export function decodeMappings(
     }
   }
 
-  return mappings;
+  return mergeMappings(rawMappings);
+}
+
+/**
+ * Merges adjacent `CodeMapping`s whose generated and source spans are
+ * contiguous (i.e. end-to-start with the same delta). This keeps the mapping
+ * list compact for the common case where lines outside MX regions are
+ * identity-mapped character by character by `@babel/generator`.
+ */
+function mergeMappings(mappings: CodeMapping[]): CodeMapping[] {
+  const merged: CodeMapping[] = [];
+
+  for (const curr of mappings) {
+    const prev = merged[merged.length - 1];
+    if (prev === undefined) {
+      merged.push(curr);
+      continue;
+    }
+
+    const prevGenEnd = prev.generatedOffsets[0] + prev.lengths[0];
+    const prevSrcEnd = prev.sourceOffsets[0] + prev.lengths[0];
+
+    if (
+      curr.generatedOffsets[0] === prevGenEnd &&
+      curr.sourceOffsets[0] === prevSrcEnd
+    ) {
+      prev.lengths[0] += curr.lengths[0];
+    } else {
+      merged.push(curr);
+    }
+  }
+
+  return merged;
 }
 
 function lineOffsets(text: string): number[] {

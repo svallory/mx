@@ -139,6 +139,55 @@ describe("SolidMX language plugin", () => {
       ]),
     );
   });
+
+  it("maps an inline MX attribute-method type error to its exact column", () => {
+    const component = "/project/Column.solid.mx";
+    const consumer = "/project/index.ts";
+    const expression = 'count() + "x"';
+    const source = [
+      "function setCount(value: number) {}",
+      "const count = () => 0;",
+      `export const el = <button onClick() { setCount(${expression}) }>x</button>;`,
+    ].join("\n");
+    const service = createPluginService(
+      {
+        [component]: source,
+        [consumer]: 'import "./Column.solid.mx";\n',
+      },
+      [consumer],
+    );
+    service.getSemanticDiagnostics(consumer);
+
+    const diagnostics = service.getSemanticDiagnostics(component);
+    const diagnostic = diagnostics.find((candidate) => candidate.code === 2345);
+
+    expect(diagnostic?.start).toBe(source.indexOf(expression));
+    expect(diagnostic?.length).toBe(expression.length);
+  });
+
+  it("maps an expression on the MX region's first line after the opening tag", () => {
+    const component = "/project/FirstLine.solid.mx";
+    const consumer = "/project/index.ts";
+    const expression = '"bad"';
+    const source = [
+      "function needsNumber(value: number) { return value; }",
+      `export const el = <button title=needsNumber(${expression})>x</button>;`,
+    ].join("\n");
+    const service = createPluginService(
+      {
+        [component]: source,
+        [consumer]: 'import "./FirstLine.solid.mx";\n',
+      },
+      [consumer],
+    );
+    service.getSemanticDiagnostics(consumer);
+
+    const diagnostics = service.getSemanticDiagnostics(component);
+    const diagnostic = diagnostics.find((candidate) => candidate.code === 2345);
+
+    expect(diagnostic?.start).toBe(source.indexOf(expression));
+    expect(diagnostic?.length).toBe(expression.length);
+  });
 });
 
 function createPluginService(

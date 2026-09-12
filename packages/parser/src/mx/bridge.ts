@@ -2,7 +2,7 @@ import { compileSolidMx } from "@mxlang/solid";
 import { parseExpression } from "../babel/index.ts";
 import { Position } from "../babel/util/location.ts";
 import { MxErrors } from "./errors.ts";
-import { walkMxRegion } from "./walk.ts";
+import { type MxElement, type MxRange, walkMxRegion } from "./walk.ts";
 
 /**
  * The parser surface `mxParseElementAt` needs. Structural rather than a direct
@@ -85,6 +85,7 @@ export function mxParseElementAt(
       startLine: startLoc.line,
       startColumn: startLoc.column,
     });
+    remapExpressionLocations(node, root, code, source, start, end);
     stampRoot(node, source, start, end);
   } catch (err) {
     const error = err as {
@@ -109,6 +110,199 @@ export function mxParseElementAt(
 
   repositionTokenizer(parser, source, start, end, contextDepth);
   return node;
+}
+
+interface ExpressionMapping {
+  generatedStart: number;
+  generatedEnd: number;
+  sourceStart: number;
+  sourceEnd: number;
+}
+
+/**
+ * Restores the locations of TypeScript expressions copied through the Solid
+ * emitter. The emitter necessarily inserts JSX punctuation (`title={` around
+ * an MX dynamic attribute, `{() => {` around an attribute-method body), so
+ * parsing its output shifts every descendant node even though the expression
+ * text itself is unchanged.
+ *
+ * htmljs-parser already gave the bridge exact source ranges for those copied
+ * expressions. Match those slices in the emitted region and move each Babel
+ * descendant back to the matching source span.
+ *
+ * Nodes are handled in three cases, in order:
+ *
+ * 1. Inside a matched expression: shifted by that expression's delta. This is
+ *    the case the column-accuracy tests pin — the expression text is identical
+ *    in both coordinate systems, so the delta is exact.
+ * 2. Outside the region entirely: clamped back into it. The emitter's
+ *    scaffolding (`{() => {` around an attribute-method body) makes generated
+ *    text longer than its source, so a late node's generated offset can run
+ *    past the region's source end and claim a slice of the *following* code.
+ *    That span is provably wrong, and left in place it becomes a source-map
+ *    segment pointing at unrelated text — which a consumer's text-equality
+ *    check then rejects, discarding the good neighbouring segments with it.
+ * 3. Otherwise: left untouched. Structural nodes (the closing element, an
+ *    attribute) already sit at their true source offsets, because the emitter
+ *    reproduces the region's shape; overwriting them would lose spans the
+ *    parser's own tests depend on.
+ *
+ * The generated text is untouched; only locations are repaired.
+ */
+function remapExpressionLocations(
+  node: unknown,
+  root: MxElement,
+  generated: string,
+  source: string,
+  regionStart: number,
+  regionEnd: number,
+): void {
+  const mappings = matchExpressionRanges(
+    collectExpressionRanges(root),
+    generated,
+    source,
+    regionStart,
+  );
+
+  const setSpan = (
+    record: Record<string, unknown>,
+    start: number,
+    end: number,
+  ) => {
+    record.start = start;
+    record.end = end;
+    record.loc = { start: locAt(source, start), end: locAt(source, end) };
+    if (Array.isArray(record.range)) record.range = [start, end];
+  };
+
+  const visit = (value: unknown) => {
+    if (value === null || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+
+    const record = value as Record<string, unknown>;
+    const generatedStart = record.start;
+    const generatedEnd = record.end;
+    if (
+      typeof generatedStart === "number" &&
+      typeof generatedEnd === "number"
+    ) {
+      // The most specific expression wholly containing this node wins: nested
+      // expressions (an attribute body and a call inside it) both match, and
+      // the inner one carries the correct delta for its own descendants.
+      let best: ExpressionMapping | undefined;
+      for (const candidate of mappings) {
+        if (
+          generatedStart < candidate.generatedStart ||
+          generatedEnd > candidate.generatedEnd
+        ) {
+          continue;
+        }
+        if (
+          best === undefined ||
+          candidate.generatedEnd - candidate.generatedStart <
+            best.generatedEnd - best.generatedStart
+        ) {
+          best = candidate;
+        }
+      }
+
+      if (best) {
+        const delta = best.sourceStart - best.generatedStart;
+        setSpan(
+          record,
+          generatedStart + delta,
+          Math.min(generatedEnd + delta, best.sourceEnd),
+        );
+      } else if (generatedStart > regionEnd || generatedEnd > regionEnd) {
+        setSpan(
+          record,
+          Math.min(generatedStart, regionEnd),
+          Math.min(generatedEnd, regionEnd),
+        );
+      }
+    }
+
+    for (const [key, child] of Object.entries(record)) {
+      if (key !== "loc" && key !== "extra") visit(child);
+    }
+  };
+
+  visit(node);
+}
+
+/**
+ * Locates each source expression inside the emitted region text.
+ *
+ * The emitter copies expression text verbatim, so a literal search finds it.
+ * The search is anchored by a moving `cursor` so two identical expressions in
+ * one region (`<p a=x b=x>`) map to their own occurrences in order rather than
+ * both matching the first. Ranges are sorted by source position first, which
+ * is the order the emitter writes them in.
+ */
+function matchExpressionRanges(
+  ranges: MxRange[],
+  generated: string,
+  source: string,
+  regionStart: number,
+): ExpressionMapping[] {
+  const mappings: ExpressionMapping[] = [];
+  let cursor = 0;
+
+  for (const range of [...ranges].sort((a, b) => a.start - b.start)) {
+    const rawText = source.slice(range.start, range.end);
+    if (rawText.length === 0) continue;
+
+    // The walker's ranges include whitespace the emitter strips or moves
+    // (`{ expr }` becomes `{expr;}`). Trim to the expression content, which
+    // is what survives verbatim.
+    const leadingWs = rawText.length - rawText.trimStart().length;
+    const text = rawText.trim();
+    if (text.length === 0) continue;
+
+    const generatedStart = generated.indexOf(text, cursor);
+    if (generatedStart === -1) continue;
+
+    mappings.push({
+      generatedStart: regionStart + generatedStart,
+      generatedEnd: regionStart + generatedStart + text.length,
+      sourceStart: range.start + leadingWs,
+      sourceEnd: range.start + leadingWs + text.length,
+    });
+    cursor = generatedStart + text.length;
+  }
+
+  return mappings;
+}
+
+function collectExpressionRanges(root: MxElement): MxRange[] {
+  const ranges: MxRange[] = [
+    ...root.name.expressions,
+    ...(root.params ? [root.params] : []),
+    ...(root.tagArgs ? [root.tagArgs] : []),
+    ...(root.tagVar ? [root.tagVar] : []),
+  ];
+
+  for (const attr of root.attrs) {
+    if (attr.kind === "dynamic" || attr.kind === "bound") {
+      ranges.push(attr.value);
+    } else if (attr.kind === "method") {
+      ranges.push(attr.params, attr.body);
+    } else if (attr.kind === "spread") {
+      ranges.push(attr.value);
+    }
+  }
+
+  for (const child of root.children) {
+    if (child.kind === "placeholder") ranges.push(child.value);
+    else if (child.kind === "element") {
+      ranges.push(...collectExpressionRanges(child.element));
+    }
+  }
+
+  return ranges;
 }
 
 /** Keep the region root anchored to the source MX span for diagnostics. */
