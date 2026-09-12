@@ -18,7 +18,9 @@
       "!packages/editors/tree-sitter-solidmx/vendor",
       "!packages/editors/tree-sitter-solidmx/src",
       "!packages/editors/tree-sitter-solidmx/test/corpus",
-      "!packages/editors/tree-sitter-solidmx/fixtures"
+      "!packages/editors/tree-sitter-solidmx/fixtures",
+      "!packages/editors/tree-sitter-amx/src",
+      "!packages/editors/tree-sitter-amx/test/corpus"
     ]
   },
   "formatter": {
