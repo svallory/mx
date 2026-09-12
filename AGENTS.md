@@ -22,7 +22,7 @@ moon's root `typecheck`/`test` tasks are thin aggregates (`deps: ["^:typecheck"]
 
 `verify` (`bun run verify` / `moon run :verify`) proves every non-exception
 package's tests actually **ran in that invocation** — not merely that some
-test wiring exists for it. The chain is:
+test wiring exists for it. This chain runs locally without deadlock, including `consumer-check:html` which checks consumer packing behavior. The chain is:
 
 ```
 scripts/pre-verify.ts && typecheck && lint && build && test && test:bun && test:grammar && scripts/verify-coverage.ts
