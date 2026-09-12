@@ -1,5 +1,5 @@
 ((frontmatter_content) @injection.content
- (#set! injection.language "typescript"))
+ (#set! injection.language "TypeScript"))
 
 ((body) @injection.content
- (#set! injection.language "marko"))
+ (#set! injection.language "MX"))

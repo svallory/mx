@@ -30,11 +30,14 @@ static void skip(TSLexer *lexer) {
 
 bool tree_sitter_amx_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     if (valid_symbols[FENCE]) {
+        if (lexer->get_column(lexer) != 0) return false;
+
         // Look for exactly `---` followed by a newline, or EOF.
         // It should start at the current position.
         
         // Skip leading whitespace? No, Astro fence must be exactly `---` at the beginning.
         // But what if it's the second fence? 
+
         
         bool found = false;
         if (lexer->lookahead == '-') {
