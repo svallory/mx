@@ -197,15 +197,6 @@ try {
           // package) are not what this step exists to catch.
           skipLibCheck: true,
           types: ["node"],
-          // `@mxlang/html`'s `.d.ts` re-exports types from
-          // `@mxlang/core`, which — unlike the translator itself — has no
-          // `dist/` yet (`main`/`types` point straight at `src/index.ts`),
-          // so tsc has to parse that raw `.ts` source to resolve the
-          // imported types. Any TS consumer of an unbuilt `@mxlang/*`
-          // package needs this flag today (see the Vite-plugin section of
-          // the repo's own AGENTS.md for the same requirement elsewhere);
-          // it is not something this consumer's own code needs.
-          allowImportingTsExtensions: true,
         },
         include: ["via-api.ts"],
       },
