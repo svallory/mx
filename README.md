@@ -10,7 +10,7 @@ MX (Markup eXtended) is a template language born from Marko. It takes Marko's sy
 | `packages/tooling/babel-plugin` | `@mxlang/babel-plugin` | `parserOverride` -> parser |
 | `packages/tooling/typescript-plugin` | `@mxlang/typescript-plugin` | `@volar/typescript` plugin; virtual `.tsx` via `@babel/generator` source maps |
 | `packages/tooling/tsc` | `@mxlang/tsc` | `tsc` wrapper (`runTsc`) so CI type-checks `.solid.mx` |
-| `packages/editors/vscode` | `@mxlang/vscode` | TextMate grammar + `typescriptServerPlugins` manifest |
+| `packages/editors/vscode` | `@mxlang/vscode` | VS Code extension: language client, TextMate grammars, and `typescriptServerPlugins` manifest |
 | `packages/tooling/eslint-plugin` | `@mxlang/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
 | `packages/tooling/vite-plugin` | `@mxlang/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
 | `packages/core` | `@mxlang/core` | The Marko-node consumer every MX host is built on: the structural tag lowerings, the `Policy` contract, three stateful-tag hooks (tag handler, hoist, binding registry), and two front doors (`compileSource` through `@marko/compiler`'s `config.translator` seam, `parseFragment` for a substring of a larger file). Depends on `@marko/compiler` alone. |
