@@ -84,9 +84,11 @@ Many targets (React, Preact) share the same JSX structure. To add a new host on 
 
 ## The Edit Check Hook
 
-An edit hook (`.claude/hyper.json`) runs two checks after every edit to a `.ts`, `.tsx` or `.json` file, in order:
+An edit hook (`.claude/hyper.json`) runs up to two checks after an edit, each with its own file extensions:
 
-1. `biome check .` — formatting and lint over the whole tree.
-2. A per-package TypeScript check. Each package with a `tsconfig.json` is checked with its own `typecheck` script when it has one (which is what lets the examples run `mx-tsc`), and with plain `tsc --noEmit -p` otherwise.
+1. `biome check .` — formatting and lint over the whole tree, after an edit to a `.ts`, `.tsx` **or `.json`** file.
+2. A per-package TypeScript check, after an edit to a `.ts` or `.tsx` file only. Each package with a `tsconfig.json` is checked with its own `typecheck` script when it has one (which is what lets the examples run `mx-tsc`), and with plain `tsc --noEmit -p` otherwise.
+
+So editing a `.json` file runs the first check alone.
 
 Both commands use `./node_modules/.bin` paths directly, so they work without shell shims (proto, bun, nvm wrappers). One deliberate exception: a package whose `typecheck` depends on the built `mx-tsc` binary falls back to plain `tsc` when that binary is not built yet, rather than failing — so a fresh worktree still gets useful checks before its first `bun run build`.

@@ -17,8 +17,10 @@ A host supplies one `HostDeclarations` object to `@mxlang/core`. Every member an
 | `rejectModifier?(attr, on)` | Rejects an attribute modifier (`class:active`) in this host's own words. |
 | `resolveModifier?(attr, on)` | Accepts a modifier a host keeps as target syntax, returning the emitted name. |
 | `rejectAttributeMethod?(…)` | Rejects an attribute method (`onClick() { … }`) in this host's own words. |
+| `resolveAttributeMethod?(…)` | Accepts an attribute method a host can express, instead of rejecting it. |
 | `rejectElementAttributeTags?(…)` | Rejects an attribute tag on a native element. |
 | `rejectComponentTag?(…)` / `rejectUnknownTag?(…)` | This host's wording for an unresolvable tag. |
+| `orderAttrs?(tagName, attrs)` | Reorders an element's attributes, for a target that must emit them in an order other than the author wrote them — this is what reproduces Marko hoisting `value` before `type` on an `<input>`. |
 | `checkBinding?(target, what)` | Inspects a name a construct is about to bind at render scope — not called for tag params, which open their own nested scope. |
 | `keepComments?` | Whether an HTML comment reaches the compiled output. |
 

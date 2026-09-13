@@ -162,7 +162,7 @@ The TypeScript plugin provides robust position mapping back to your original sou
 
 ### Known Gaps
 
-- **Bare generic calls outside `${}`:** Type arguments (e.g., `fn<T>()`) used in expression position outside of a string interpolation block lose their type arguments due to `stripTypes` erasing them before source mapping can preserve them.
+- **Bare generic calls outside `${}`:** a generic call inside `${}` is fine — expressions are sliced from the source text, so `${pick<string>("lo")}` keeps its type argument verbatim. Written bare, directly as an attribute value with no surrounding `${}`, the `<` is read as the start of a tag and the expression misparses. Wrap it in `${}`.
 - **Attribute-method bodies:** Method bodies on attributes (e.g., `onClick() { ... }`) are synthesized, meaning internal column mappings within the function block may be less precise.
 
 ## Composed Plugin and `astro: true`

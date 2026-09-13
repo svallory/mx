@@ -39,14 +39,15 @@ translator bug** over 43 stock fixtures.
   failed custom-element lookup and refuses to compile ("Unable to find entry
   point for custom tag `<my-widget>`", verified against `@marko/compiler`
   5.42.5 / `marko@6.3.51`). `@mxlang/html` used to render it as literal HTML
-  unconditionally. Fixed: `emitSpecial` now rejects an unresolved hyphenated
-  name with Marko's own wording.
+  unconditionally. Fixed: `rejectUnknownTag` (`translate.ts`, called at resolve
+  time) now rejects an unresolved hyphenated name with Marko's own wording.
 - **`lowercase-component`**: real Marko rejects a lowercase local-variable tag
   reference outright ("Local variables must be in a dynamic tag unless they
   are PascalCase. Use `<${layout}/>` or rename to `Layout`.", same versions).
   `@mxlang/html` was binding-based regardless of case, so it called the import
   instead of erroring — strictly *more permissive* than Marko. Fixed:
-  `emitComponent` now rejects the same reference with Marko's own wording. The
+  `rejectComponentTag` (`translate.ts`, called at resolve time) now rejects the
+  same reference with Marko's own wording. The
   two forms that do work are covered by the `dynamic-tag-lowercase-import` and
   `nested-layout` fixtures.
 
