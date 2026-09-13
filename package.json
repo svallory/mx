@@ -20,7 +20,8 @@
     "consumer-check:html": "bun run packages/hosts/html/scripts/consumer-check.ts",
     "oracle": "bun run packages/oracle/src/report.ts",
     "oracle:marko": "bun run --tsconfig-override=tsconfig.base.json packages/oracle/src/report-marko.ts",
-    "oracle:preact": "bun run --tsconfig-override=tsconfig.base.json packages/oracle/src/report-preact-cli.ts"
+    "oracle:preact": "bun run --tsconfig-override=tsconfig.base.json packages/oracle/src/report-preact-cli.ts",
+    "oracle:react": "bun run --tsconfig-override=tsconfig.base.json packages/oracle/src/report-react-cli.ts"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",
@@ -47,6 +48,8 @@
     "playwright": "1.63.0",
     "preact": "10.29.8",
     "preact-render-to-string": "6.7.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "solid-js": "2.0.0-rc.7",
     "typescript": "5.9.3",
     "vite": "8.2.2",

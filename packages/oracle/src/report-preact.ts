@@ -47,43 +47,48 @@ const MIN_FIXTURES = 43;
  * compile error with the same message the unit tests pin — so a skip here is
  * the documented behaviour, not an unimplemented row.
  */
-const SKIPS: Record<string, string> = {
-  "let-tag":
-    "`<let>` is Marko reactive state; this host rejects it and directs the author to `useState`",
-  "server-block":
-    "a `server` block is Marko's server/client split; a Preact component is one function with no server half",
-  "dynamic-tag":
-    "a dynamic tag name (`<${expr}>`) cannot sit in JSX tag position, which requires a capitalized identifier",
-  "dynamic-tag-lowercase-import":
-    "same as `dynamic-tag`: a runtime-resolved tag name has no JSX form",
-  "doctype-page":
-    "`<!doctype html>` belongs to the HTML shell that mounts the app, not to a component's markup",
-  "html-comment-placeholder":
-    "`<html-comment>` emits a comment node with interpolated content; JSX has no comment node that reaches the DOM",
-  "comments-and-html-comment":
-    "same as `html-comment-placeholder`: a rendered HTML comment has no JSX form",
-  "while-loop":
-    "`<while>` is an unbounded loop; a JSX expression renders a finite list, and the host has no `.map` form for it",
-  "style-object":
-    "Preact's own style serializer appends `px` to a numeric value for a dimensional property, so `style={top: 0}` renders `top:0px` where Marko renders `top:0`. Both set the same computed style; the difference is `preact-render-to-string`'s output, not this host's lowering — which passes the object through to the `style` prop unchanged (see the `style-object` unit test).",
-};
+function skips(targetName: string): Record<string, string> {
+  return {
+    "let-tag": `\`<let>\` is Marko reactive state; the ${targetName} host rejects it and directs the author to \`useState\``,
+    "server-block": `a \`server\` block is Marko's server/client split; a ${targetName} component is one function with no server half`,
+    "dynamic-tag":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX dynamic-tag syntax
+      "a dynamic tag name (`<${expr}>`) cannot sit in JSX tag position, which requires a capitalized identifier",
+    "dynamic-tag-lowercase-import":
+      "same as `dynamic-tag`: a runtime-resolved tag name has no JSX form",
+    "doctype-page":
+      "`<!doctype html>` belongs to the HTML shell that mounts the app, not to a component's markup",
+    "html-comment-placeholder":
+      "`<html-comment>` emits a comment node with interpolated content; JSX has no comment node that reaches the DOM",
+    "comments-and-html-comment":
+      "same as `html-comment-placeholder`: a rendered HTML comment has no JSX form",
+    "while-loop":
+      "`<while>` is an unbounded loop; a JSX expression renders a finite list, and the host has no `.map` form for it",
+    "style-object": `${targetName}'s own style serializer appends \`px\` to a numeric value for a dimensional property, so \`style={top: 0}\` renders \`top:0px\` where Marko renders \`top:0\`. Both set the same computed style; the difference is the target renderer's output, not this host's lowering — which passes the object through to the \`style\` prop unchanged (see the \`style-object\` unit test).`,
+  };
+}
 
 interface Row {
   fixture: string;
   status: string;
-  verdict: "pass" | "preact bug" | "skipped (reason)";
+  verdict: "pass" | "host bug" | "skipped (reason)";
   detail?: string;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturesRoot = join(here, "..", "..", "hosts", "html", "fixtures-marko");
 
-export async function runPreactTable(): Promise<{
+export async function runJsxHostTable(
+  targetName: string,
+  renderHost: typeof renderPreact,
+): Promise<{
   rows: Row[];
   failed: boolean;
 }> {
   if (!existsSync(fixturesRoot)) {
-    console.error(`oracle:preact: fixtures root not found: ${fixturesRoot}`);
+    console.error(
+      `oracle:${targetName.toLowerCase()}: fixtures root not found: ${fixturesRoot}`,
+    );
     return { rows: [], failed: true };
   }
 
@@ -94,7 +99,7 @@ export async function runPreactTable(): Promise<{
 
   if (entries.length === 0) {
     console.error(
-      `oracle:preact: fixture glob expanded to nothing under ${fixturesRoot}`,
+      `oracle:${targetName.toLowerCase()}: fixture glob expanded to nothing under ${fixturesRoot}`,
     );
     return { rows: [], failed: true };
   }
@@ -104,7 +109,9 @@ export async function runPreactTable(): Promise<{
     const dir = join(fixturesRoot, name);
     for (const file of ["input.marko", "input.json", "expected.html"]) {
       if (!existsSync(join(dir, file))) {
-        console.error(`oracle:preact: fixture "${name}" is missing ${file}`);
+        console.error(
+          `oracle:${targetName.toLowerCase()}: fixture "${name}" is missing ${file}`,
+        );
         malformed = true;
       }
     }
@@ -117,7 +124,7 @@ export async function runPreactTable(): Promise<{
   for (const name of entries) {
     const dir = join(fixturesRoot, name);
 
-    const skip = SKIPS[name];
+    const skip = skips(targetName)[name];
     if (skip) {
       rows.push({
         fixture: name,
@@ -155,7 +162,7 @@ export async function runPreactTable(): Promise<{
     let status: string;
     try {
       status = htmlEquals(
-        await renderPreact(dir, join(dir, "input.marko"), input),
+        await renderHost(dir, join(dir, "input.marko"), input),
         expected,
         // Preact owns its serializer and emits props in its own order, so
         // comparing positionally would report a difference in Preact's
@@ -176,7 +183,7 @@ export async function runPreactTable(): Promise<{
       verdict = "skipped (reason)";
       detail = `oracle:marko records a divergence here: ${meta.reason ?? "no reason given"}`;
     } else {
-      verdict = "preact bug";
+      verdict = "host bug";
       detail = "unclassified: mismatch or error with no recorded reason";
       unresolved = true;
     }
@@ -186,8 +193,12 @@ export async function runPreactTable(): Promise<{
 
   const nameWidth = Math.max(8, ...rows.map((r) => r.fixture.length));
   console.log("");
-  console.log("=== stock .marko fixtures (@mxlang/preact) ===");
-  console.log(`${"fixture".padEnd(nameWidth)}  preact           verdict`);
+  console.log(
+    `=== stock .marko fixtures (@mxlang/${targetName.toLowerCase()}) ===`,
+  );
+  console.log(
+    `${"fixture".padEnd(nameWidth)}  ${targetName.toLowerCase().padEnd(15)}  verdict`,
+  );
   for (const r of rows) {
     console.log(
       `${r.fixture.padEnd(nameWidth)}  ${r.status.padEnd(15)}  ${r.verdict}${r.detail ? `  (${r.detail})` : ""}`,
@@ -198,20 +209,24 @@ export async function runPreactTable(): Promise<{
   const skippedCount = rows.filter(
     (r) => r.verdict === "skipped (reason)",
   ).length;
-  const bugCount = rows.filter((r) => r.verdict === "preact bug").length;
+  const bugCount = rows.filter((r) => r.verdict === "host bug").length;
 
   console.log("");
   console.log(
-    `processed: ${rows.length} fixtures (minimum required: ${MIN_FIXTURES}) — ${passCount} pass, ${skippedCount} skipped(reason), ${bugCount} preact bug`,
+    `processed: ${rows.length} fixtures (minimum required: ${MIN_FIXTURES}) — ${passCount} pass, ${skippedCount} skipped(reason), ${bugCount} ${targetName.toLowerCase()} bug`,
   );
 
   let failed = unresolved;
   if (rows.length < MIN_FIXTURES) {
     console.error(
-      `oracle:preact: only ${rows.length} fixtures processed, below the required minimum of ${MIN_FIXTURES} — treating as a failed run, not a pass`,
+      `oracle:${targetName.toLowerCase()}: only ${rows.length} fixtures processed, below the required minimum of ${MIN_FIXTURES} — treating as a failed run, not a pass`,
     );
     failed = true;
   }
 
   return { rows, failed };
+}
+
+export function runPreactTable(): ReturnType<typeof runJsxHostTable> {
+  return runJsxHostTable("Preact", renderPreact);
 }

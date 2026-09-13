@@ -59,6 +59,7 @@ jobs:
       - run: bun run oracle -- --strict
       - run: bun run oracle:marko -- --strict
       - run: bun run oracle:preact -- --strict
+      - run: bun run oracle:react -- --strict
 
   zed-compile-check:
     # Reproduces Zed's own grammar compile step against a clean clone of
