@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import {
   type Expr,
+  type GeneratedMapping,
   type HostDeclarations,
   type Ir,
   type IrNode,
@@ -71,7 +72,16 @@ export function createMxLanguagePlugin(
             : compiled.code;
         const mappings =
           hostPolicy.host === "solid"
-            ? decodeMappings(compiled.map, generated, source)
+            ? mergeMappings(
+                [
+                  ...decodeMappings(compiled.map, generated, source),
+                  ...recordedMappings(compiled.mappings),
+                ].sort(
+                  (left, right) =>
+                    (left.generatedOffsets[0] ?? 0) -
+                    (right.generatedOffsets[0] ?? 0),
+                ),
+              )
             : createHtmlMappings(
                 source,
                 fileName,
@@ -85,6 +95,7 @@ export function createMxLanguagePlugin(
                   : hostPolicy.host === "react"
                     ? reactDeclarations
                     : undefined,
+                compiled.mappings,
               );
         syntaxErrors.delete(fileName);
         return createVirtualCode(typescript, generated, mappings);
@@ -194,6 +205,7 @@ export function createHtmlMappings(
   generated: string,
   strict: boolean,
   declarations?: HostDeclarations,
+  emittedMappings: GeneratedMapping[] = [],
 ): CodeMapping[] {
   const require = createRequire(import.meta.url);
   const compiler = require("@marko/compiler") as {
@@ -214,7 +226,7 @@ export function createHtmlMappings(
   const ir = resolve(ctx, body);
   const mappedCode = collectMappedCode(ir);
   const sourceLines = lineOffsets(source);
-  const mappings: CodeMapping[] = [];
+  const mappings: CodeMapping[] = recordedMappings(emittedMappings);
   let generatedCursor = 0;
   const generatedCodeCursors = new Map<string, number>();
 
@@ -247,6 +259,28 @@ export function createHtmlMappings(
         (left.generatedOffsets[0] ?? 0) - (right.generatedOffsets[0] ?? 0),
     ),
   );
+}
+
+function recordedMappings(mappings: GeneratedMapping[]): CodeMapping[] {
+  return mappings
+    .filter(
+      (mapping) =>
+        mapping.sourceEnd > mapping.sourceStart &&
+        mapping.generatedEnd > mapping.generatedStart,
+    )
+    .map((mapping) => {
+      const sourceLength = mapping.sourceEnd - mapping.sourceStart;
+      const generatedLength = mapping.generatedEnd - mapping.generatedStart;
+      return {
+        sourceOffsets: [mapping.sourceStart],
+        generatedOffsets: [mapping.generatedStart],
+        lengths: [sourceLength],
+        ...(sourceLength === generatedLength
+          ? {}
+          : { generatedLengths: [generatedLength] }),
+        data: codeInformation,
+      };
+    });
 }
 
 type PositionedCode =

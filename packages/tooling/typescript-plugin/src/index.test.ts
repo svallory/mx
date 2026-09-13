@@ -353,6 +353,48 @@ describe("MX language plugin", () => {
     ).toBe(true);
   });
 
+  it.each([
+    ["html", "/src/component.mx", true],
+    ["preact", `${here}/fixtures/preact-policy/component.mx`, true],
+    ["solid", `${here}/fixtures/solid-policy/component.mx`, false],
+  ])(
+    "maps component tag, attribute, and attribute-tag names for the %s host",
+    (_host, fileName, needsImport) => {
+      const markup = '<Card title=1><@footer>ok</@footer></Card>';
+      const source = needsImport
+        ? `import Card from "./Card.mx"\n${markup}`
+        : markup;
+      const plugin = createMxLanguagePlugin(ts);
+      const virtual = plugin.createVirtualCode?.(
+        fileName,
+        MX_LANGUAGE_ID,
+        ts.ScriptSnapshot.fromString(source),
+        { getAssociatedScript: () => undefined },
+      );
+      if (!virtual) throw new Error("Expected MX virtual code");
+      const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+
+      for (const [name, sourceOffset] of [
+        ["Card", source.indexOf("<Card") + 1],
+        ["title", source.indexOf("title")],
+        ["footer", source.indexOf("@footer") + 1],
+      ] as const) {
+        const mapping = virtual.mappings.find(
+          (candidate) => candidate.sourceOffsets[0] === sourceOffset,
+        );
+        expect(mapping, `${_host}:${name}`).toBeDefined();
+        const generatedLength =
+          mapping?.generatedLengths?.[0] ?? mapping?.lengths[0] ?? 0;
+        expect(
+          generated.slice(
+            mapping?.generatedOffsets[0] ?? 0,
+            (mapping?.generatedOffsets[0] ?? 0) + generatedLength,
+          ),
+        ).toBe(name);
+      }
+    },
+  );
+
   it("uses the nearest package.json host and Astro strictness", () => {
     const astroFile = `${here}/fixtures/astro-policy/card.mx`;
     const solidFile = `${here}/fixtures/solid-policy/card.mx`;
