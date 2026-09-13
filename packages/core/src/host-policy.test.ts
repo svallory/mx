@@ -69,6 +69,21 @@ describe("resolveHostPolicy", () => {
     expect(resolveHostPolicy(filePath)).toEqual({ host: "preact" });
   });
 
+  it("resolves the React host from an explicit mxlang.host field", () => {
+    const filePath = join(FIXTURES, "react-explicit/App.mx");
+
+    expect(resolveHostPolicy(filePath)).toEqual({
+      host: "react",
+      strict: undefined,
+    });
+  });
+
+  it("resolves the React host from a lone @mxlang/react dependency", () => {
+    const filePath = join(FIXTURES, "react-dependency/App.mx");
+
+    expect(resolveHostPolicy(filePath)).toEqual({ host: "react" });
+  });
+
   it("falls back to the default policy when two host dependencies are present", () => {
     // Ambiguous on purpose: a project depending on both hosts has not said
     // which one owns this file, so the dependency signal cannot answer and the

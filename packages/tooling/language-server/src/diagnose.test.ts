@@ -176,3 +176,28 @@ describe("the Preact host", () => {
     }
   });
 });
+
+describe("the React host", () => {
+  it("diagnoses a stateful tag through @mxlang/react", () => {
+    const diagnostics = diagnoseDocument(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
+      "<let/count=0/>\n<p>${count}</p>\n",
+      "file:///app/greeting.mx",
+      { host: "react" },
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toContain("React's `useState`");
+  });
+
+  it("reports nothing for a valid React-host document", () => {
+    const diagnostics = diagnoseDocument(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
+      "export interface Input { name: string }\n<h1>${input.name}</h1>\n",
+      "file:///app/greeting.mx",
+      { host: "react" },
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+});

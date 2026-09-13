@@ -37,11 +37,18 @@ async function compileMarko(
   // same resolver the language server and `mx-tsc` use — so an editor, a
   // `tsc` run and a `vite build` cannot disagree about what a `.mx` file is.
   const { resolveHostPolicy } = await import("@mxlang/core");
-  if (resolveHostPolicy(filename).host === "preact") {
+  const host = resolveHostPolicy(filename).host;
+  if (host === "preact") {
     const { compilePreactMx } = (await import("@mxlang/preact")) as {
       compilePreactMx: (source: string, filename: string) => { code: string };
     };
     return compilePreactMx(source, filename);
+  }
+  if (host === "react") {
+    const { compileReactMx } = (await import("@mxlang/react")) as {
+      compileReactMx: (source: string, filename: string) => { code: string };
+    };
+    return compileReactMx(source, filename);
   }
   const { compile } = (await import("@mxlang/html")) as {
     compile: (

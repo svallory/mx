@@ -10,6 +10,7 @@ import { type HostPolicy, TranslateError } from "@mxlang/core";
 import { compile } from "@mxlang/html";
 import { parse } from "@mxlang/parser";
 import { compilePreactMx } from "@mxlang/preact";
+import { compileReactMx } from "@mxlang/react";
 import { compileSolidMx } from "@mxlang/solid";
 import {
   type Diagnostic,
@@ -27,7 +28,7 @@ export function isSolidMxDocument(uri: string, languageId = ""): boolean {
 /**
  * Resolves a `HostPolicy` to the `strict` flag the translator compiles under.
  *
- * Solid and Preact documents take their own compiler path before this
+ * Solid, Preact and React documents take their own compiler path before this
  * function is called. Astro is always strict; HTML follows the resolved
  * policy.
  */
@@ -94,6 +95,8 @@ export function diagnoseDocument(
       // there is no looser policy to select — the `strict` flag has no
       // meaning for this host and is not consulted.
       compilePreactMx(text, uri);
+    } else if (hostPolicy.host === "react") {
+      compileReactMx(text, uri);
     } else {
       // Through `@mxlang/html`'s own front door, not `compileSource`
       // directly: this registers the host taglib and compiles via the IR.

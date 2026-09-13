@@ -481,6 +481,21 @@ describe("mx()", () => {
       expect(result?.code).not.toContain("let out =");
     }, 20_000);
 
+    it("routes a .mx file to the React host", async () => {
+      const path = writeMx("greeting.mx", GREETING);
+      writeFileSync(
+        join(dirname(path), "package.json"),
+        JSON.stringify({ name: "app", mxlang: { host: "react" } }),
+      );
+      const transform = transformOf(mx());
+
+      const result = await transform.call({}, GREETING, path + MX_SUFFIX);
+
+      expect(result?.code).toContain("/** @jsxImportSource react */");
+      expect(result?.code).toContain("<h1>Hello, {input.name}</h1>");
+      expect(result?.code).not.toContain("let out =");
+    }, 20_000);
+
     it("still handles .solid.mx exactly as before when both extensions are enabled", async () => {
       const path = writeMx("Counter.solid.mx", COUNTER);
       const transform = transformOf(mx());

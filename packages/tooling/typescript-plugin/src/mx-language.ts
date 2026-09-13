@@ -14,6 +14,7 @@ import {
 } from "@mxlang/core";
 import { compile, policy, strictPolicy, translator } from "@mxlang/html";
 import { compilePreactMx, preactDeclarations } from "@mxlang/preact";
+import { compileReactMx, reactDeclarations } from "@mxlang/react";
 import { compileSolidMx } from "@mxlang/solid";
 import type {
   CodeMapping,
@@ -61,7 +62,9 @@ export function createMxLanguagePlugin(
             ? compileSolidMx(source, { filename: fileName })
             : hostPolicy.host === "preact"
               ? compilePreactMx(source, fileName)
-              : compile(source, fileName, { strict });
+              : hostPolicy.host === "react"
+                ? compileReactMx(source, fileName)
+                : compile(source, fileName, { strict });
         const generated =
           hostPolicy.host === "astro"
             ? createAstroTypeSurface(compiled.code)
@@ -77,7 +80,11 @@ export function createMxLanguagePlugin(
                 // Resolve under the host that produced `generated`: a
                 // construct one host accepts another rejects, and resolving
                 // under the wrong policy throws instead of mapping.
-                hostPolicy.host === "preact" ? preactDeclarations : undefined,
+                hostPolicy.host === "preact"
+                  ? preactDeclarations
+                  : hostPolicy.host === "react"
+                    ? reactDeclarations
+                    : undefined,
               );
         syntaxErrors.delete(fileName);
         return createVirtualCode(typescript, generated, mappings);
