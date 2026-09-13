@@ -116,6 +116,28 @@ must carry them in the IR rather than rely on a text search.
 MX syntax errors are separate: `compile` throwing produces one positioned
 syntax diagnostic (see above), not a mapping.
 
+### Component tag and attribute names
+
+A wrong prop passed to a component from inside a `.mx` file is a TypeScript
+error at the attribute, not at the opening tag or the whole call. Every
+emitter records where it writes a component's tag name, each attribute name,
+and each `<@name>` attribute-tag name, so those spans map back into the
+source the same way an expression does:
+
+| Host             | Tag name maps to           | Attribute name maps to          |
+| ---------------- | --------------------------- | -------------------------------- |
+| HTML (`@mxlang/html`) | the call target (`Card(...)`) | the props object literal's key (`{ title: ... }`) |
+| Preact / React   | the JSX opening tag (`<Card`) | the JSX attribute name (`title={...}`) |
+| Solid            | the JSX opening tag (`<Card`) | the JSX attribute name (`title={...}`) |
+
+This is what lets `<Card title=1>` report `TS2322` at `title`, and
+`<Card nope="x">` report `TS2353` at `nope`. A missing required prop has no
+attribute of its own to anchor to: TypeScript reports that against the call's
+argument (the props object literal or, for JSX, the tag itself), so the HTML
+host's empty `{ }` argument falls back to mapping the whole literal to the
+tag name span — the same place JSX already anchors it — rather than being
+dropped as unmapped generated text.
+
 ## Using it
 
 Add it to a project's `tsconfig.json`:
