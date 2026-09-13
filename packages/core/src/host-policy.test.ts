@@ -50,6 +50,12 @@ describe("resolveHostPolicy", () => {
     warnSpy.mockRestore();
   });
 
+  it("resolves the Preact host from a lone @mxlang/preact dependency", () => {
+    const filePath = join(FIXTURES, "preact-dependency/App.mx");
+
+    expect(resolveHostPolicy(filePath)).toEqual({ host: "preact" });
+  });
+
   it("falls back to the default policy when two host dependencies are present", () => {
     // Ambiguous on purpose: a project depending on both hosts has not said
     // which one owns this file, so the dependency signal cannot answer and the

@@ -391,7 +391,7 @@ describe("mx()", () => {
 <h1>Hello, \${input.name}</h1>
 `;
 
-    it("resolves a .marko id to a .ts-suffixed module, not .tsx", async () => {
+    it("resolves a .marko id to the same .tsx suffix every extension gets", async () => {
       const context = makeContext();
       const resolveId = resolveIdOf(mx());
 
@@ -401,7 +401,10 @@ describe("mx()", () => {
         "/root/src/index.tsx",
       );
 
-      expect(resolved).toBe("/root/src/greeting.marko.ts");
+      // One suffix for every handled extension: `resolveId` holds the real
+      // path and `isMxModule` holds only the suffixed one, so a host-dependent
+      // suffix could not be derived identically in both (see `suffixFor`).
+      expect(resolved).toBe(`/root/src/greeting.marko${MX_SUFFIX}`);
     });
 
     // The 20s timeout below: this is the only test in the file that reaches
@@ -419,7 +422,7 @@ describe("mx()", () => {
       const path = writeMx("greeting.marko", GREETING);
       const transform = transformOf(mx());
 
-      const result = await transform.call({}, GREETING, `${path}.ts`);
+      const result = await transform.call({}, GREETING, path + MX_SUFFIX);
 
       expect(result).not.toBeNull();
       expect(result?.code).toContain("export default render;");
@@ -440,9 +443,9 @@ describe("mx()", () => {
       const path = writeMx("stateful.marko", STATEFUL);
       const transform = transformOf(mx({ strict: true }));
 
-      await expect(transform.call({}, STATEFUL, `${path}.ts`)).rejects.toThrow(
-        /`<let>` is reactive state/,
-      );
+      await expect(
+        transform.call({}, STATEFUL, path + MX_SUFFIX),
+      ).rejects.toThrow(/`<let>` is reactive state/);
     });
 
     it("renders <let>'s initial value when `strict` is not set", async () => {
@@ -455,10 +458,28 @@ describe("mx()", () => {
       const path = writeMx("stateful-default.marko", STATEFUL);
       const transform = transformOf(mx());
 
-      const result = await transform.call({}, STATEFUL, `${path}.ts`);
+      const result = await transform.call({}, STATEFUL, path + MX_SUFFIX);
 
       expect(result?.code).toContain("const count = 0;");
     });
+
+    it("routes a .mx file to the host its package.json names", async () => {
+      // The routing failure this guards is silent: compiled through the wrong
+      // host a template still succeeds, just to the other target's module —
+      // so both branches are asserted on what they actually emitted.
+      const path = writeMx("greeting.mx", GREETING);
+      writeFileSync(
+        join(dirname(path), "package.json"),
+        JSON.stringify({ name: "app", mxlang: { host: "preact" } }),
+      );
+      const transform = transformOf(mx());
+
+      const result = await transform.call({}, GREETING, path + MX_SUFFIX);
+
+      expect(result?.code).toContain("/** @jsxImportSource preact */");
+      expect(result?.code).toContain("<h1>Hello, {input.name}</h1>");
+      expect(result?.code).not.toContain("let out =");
+    }, 20_000);
 
     it("still handles .solid.mx exactly as before when both extensions are enabled", async () => {
       const path = writeMx("Counter.solid.mx", COUNTER);
@@ -527,8 +548,8 @@ describe("mx()", () => {
           "./Counter.solid.mx",
           "/root/src/index.tsx",
         );
-        // .tsx (the JSX/print() suffix), not .ts (the .mx-specific suffix) —
-        // proves ".solid.mx" won over ".mx" regardless of extensions order.
+        // Resolved through the ".solid.mx" branch regardless of extensions
+        // order; the suffix itself is the same for every handled extension.
         expect(resolvedSolidMx).toBe("/root/src/Counter.solid.mx.tsx");
 
         const resolvedMx = await resolveId.call(
@@ -536,9 +557,10 @@ describe("mx()", () => {
           "./greeting.mx",
           "/root/src/index.tsx",
         );
-        // .ts, not .tsx: ".mx" alone (not ".solid.mx") routes through
-        // compile(), same as ".marko".
-        expect(resolvedMx).toBe("/root/src/greeting.mx.ts");
+        // Same suffix as `.solid.mx`: what this asserts is that a `.mx` id is
+        // resolved at all (so ".solid.mx" did not swallow it), not which
+        // compiler it routes to — that is the host policy's answer now.
+        expect(resolvedMx).toBe(`/root/src/greeting.mx${MX_SUFFIX}`);
       },
     );
   });

@@ -6,7 +6,7 @@
   "main": "dist/index.cjs",
   "types": "src/index.ts",
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target node --format cjs --entry-naming '[dir]/[name].cjs' --external @astrojs/compiler --external @astrojs/language-server --external @marko/compiler --external @mxlang/astro --external @mxlang/core --external @mxlang/html --external @mxlang/parser --external @mxlang/solid --external @volar/language-core --external @volar/typescript --external typescript",
+    "build": "bun build src/index.ts --outdir dist --target node --format cjs --entry-naming '[dir]/[name].cjs' --external @astrojs/compiler --external @astrojs/language-server --external @marko/compiler --external @mxlang/astro --external @mxlang/core --external @mxlang/html --external @mxlang/parser --external @mxlang/preact --external @mxlang/solid --external @volar/language-core --external @volar/typescript --external typescript",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -14,10 +14,11 @@
     "@astrojs/compiler": "2.13.1",
     "@jridgewell/sourcemap-codec": "1.6.0",
     "@marko/compiler": "5.42.5",
-    "@mxlang/core": "workspace:*",
     "@mxlang/astro": "workspace:*",
+    "@mxlang/core": "workspace:*",
     "@mxlang/html": "workspace:*",
     "@mxlang/parser": "workspace:*",
+    "@mxlang/preact": "workspace:*",
     "@mxlang/solid": "workspace:*",
     "@volar/language-core": "2.4.28",
     "@volar/typescript": "2.4.28"

@@ -6,12 +6,13 @@
  *
  * 1. Walk upward from the file's directory looking for the nearest
  *    `package.json`. If it has a `"mxlang"` field, that field *is* the
- *    answer: `{ host: "html" | "astro" | "solid", strict?: boolean }` (with
- *    "translator" accepted as a deprecated alias for "html").
+ *    answer: `{ host: "html" | "astro" | "solid" | "preact", strict?: boolean }`
+ *    (with "translator" accepted as a deprecated alias for "html").
  * 2. Otherwise, if that same `package.json` depends (in `dependencies` or
  *    `devDependencies`) on exactly one `@mxlang/*` host package
- *    (`@mxlang/html`, `@mxlang/astro`, `@mxlang/solid`; `@mxlang/core` itself
- *    does not count, since every host depends on it too), use that host.
+ *    (`@mxlang/html`, `@mxlang/astro`, `@mxlang/solid`, `@mxlang/preact`;
+ *    `@mxlang/core` itself does not count, since every host depends on it
+ *    too), use that host.
  * 3. Otherwise, fall back to the translator's default (non-strict) policy.
  *
  * This mirrors `Project.loadMeta`'s own `createRequire` + upward
@@ -33,7 +34,7 @@ import { dirname, join } from "node:path";
 
 /** The host a file compiles through, plus that host's strictness. */
 export interface HostPolicy {
-  host: "html" | "astro" | "solid";
+  host: "html" | "astro" | "solid" | "preact";
   strict?: boolean;
 }
 
@@ -41,6 +42,7 @@ const HOST_PACKAGES: Record<string, HostPolicy["host"]> = {
   "@mxlang/html": "html",
   "@mxlang/astro": "astro",
   "@mxlang/solid": "solid",
+  "@mxlang/preact": "preact",
 };
 
 const DEFAULT_POLICY: HostPolicy = { host: "html" };
@@ -58,7 +60,8 @@ function isKnownHost(
     value === "html" ||
     value === "translator" ||
     value === "astro" ||
-    value === "solid"
+    value === "solid" ||
+    value === "preact"
   );
 }
 

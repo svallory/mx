@@ -9,6 +9,7 @@
 import { type HostPolicy, TranslateError } from "@mxlang/core";
 import { compile } from "@mxlang/html";
 import { parse } from "@mxlang/parser";
+import { compilePreactMx } from "@mxlang/preact";
 import { compileSolidMx } from "@mxlang/solid";
 import {
   type Diagnostic,
@@ -26,8 +27,9 @@ export function isSolidMxDocument(uri: string, languageId = ""): boolean {
 /**
  * Resolves a `HostPolicy` to the `strict` flag the translator compiles under.
  *
- * Solid documents take their own compiler path before this function is
- * called. Astro is always strict; HTML follows the resolved policy.
+ * Solid and Preact documents take their own compiler path before this
+ * function is called. Astro is always strict; HTML follows the resolved
+ * policy.
  */
 function resolveStrict(hostPolicy: HostPolicy): boolean {
   if (hostPolicy.host === "astro") return true;
@@ -86,6 +88,12 @@ export function diagnoseDocument(
       // fixed Solid profile as an embedded region. Its declarations reject
       // stateful Marko tags; there is no looser Solid policy to select.
       compileSolidMx(text, { filename: uri });
+    } else if (hostPolicy.host === "preact") {
+      // A whole-file `.mx` document routed to the Preact host. Its
+      // declarations reject Marko's stateful tags outright, so like Solid's
+      // there is no looser policy to select — the `strict` flag has no
+      // meaning for this host and is not consulted.
+      compilePreactMx(text, uri);
     } else {
       // Through `@mxlang/html`'s own front door, not `compileSource`
       // directly: this registers the host taglib and compiles via the IR.

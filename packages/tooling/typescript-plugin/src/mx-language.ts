@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import {
   type Expr,
+  type HostDeclarations,
   type Ir,
   type IrNode,
   type Lookup,
@@ -12,6 +13,7 @@ import {
   resolveHostPolicy,
 } from "@mxlang/core";
 import { compile, policy, strictPolicy, translator } from "@mxlang/html";
+import { compilePreactMx, preactDeclarations } from "@mxlang/preact";
 import { compileSolidMx } from "@mxlang/solid";
 import type {
   CodeMapping,
@@ -52,13 +54,14 @@ export function createMxLanguagePlugin(
       const source = snapshot.getText(0, snapshot.getLength());
       try {
         const hostPolicy = resolveHostPolicy(fileName);
+        const strict =
+          hostPolicy.host === "astro" || hostPolicy.strict === true;
         const compiled =
           hostPolicy.host === "solid"
             ? compileSolidMx(source, { filename: fileName })
-            : compile(source, fileName, {
-                strict:
-                  hostPolicy.host === "astro" || hostPolicy.strict === true,
-              });
+            : hostPolicy.host === "preact"
+              ? compilePreactMx(source, fileName)
+              : compile(source, fileName, { strict });
         const generated =
           hostPolicy.host === "astro"
             ? createAstroTypeSurface(compiled.code)
@@ -70,7 +73,11 @@ export function createMxLanguagePlugin(
                 source,
                 fileName,
                 generated,
-                hostPolicy.host === "astro" || hostPolicy.strict === true,
+                strict,
+                // Resolve under the host that produced `generated`: a
+                // construct one host accepts another rejects, and resolving
+                // under the wrong policy throws instead of mapping.
+                hostPolicy.host === "preact" ? preactDeclarations : undefined,
               );
         syntaxErrors.delete(fileName);
         return createVirtualCode(typescript, generated, mappings);
@@ -158,16 +165,21 @@ function createVirtualCode(
 }
 
 /**
- * The HTML compiler currently returns an empty placeholder source map. Build
- * the mappings from the same positioned IR expressions its emitter consumes:
- * every expression carries its original Babel node (and exact `loc`) plus the
- * source text emitted into the TypeScript module.
+ * The whole-file compilers currently return an empty placeholder source map.
+ * Build the mappings from the same positioned IR expressions their emitters
+ * consume: every expression carries its original Babel node (and exact `loc`)
+ * plus the source text emitted into the TypeScript module.
+ *
+ * `declarations` selects the host to resolve under, because a construct one
+ * host accepts another rejects — resolving a Preact template under the HTML
+ * policy would throw on the first `<try>` and yield no mappings at all.
  */
 export function createHtmlMappings(
   source: string,
   fileName: string,
   generated: string,
   strict: boolean,
+  declarations?: HostDeclarations,
 ): CodeMapping[] {
   const require = createRequire(import.meta.url);
   const compiler = require("@marko/compiler") as {
@@ -182,7 +194,7 @@ export function createHtmlMappings(
   const ctx = newCtx(
     source,
     (node) => generator(node, { concise: true }).code,
-    strict ? strictPolicy : policy,
+    declarations ?? (strict ? strictPolicy : policy),
     compiler.taglib.buildLookup(dirname(fileName), translator),
   );
   const ir = resolve(ctx, body);

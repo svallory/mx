@@ -33,6 +33,16 @@ async function compileMarko(
   filename: string,
   strict: boolean,
 ): Promise<{ code: string }> {
+  // Which host owns this file is the nearest `package.json`'s answer, the
+  // same resolver the language server and `mx-tsc` use — so an editor, a
+  // `tsc` run and a `vite build` cannot disagree about what a `.mx` file is.
+  const { resolveHostPolicy } = await import("@mxlang/core");
+  if (resolveHostPolicy(filename).host === "preact") {
+    const { compilePreactMx } = (await import("@mxlang/preact")) as {
+      compilePreactMx: (source: string, filename: string) => { code: string };
+    };
+    return compilePreactMx(source, filename);
+  }
   const { compile } = (await import("@mxlang/html")) as {
     compile: (
       source: string,
@@ -96,14 +106,20 @@ const FOREIGN_EXTENSIONS: string[] = [];
  * Appended to the resolved path so the rest of the pipeline sees a JS-family
  * module. See the note on `resolveId` below for why this is necessary.
  *
- * `.solid.mx` prints to JSX text (`print()`), so it needs `.tsx`; `.mx`
- * (the official extension, decision 72) and its `.marko` alias both compile
- * to a string-returning function with no JSX (`compile()`), so `.ts` is
- * enough and keeps rolldown/esbuild from running a JSX transform over code
- * that has none.
+ * Always `.tsx`, for every extension this plugin handles. `.solid.mx` prints
+ * JSX text (`print()`) and needs it; so does a `.mx` compiled through a JSX
+ * host (`@mxlang/preact` emits a component module). A `.mx` compiled through
+ * `@mxlang/html` emits no JSX, and used to take `.ts` for that reason — but
+ * the suffix has to be decided identically by `resolveId` (which holds the
+ * real path) and by `isMxModule` (which holds only the already-suffixed one),
+ * and the host is a property of the *file's* nearest `package.json`. Deriving
+ * it in both places would mean resolving the host policy from a path that
+ * does not exist on disk. One suffix for all of them keeps that round trip
+ * exact; a `.tsx` file whose code contains no JSX is still ordinary
+ * TypeScript, and rolldown's JSX transform over it is a no-op.
  */
-function suffixFor(ext: string): string {
-  return ext === ".marko" || ext === ".mx" ? ".ts" : ".tsx";
+function suffixFor(_ext: string): string {
+  return ".tsx";
 }
 
 /** `suffixFor(".solid.mx")`, kept as a named export for existing callers/tests. */

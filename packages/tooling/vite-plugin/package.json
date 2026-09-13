@@ -10,7 +10,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@mxlang/core": "workspace:*",
+    "@mxlang/html": "workspace:*",
     "@mxlang/parser": "workspace:*",
-    "@mxlang/html": "workspace:*"
+    "@mxlang/preact": "workspace:*"
   }
 }

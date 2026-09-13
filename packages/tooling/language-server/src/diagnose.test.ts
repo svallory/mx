@@ -137,3 +137,42 @@ export const view = () => (
     expect(diagnostics[0]?.range.start).toEqual({ line: 0, character: 0 });
   });
 });
+
+describe("the Preact host", () => {
+  // `<let>` is valid Marko and renders its initial value under the html
+  // host, so a diagnostic here can only come from the Preact host's own
+  // declarations — which is what proves the switch routed the document.
+  it("diagnoses a stateful tag through @mxlang/preact", () => {
+    const diagnostics = diagnoseDocument(
+      "<let/count=0/>\n<p>${count}</p>\n",
+      "file:///app/greeting.mx",
+      { host: "preact" },
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toContain("useState");
+  });
+
+  it("reports nothing for a valid Preact-host document", () => {
+    const diagnostics = diagnoseDocument(
+      "export interface Input { name: string }\n<h1>${input.name}</h1>\n",
+      "file:///app/greeting.mx",
+      { host: "preact" },
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("ignores `strict`, which this host has no looser mode for", () => {
+    // Both spellings resolve to the same declarations: unlike the html host,
+    // there is no second policy to select.
+    for (const strict of [true, false]) {
+      const diagnostics = diagnoseDocument(
+        "<let/count=0/>\n<p>${count}</p>\n",
+        "file:///app/greeting.mx",
+        { host: "preact", strict },
+      );
+      expect(diagnostics).toHaveLength(1);
+    }
+  });
+});
