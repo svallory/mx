@@ -135,7 +135,10 @@ this precedence correct when `MX` was added back.
 - `SolidMX` (`.solid.mx`): syntax highlighting, brackets, outline, syntax
   highlighting inside `mx_element` regions via the official Marko extension's
   injection (see "Prerequisite" below), and Solid host diagnostics from
-  `@mxlang/language-server`.
+  `@mxlang/language-server`. TSX fragments (`<>...</>`) are supported: each
+  `<tag>` child highlights as its own `mx_element` region, the same as a
+  fragment-free file (task `solidmx-grammar-fragments`; see
+  `packages/editors/tree-sitter-solidmx/UPSTREAM.md` "Local modifications").
 
 `.amx` needs no precedence rule of its own: Zed's matcher reads the text after
 the last dot, and `amx` is not `mx`, so `AstroMX` and `MX` never contend the

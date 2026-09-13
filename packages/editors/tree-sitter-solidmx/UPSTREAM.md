@@ -157,8 +157,13 @@ every future run's output ("Applied patch ... cleanly" vs. "Skipped patch").
 ## Local modifications
 
 All of them live in `patches/*.patch`, produced with `git format-patch` and
-applied by `scripts/vendor.sh`. There is exactly one patch, touching only
-`common/define-grammar.js`:
+applied in order by `scripts/vendor.sh` (a plain `git apply` per file, not
+`git am`, so each patch just needs to apply cleanly against the previous
+one's result — see "A third defect" below for why a patch is edited by
+adding a new file, never by rewriting an existing one in place). Both patches
+touch only `common/define-grammar.js`:
+
+`0001-*.patch`:
 
 1. **`externals`** — declare `mx_element`, the opaque whole-region token.
 2. **`expression`** — in the `tsx` branch, drop `_jsx_element` (the choice of
@@ -169,6 +174,19 @@ applied by `scripts/vendor.sh`. There is exactly one patch, touching only
    (`tree_sitter_solidmx_external_scanner_scan`), so SolidMX must be named
    `solidmx` while still selecting every `tsx` dialect branch. Defaulting to
    `dialect` leaves upstream's own two grammars unaffected.
+
+`0002-*.patch` (task `solidmx-grammar-fragments`):
+
+4. **`externals`** — declare `mx_fragment_open` and `mx_fragment_close`
+   (`<>` / `</>`), scanned by `src/scanner_mx.c`'s `mx_scan_at_lt`.
+5. **`expression`** — in the `tsx` branch, additionally push `$.mx_fragment`
+   alongside `$.mx_element`.
+6. **`rules.mx_fragment`** — `seq(mx_fragment_open, repeat(choice(mx_element,
+   jsx_expression, mx_fragment)), mx_fragment_close)`. Each `<tag>` child is
+   an ordinary `mx_element`; `jsx_expression` (from the base JS grammar,
+   reachable directly since it is a named rule, not inlined) is the `{expr}`
+   child; `mx_fragment` recurses for nesting. No direct text child is
+   declared, so `<>` with bare text in it is a grammar-level parse error.
 
 ### Deliberately NOT carried over
 
@@ -289,9 +307,51 @@ in this task's time budget after the corruption was fixed and the base
 patch restored — see the differential-test PR's report for the grammar-level
 blocker found (the external `jsx_text` scanner does not recognize a
 fragment's own bespoke opening-tag production the way it recognizes
-`jsx_opening_element`'s real one). `<>` remains unsupported in `.solid.mx`;
-the scanner's own decline-on-`<>` (`src/scanner_mx.c`, "`<>` is a TSX
-fragment and must be handled by the TSX grammar natively") is correct and
-kept, since without a grammar-level `jsx_fragment` production `<>` is a
-plain parse error rather than a silently wrong MX region — which is the
-right failure mode until fragment support is designed properly.
+`jsx_opening_element`'s real one).
+
+**Resolved (task `solidmx-grammar-fragments`): the scanner-level route.**
+The grammar-level route above was abandoned rather than fixed — reusing
+upstream's `jsx_element`/`jsx_text` machinery for `<>` fights the same
+external-scanner ordering problem no matter how the grammar rule is shaped,
+because `jsx_text` is itself an external token and the two scanners cannot
+negotiate a shared "we are inside a fragment" state without one knowing
+about the other. Fragments are unrelated to that machinery entirely: `<>`
+and `</>` are their own tokens, `mx_fragment_open`/`mx_fragment_close`
+(`common/define-grammar.js`'s new `mx_fragment` rule; scanned in
+`src/scanner_mx.c`'s `mx_scan_at_lt`), and each child `<tag>...</tag>` is
+independently scanned as its own ordinary `mx_element` — matching
+`collectMxRegions` (`packages/parser/src/babel/plugins/jsx/index.ts`
+`jsxParseElementAt`: `<>` falls through to ordinary Babel JSX-fragment
+parsing since the tokenizer is already sitting on `tt.jsxTagEnd`, and only
+each child's own `<tag>` recursion re-enters the MX bridge). No `jsx_text`,
+no `jsx_element`, no reference to upstream's JSX rules at all.
+
+The one real pitfall, found by instrumenting the scanner: **a `TSLexer`
+cannot unconsume.** `mx_element` and both fragment tokens are valid at the
+same grammar position (both are alternatives of `expression`/`mx_fragment`'s
+own `repeat`), so the first design tried the natural thing — call
+`mx_scan_element_token`, and on decline, call a separate
+`mx_scan_fragment_token`. That fails: `scan_mx_element` advances past the
+leading `<` before checking the next character, and when it declines (on
+`<>`) the *next* nested C call in the *same* `external_scanner_scan`
+invocation starts with the lexer already sitting past `<`, not back at it —
+tree-sitter only resets lexer position between **separate** calls to that
+entry point, never between two scan attempts chained inside one. The fix is
+`mx_scan_at_lt`: one function that consumes `<` exactly once, decides
+open/close-fragment vs. element from the very next character, and either
+returns immediately (fragment) or falls straight into
+`scan_mx_element_body` (element) without a second consumption of `<`.
+Confirmed by parsing `<T,>(x: T) => x` (still rejected, `type_parameters`
+wins) and `<div>...</div>` (still one opaque `mx_element`) after the change
+— the reordering did not regress the pre-existing element/generic-arrow
+disambiguation.
+
+`test/corpus/fragments.txt` now pins two-child, empty, nested, and
+`{expr}`-child fragments, a fragment as a function's return expression, and
+that `<>` written *inside* an MX region's own text body is still literal MX
+text (scanner-rules §9.2), not a fragment delimiter. `scripts/differential.ts`
+confirms `fixtures/fragments/input.solid.mx` produces the exact same
+`mx_element` region set from tree-sitter and from
+`@mxlang/parser`'s `collectMxRegions` — one region per fragment child, none
+for the fragment shell itself, since the shell is plain Babel `JSXFragment`
+with no `node.extra.mx` stamp of its own.
