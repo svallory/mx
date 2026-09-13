@@ -98,6 +98,10 @@
         "named": true
       },
       {
+        "type": "mx_fragment",
+        "named": true
+      },
+      {
         "type": "new_expression",
         "named": true
       },
@@ -3206,6 +3210,29 @@
     }
   },
   {
+    "type": "jsx_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        },
+        {
+          "type": "sequence_expression",
+          "named": true
+        },
+        {
+          "type": "spread_element",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "labeled_statement",
     "named": true,
     "fields": {
@@ -3610,6 +3637,37 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "mx_fragment",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "jsx_expression",
+          "named": true
+        },
+        {
+          "type": "mx_element",
+          "named": true
+        },
+        {
+          "type": "mx_fragment",
+          "named": true
+        },
+        {
+          "type": "mx_fragment_close",
+          "named": true
+        },
+        {
+          "type": "mx_fragment_open",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -5792,6 +5850,14 @@
   },
   {
     "type": "mx_element",
+    "named": true
+  },
+  {
+    "type": "mx_fragment_close",
+    "named": true
+  },
+  {
+    "type": "mx_fragment_open",
     "named": true
   },
   {

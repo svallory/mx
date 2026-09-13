@@ -51,9 +51,18 @@ void tree_sitter_solidmx_external_scanner_deserialize(void *payload, const char 
 
 bool tree_sitter_solidmx_external_scanner_scan(void *payload, TSLexer *lexer,
                                                const bool *valid_symbols) {
-    // MX first: when the grammar admits an MX element here, the whole region is
-    // one token and none of upstream's tokens can apply at that position.
-    if (valid_symbols[MX_ELEMENT] && mx_scan_element_token(lexer)) {
+    // When the grammar admits an mx_element and/or either fragment delimiter
+    // here, all of them must be decided by ONE call into scanner_mx.c:
+    // mx_scan_at_lt consumes `<` (skipping leading whitespace first) and then
+    // branches on the very next character. This can't be split into separate
+    // "try element, else try fragment" calls the way the rest of this
+    // dispatch works, because a TSLexer has no "unconsume" — whichever
+    // function looks at the character after `<` first commits the lexer past
+    // it for the rest of this call, so a second function chained after a
+    // declined first attempt would start mid-token rather than at `<` again
+    // (see mx_scan_at_lt's own comment for how this was found).
+    if ((valid_symbols[MX_ELEMENT] || valid_symbols[MX_FRAGMENT_OPEN] || valid_symbols[MX_FRAGMENT_CLOSE]) &&
+        mx_scan_at_lt(lexer, valid_symbols[MX_ELEMENT], valid_symbols[MX_FRAGMENT_OPEN], valid_symbols[MX_FRAGMENT_CLOSE])) {
         return true;
     }
     return external_scanner_scan(payload, lexer, valid_symbols);

@@ -1,0 +1,70 @@
+From 29e595aec2262a2ee5d3c108647af268cb7a30ce Mon Sep 17 00:00:00 2001
+From: Saulo Vallory <me@saulo.engineer>
+Date: Sun, 13 Sep 2026 06:55:07 -0300
+Subject: [PATCH] feat(grammar): mx_fragment via scanner tokens
+
+---
+ common/define-grammar.js | 33 +++++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/common/define-grammar.js b/common/define-grammar.js
+index 87c308d..174dbac 100644
+--- a/common/define-grammar.js
++++ b/common/define-grammar.js
+@@ -17,6 +17,12 @@ module.exports = function defineGrammar(dialect, name = dialect) {
+       // external scanner in src/scanner_mx.c. Only valid where the tsx dialect
+       // would have admitted a JSX element (see `expression` below).
+       $.mx_element,
++      // MX: fragment delimiters, `<>` and `</>`. Emitted as their own tokens
++      // (not folded into mx_element) so `mx_fragment`'s children can each be
++      // scanned as their own mx_element — a fragment has no root tag of its
++      // own for scan_mx_element to key off of.
++      $.mx_fragment_open,
++      $.mx_fragment_close,
+     ]),
+ 
+     supertypes: ($, previous) => previous.concat([
+@@ -154,6 +160,29 @@ module.exports = function defineGrammar(dialect, name = dialect) {
+       ]),
+ 
+     rules: {
++      // MX: `<>…</>`. `mx_fragment_open`/`mx_fragment_close` are their own
++      // external tokens (src/scanner_mx.c) rather than folded into
++      // mx_element, because a fragment has no root tag of its own to scan —
++      // each child `<tag>…</tag>` is independently scanned as its own
++      // mx_element, matching `collectMxRegions` (one region per child
++      // element, none for the fragment shell itself; see
++      // packages/parser/src/babel/plugins/jsx/index.ts jsxParseElementAt,
++      // which hands `<>` to ordinary Babel JSX-fragment parsing and only its
++      // per-child `<tag>` recursion re-enters the MX bridge).
++      //
++      // A fragment's direct text child is not permitted: nothing here
++      // declares jsx_text (or plain text) as a valid mx_fragment child, so
++      // text directly inside `<>...</>` is a grammar-level parse error.
++      mx_fragment: $ => seq(
++        $.mx_fragment_open,
++        repeat(choice(
++          $.mx_element,
++          $.jsx_expression,
++          $.mx_fragment,
++        )),
++        $.mx_fragment_close,
++      ),
++
+       public_field_definition: $ => seq(
+         repeat(field('decorator', $.decorator)),
+         optional(choice(
+@@ -258,6 +287,10 @@ module.exports = function defineGrammar(dialect, name = dialect) {
+             member.name !== '_jsx_element',
+           ));
+           choices.push($.mx_element);
++          // MX: `<>…</>`. Its own rule below, kept separate from mx_element
++          // because a fragment's children are individually-scanned elements,
++          // not one opaque span.
++          choices.push($.mx_fragment);
+         } else {
+           throw new Error(`Unknown dialect ${dialect}`);
+         }
+-- 
+2.55.0
+

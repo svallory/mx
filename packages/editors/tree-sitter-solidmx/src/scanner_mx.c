@@ -106,6 +106,8 @@ enum MxTokenType {
     MX_FUNCTION_SIGNATURE_AUTOMATIC_SEMICOLON, // 8
     MX_ERROR_RECOVERY,                        // 9
     MX_ELEMENT,                               // 10 — MX's own
+    MX_FRAGMENT_OPEN,                         // 11 — MX's own, `<>`
+    MX_FRAGMENT_CLOSE,                        // 12 — MX's own, `</>`
 };
 
 // A hard cap on the region scan. htmljs-parser has no such limit, but a
@@ -942,20 +944,33 @@ static bool scan_markup_decl(TSLexer *lexer, unsigned *budget) {
 // End-of-input without either is "Unterminated MX element." upstream
 // (walk.ts:374-380); here it is a failed token, which lets the parser report a
 // normal syntax error at the `<`.
-static bool scan_mx_element(TSLexer *lexer) {
-    unsigned budget = MX_MAX_SCAN;
+// Assumes the root tag's leading `<` has ALREADY been consumed by the caller
+// and that the caller has already ruled out the four things that cannot
+// follow it here — `!`/`?` (markup declaration), `/` (a stray close tag) and
+// `>` (an empty fragment, not an element). Split out from scan_mx_element so
+// mx_scan_at_lt can consume `<` itself, decide fragment-vs-element on the very
+// next character, and continue straight into this body without a second,
+// redundant consumption of `<` (a TSLexer cannot unconsume — see
+// mx_scan_at_lt's own comment).
+static bool scan_mx_element_body(TSLexer *lexer);
 
-    // The root tag.
+// Thin wrapper for a standalone `<` scan (no fragment tokens valid at this
+// position, so there is nothing to disambiguate against): consumes `<`,
+// declines on a markup declaration / stray close tag / empty fragment, then
+// runs the shared body.
+static bool scan_mx_element(TSLexer *lexer) {
     if (lexer->lookahead != '<') {
         return false;
     }
     advance_mx(lexer);
-
-    // A markup declaration is not an element and cannot be an MX region root.
-    // `<>` is a TSX fragment and must be handled by the TSX grammar natively.
     if (lexer->lookahead == '!' || lexer->lookahead == '?' || lexer->lookahead == '/' || lexer->lookahead == '>') {
         return false;
     }
+    return scan_mx_element_body(lexer);
+}
+
+static bool scan_mx_element_body(TSLexer *lexer) {
+    unsigned budget = MX_MAX_SCAN;
 
     char root_name[64];
     unsigned root_len = 0;
@@ -1108,4 +1123,71 @@ static bool mx_scan_element_token(TSLexer *lexer) {
     }
     lexer->result_symbol = MX_ELEMENT;
     return scan_mx_element(lexer);
+}
+
+// ---------------------------------------------------------------------------
+// Fragment delimiters, `<>` and `</>` (mx_fragment_open / mx_fragment_close).
+//
+// Each is a fixed two- or three-character token, decided purely by lookahead
+// — no region scan, since a fragment has no root tag of its own. The grammar
+// rule (common/define-grammar.js's mx_fragment) then treats each `<tag>`
+// child as its own ordinary mx_element, and a nested `<>` as its own nested
+// mx_fragment.
+//
+// Precedence against mx_element and the tsx `<` token is entirely the
+// caller's (scanner.c): mx_fragment_open is offered only when the grammar
+// position admits it (an mx_fragment child or top-level expression) AND the
+// next non-`<` character is `>` — anywhere else `<` falls through to
+// mx_element (a real tag) or, failing that, the internal `<` token (a type
+// parameter list). Because this scanner only fires when
+// valid_symbols[MX_FRAGMENT_OPEN] is set, `<div>` and `<T,>` are never
+// offered this path at all; only literal `<>` is.
+// The combined entry point for `<` when the grammar admits mx_element and/or
+// either fragment delimiter at this position (all three are tried together,
+// never in separate top-level calls): a TSLexer cannot unconsume, so once
+// this function has advanced past `<` to look at the next character, that
+// decision is final for the rest of the current external_scanner_scan call —
+// tree-sitter only resets lexer position between SEPARATE calls to that
+// entry point, not between nested C calls chained inside one (confirmed:
+// advancing past `<` in one nested attempt and returning false left the very
+// next nested attempt, in the same dispatch, seeing the following character
+// rather than `<` again). So there can only be one attempt per `<`, and it
+// must decide the full shape — fragment vs. element vs. neither — itself.
+static bool mx_scan_at_lt(TSLexer *lexer, bool want_element, bool want_open, bool want_close) {
+    while (is_ws(lexer->lookahead)) {
+        lexer->advance(lexer, true);
+    }
+    if (lexer->lookahead != '<') {
+        return false;
+    }
+    advance_mx(lexer); // the leading `<`, common to all three shapes
+
+    if (want_close && lexer->lookahead == '/') {
+        advance_mx(lexer);
+        if (lexer->lookahead != '>') {
+            return false;
+        }
+        advance_mx(lexer);
+        lexer->result_symbol = MX_FRAGMENT_CLOSE;
+        lexer->mark_end(lexer);
+        return true;
+    }
+
+    if (want_open && lexer->lookahead == '>') {
+        advance_mx(lexer);
+        lexer->result_symbol = MX_FRAGMENT_OPEN;
+        lexer->mark_end(lexer);
+        return true;
+    }
+
+    // Not a fragment delimiter — scan_mx_element's own markup-decl check
+    // (its `!`/`?`/`/`/`>` guard) would otherwise re-run this exact
+    // discrimination a second time, redundantly and past a `<` already
+    // consumed here. Continue the element scan from right after `<` instead
+    // of re-entering scan_mx_element (which expects to consume `<` itself).
+    if (!want_element) {
+        return false;
+    }
+    lexer->result_symbol = MX_ELEMENT;
+    return scan_mx_element_body(lexer);
 }
