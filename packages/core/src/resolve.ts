@@ -416,6 +416,7 @@ function resolveFor(ctx: Ctx, node: Node): IrNode {
     kind: "For",
     source,
     params,
+    paramNodes: [...(node.body?.params ?? [])],
     bindings,
     key: by ? exprOf(ctx, by.value) : null,
     children,

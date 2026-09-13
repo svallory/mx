@@ -52,6 +52,76 @@ describe("lowerAstroMx", () => {
   });
 });
 
+describe("source mappings", () => {
+  it("maps the unchanged frontmatter fence as one identity span", () => {
+    const source = `---\nconst title = "Hello";\n---\n<h1>${"${title}"}</h1>`;
+    const result = lowerAstroMx(source, "Test.amx");
+    const fenceEnd = source.indexOf("<h1>");
+
+    expect(result.mappings[0]).toEqual({
+      sourceStart: 0,
+      sourceEnd: fenceEnd,
+      generatedStart: 0,
+      generatedEnd: fenceEnd,
+    });
+  });
+
+  it.each([
+    ["interpolation", "<p>before ${value} after</p>", "value"],
+    ["attribute value", "<p title=value>x</p>", "value"],
+    ["if condition", "<if=visible><p>x</p></if>", "visible"],
+    ["for iterable", "<for|item| of=items><p>${item}</p></for>", "items"],
+    ["for tag param", "<for|item| of=items><p>x</p></for>", "item"],
+  ])(
+    "maps an emitted %s at its write offset",
+    (_kind, template, expression) => {
+      const result = lowerAstroMx(template, "Test.amx");
+      const sourceStart = template.indexOf(expression);
+      const mapping = result.mappings.find(
+        (candidate) => candidate.sourceStart === sourceStart,
+      );
+
+      expect(mapping).toBeDefined();
+      expect(template.slice(mapping?.sourceStart, mapping?.sourceEnd)).toBe(
+        expression,
+      );
+      expect(
+        result.code.slice(mapping?.generatedStart, mapping?.generatedEnd),
+      ).toBe(expression);
+    },
+  );
+
+  it("maps a hoisted statement as a whole source block", () => {
+    const source = "static const answer: number = 42;\n<p>${answer}</p>";
+    const result = lowerAstroMx(source, "Test.amx");
+    const generatedStatement = "const answer: number = 42;";
+    const mapping = result.mappings.find(
+      (candidate) =>
+        result.code.slice(candidate.generatedStart, candidate.generatedEnd) ===
+        generatedStatement,
+    );
+
+    expect(mapping).toBeDefined();
+    expect(source.slice(mapping?.sourceStart, mapping?.sourceEnd)).toBe(
+      "static const answer: number = 42;",
+    );
+  });
+
+  it("maps an attribute name where TypeScript anchors prop diagnostics", () => {
+    const source = "<Card title=1/>";
+    const result = lowerAstroMx(source, "Test.amx");
+    const sourceStart = source.indexOf("title");
+    const mapping = result.mappings.find(
+      (candidate) => candidate.sourceStart === sourceStart,
+    );
+
+    expect(mapping).toBeDefined();
+    expect(
+      result.code.slice(mapping?.generatedStart, mapping?.generatedEnd),
+    ).toBe("title");
+  });
+});
+
 describe("placeholders", () => {
   it("lowers `${expr}` to an Astro expression", () => {
     expect(lower("<h1>${title}</h1>")).toBe("<h1>{title}</h1>");

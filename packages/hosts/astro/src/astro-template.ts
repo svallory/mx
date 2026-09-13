@@ -12,6 +12,7 @@ import {
   DYNAMIC_TAG,
   drive,
   type Emitter,
+  type Expr,
   emit,
   type HostDeclarations,
   type Ir,
@@ -107,7 +108,7 @@ function isComponentName(name: string): boolean {
   return /^[A-Z]/.test(name);
 }
 
-type HostTagData = { kind: "interpolation"; code: string };
+type HostTagData = { kind: "interpolation"; expr: Expr };
 
 /** Questions the Astro host answers while Marko nodes are still available. */
 const declarations: HostDeclarations = {
@@ -135,7 +136,14 @@ const declarations: HostDeclarations = {
     // host-specific error. The decision is recorded in `data`, so emission
     // never re-inspects the Marko node.
     if ((node.attributes ?? []).length === 0 && !node.body?.body?.length) {
-      return { kind: "interpolation", code: ctx.generate(node.name) };
+      return {
+        kind: "interpolation",
+        expr: {
+          code: ctx.generate(node.name),
+          shape: "other",
+          node: node.name,
+        },
+      };
     }
     fail(
       "a dynamic tag name (`<${expr}>`) is not supported in an `.amx` template; Astro resolves component names statically",
@@ -179,71 +187,109 @@ function escapeAttr(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
-function renderChildren(nodes: IrNode[]): string {
-  const emitter = createEmitter();
-  drive(emitter, nodes);
-  return emitter.done();
-}
+type MappedWrite = (code: string, node: Node, generatedStart: number) => void;
 
-function fragment(nodes: IrNode[]): string {
-  return `<Fragment>${renderChildren(nodes)}</Fragment>`;
-}
-
-function attrsOf(attrs: Attr[]): string {
-  const rendered = attrs.map((attr) => {
+function emitAttrs(
+  attrs: Attr[],
+  write: (code: string) => void,
+  writeMapped: (code: string, node: Node) => void,
+): void {
+  const writeName = (attr: Exclude<Attr, { kind: "spread" }>): void => {
+    writeMapped(attr.name, {
+      loc: {
+        start: attr.loc,
+        end: {
+          line: attr.loc.line,
+          column: attr.loc.column + attr.name.length,
+        },
+      },
+    });
+  };
+  for (const attr of attrs) {
     switch (attr.kind) {
       case "spread":
-        return ` {...${attr.value.code}}`;
+        write(" {...");
+        writeMapped(attr.value.code, attr.value.node);
+        write("}");
+        break;
       case "boolean":
-        return ` ${attr.name}`;
+        write(" ");
+        writeName(attr);
+        break;
       case "static":
-        return ` ${attr.name}="${escapeAttr(attr.value)}"`;
+        write(" ");
+        writeName(attr);
+        write(`="${escapeAttr(attr.value)}"`);
+        break;
       case "bound":
-        return fail(
+        fail(
           "`:=` is a two-way binding and requires a reactive runtime; `.amx` renders static markup at build time",
           attr,
         );
+        break;
       case "dynamic": {
         const structuredClass =
           attr.name === "class" &&
           (attr.value.shape === "object" || attr.value.shape === "array");
-        return structuredClass
-          ? ` class:list={${attr.value.code}}`
-          : ` ${attr.name}={${attr.value.code}}`;
+        write(" ");
+        writeMapped(structuredClass ? "class:list" : attr.name, {
+          loc: {
+            start: attr.loc,
+            end: {
+              line: attr.loc.line,
+              column: attr.loc.column + attr.name.length,
+            },
+          },
+        });
+        write("={");
+        writeMapped(attr.value.code, attr.value.node);
+        write("}");
+        break;
       }
     }
-    throw new Error("unreachable attribute kind");
-  });
-
-  return rendered.join("");
+  }
 }
 
 /** Creates one Astro-template emitter over core's IR. */
-export function createEmitter(): Emitter<string> {
+export function createEmitter(onMappedWrite?: MappedWrite): Emitter<string> {
   const out: string[] = [];
+  let length = 0;
+  const write = (code: string): void => {
+    out.push(code);
+    length += code.length;
+  };
+  const writeMapped = (code: string, node: Node): void => {
+    onMappedWrite?.(code, node, length);
+    write(code);
+  };
+  const writeExpr = (expr: Expr): void => writeMapped(expr.code, expr.node);
+  const writeFragment = (nodes: IrNode[]): void => {
+    write("<Fragment>");
+    drive(emitter, nodes);
+    write("</Fragment>");
+  };
 
   const emitter: Emitter<string> = {
     text(node) {
-      out.push(escapeText(node.value));
+      write(escapeText(node.value));
     },
 
     interpolation(node) {
-      out.push(
-        node.escaped
-          ? `{${node.expr.code}}`
-          : `<Fragment set:html={${node.expr.code}} />`,
-      );
+      write(node.escaped ? "{" : "<Fragment set:html={");
+      writeExpr(node.expr);
+      write(node.escaped ? "}" : "} />");
     },
 
     element(node) {
-      const attrs = attrsOf(node.attrs);
+      write(`<${node.name}`);
+      emitAttrs(node.attrs, write, writeMapped);
       if (node.void) {
-        out.push(`<${node.name}${attrs} />`);
+        write(" />");
         return;
       }
-      out.push(`<${node.name}${attrs}>`);
+      write(">");
       drive(emitter, node.children);
-      out.push(`</${node.name}>`);
+      write(`</${node.name}>`);
     },
 
     component(node) {
@@ -263,15 +309,16 @@ export function createEmitter(): Emitter<string> {
           node,
         );
       }
-      const attrs = attrsOf(node.attrs);
       const hasChildren =
         Boolean(node.content) || node.attributeTags.length > 0;
+      write(`<${name}`);
+      emitAttrs(node.attrs, write, writeMapped);
       if (!hasChildren) {
-        out.push(`<${name}${attrs} />`);
+        write(" />");
         return;
       }
 
-      out.push(`<${name}${attrs}>`);
+      write(">");
       if (node.content) drive(emitter, node.content.children);
       for (const tag of node.attributeTags) {
         if (tag.block.params.length > 0) {
@@ -280,21 +327,30 @@ export function createEmitter(): Emitter<string> {
             tag,
           );
         }
-        out.push(`<Fragment slot="${escapeAttr(tag.name)}">`);
+        write(`<Fragment slot="${escapeAttr(tag.name)}">`);
         drive(emitter, tag.block.children);
-        out.push("</Fragment>");
+        write("</Fragment>");
       }
-      out.push(`</${name}>`);
+      write(`</${name}>`);
     },
 
     ifChain(node) {
-      const branches = node.branches.map((branch) =>
-        branch.condition
-          ? `${branch.condition.code} ? (${fragment(branch.children)})`
-          : `(${fragment(branch.children)})`,
-      );
-      if (node.branches.at(-1)?.condition) branches.push("null");
-      out.push(`{${branches.join(" : ")}}`);
+      write("{");
+      node.branches.forEach((branch, index) => {
+        if (index > 0) write(" : ");
+        if (branch.condition) {
+          writeExpr(branch.condition);
+          write(" ? (");
+          writeFragment(branch.children);
+          write(")");
+        } else {
+          write("(");
+          writeFragment(branch.children);
+          write(")");
+        }
+      });
+      if (node.branches.at(-1)?.condition) write(" : null");
+      write("}");
     },
 
     forLoop(node) {
@@ -304,30 +360,65 @@ export function createEmitter(): Emitter<string> {
           node,
         );
       }
-      const [first, second] = node.params;
-      const branch = fragment(node.children);
+      const [, second] = node.params;
+      const writeParam = (index: number, fallback?: string): void => {
+        const code = node.params[index] ?? fallback;
+        if (code === undefined) return;
+        const param = node.paramNodes[index];
+        if (param) writeMapped(code, param);
+        else write(code);
+      };
+      const writeBranch = (): void => {
+        write("(");
+        writeFragment(node.children);
+        write(")");
+      };
       if (node.source.kind === "of") {
-        const args = second ? `${first}, ${second}` : first;
-        out.push(
-          `{[...${node.source.list.code}].map((${args}) => (${branch}))}`,
-        );
+        write("{[...");
+        writeExpr(node.source.list);
+        write("].map((");
+        writeParam(0);
+        if (second) {
+          write(", ");
+          writeParam(1);
+        }
+        write(") => ");
+        writeBranch();
+        write(")}");
         return;
       }
       if (node.source.kind === "in") {
-        out.push(
-          `{Object.entries(${node.source.object.code}).map(([${first}, ${second ?? "value"}]) => (${branch}))}`,
-        );
+        write("{Object.entries(");
+        writeExpr(node.source.object);
+        write(").map(([");
+        writeParam(0);
+        write(", ");
+        writeParam(1, "value");
+        write("]) => ");
+        writeBranch();
+        write(")}");
         return;
       }
 
-      const start = node.source.from?.code ?? "0";
-      const bound = node.source.bound.code;
-      const length = node.source.inclusive
-        ? `(${bound}) - (${start}) + 1`
-        : `(${bound}) - (${start})`;
-      out.push(
-        `{Array.from({ length: Math.max(0, ${length}) }, (_, $i) => (${start}) + $i).map((${first}) => (${branch}))}`,
-      );
+      const writeStart = (): void => {
+        if (node.source.kind === "range" && node.source.from) {
+          writeExpr(node.source.from);
+        } else {
+          write("0");
+        }
+      };
+      write("{Array.from({ length: Math.max(0, (");
+      writeExpr(node.source.bound);
+      write(") - (");
+      writeStart();
+      write(node.source.inclusive ? ") + 1" : ")");
+      write(" }, (_, $i) => (");
+      writeStart();
+      write(") + $i).map((");
+      writeParam(0);
+      write(") => ");
+      writeBranch();
+      write(")}");
     },
 
     define(node) {
@@ -356,15 +447,17 @@ export function createEmitter(): Emitter<string> {
       if (data.kind !== "interpolation") {
         fail("unknown Astro host-tag lowering", node);
       }
-      out.push(`{${data.code}}`);
+      write("{");
+      writeExpr(data.expr);
+      write("}");
     },
 
     documentType(node) {
-      out.push(`<!${node.value}>`);
+      write(`<!${node.value}>`);
     },
 
     comment(node) {
-      out.push(`<!--${node.value}-->`);
+      write(`<!--${node.value}-->`);
     },
 
     done() {
@@ -382,18 +475,100 @@ export function emitTemplate(ir: Ir): string {
 
 export interface LowerResult {
   code: string;
+  mappings: AstroTemplateMapping[];
 }
 
-function addHoistedToFence(fence: string, statements: string[]): string {
-  if (statements.length === 0) return fence;
+export interface AstroTemplateMapping {
+  sourceStart: number;
+  sourceEnd: number;
+  generatedStart: number;
+  generatedEnd: number;
+}
+
+type HoistedStatement = Extract<
+  IrNode,
+  { kind: "Import" | "Static" | "Export" | "InputInterface" | "Hoisted" }
+>;
+
+function offsetAtPosition(
+  source: string,
+  position: { line: number; column: number },
+): number {
+  let offset = 0;
+  for (let line = 1; line < position.line; line++) {
+    const newline = source.indexOf("\n", offset);
+    if (newline < 0) return source.length;
+    offset = newline + 1;
+  }
+  return Math.min(source.length, offset + position.column);
+}
+
+function rangeOfNode(source: string, node: Node): [number, number] | null {
+  const start = node?.loc?.start;
+  const end = node?.loc?.end;
+  if (!start || !end) return null;
+  return [
+    typeof start.index === "number"
+      ? start.index
+      : offsetAtPosition(source, start),
+    typeof end.index === "number" ? end.index : offsetAtPosition(source, end),
+  ];
+}
+
+function emitFence(
+  source: string,
+  fence: string,
+  statements: HoistedStatement[],
+): { code: string; mappings: AstroTemplateMapping[] } {
+  if (statements.length === 0) {
+    return {
+      code: fence,
+      mappings: fence
+        ? [
+            {
+              sourceStart: 0,
+              sourceEnd: fence.length,
+              generatedStart: 0,
+              generatedEnd: fence.length,
+            },
+          ]
+        : [],
+    };
+  }
   const newline = fence.includes("\r\n") ? "\r\n" : "\n";
+  const mappings: AstroTemplateMapping[] = [];
+  let code: string;
   if (fence === "") {
-    return `---${newline}${statements.join(newline)}${newline}---${newline}`;
+    code = `---${newline}`;
+  } else {
+    const close = fence.lastIndexOf(`${newline}---`);
+    if (close < 0) return { code: fence, mappings: [] };
+    code = `${fence.slice(0, close)}${newline}`;
+    mappings.push({
+      sourceStart: 0,
+      sourceEnd: close,
+      generatedStart: 0,
+      generatedEnd: close,
+    });
   }
 
-  const close = fence.lastIndexOf(`${newline}---`);
-  if (close < 0) return fence;
-  return `${fence.slice(0, close)}${newline}${statements.join(newline)}${fence.slice(close)}`;
+  for (const [index, statement] of statements.entries()) {
+    if (index > 0) code += newline;
+    const generatedStart = code.length;
+    code += statement.code;
+    mappings.push({
+      sourceStart: offsetAtPosition(source, statement.loc),
+      sourceEnd: offsetAtPosition(source, statement.end),
+      generatedStart,
+      generatedEnd: code.length,
+    });
+  }
+
+  code +=
+    fence === ""
+      ? `${newline}---${newline}`
+      : fence.slice(fence.lastIndexOf(`${newline}---`));
+  return { code, mappings };
 }
 
 /** Splits an `.amx` file, resolves its MX template, and emits Astro syntax. */
@@ -414,14 +589,28 @@ export function lowerAstroMx(source: string, filename: string): LowerResult {
   try {
     const ctx = newCtx(source, (node) => sourceOf(source, node), declarations);
     const ir = resolve(ctx, body);
-    const statements = [
-      ...ir.imports.map((node) => node.code),
-      ...ir.hoisted.map((node) => node.code),
-      ...(ir.inputInterface ? [ir.inputInterface.code] : []),
-      ...ir.prelude.map((node) => node.code),
+    const statements: HoistedStatement[] = [
+      ...ir.imports,
+      ...ir.hoisted,
+      ...(ir.inputInterface ? [ir.inputInterface] : []),
+      ...ir.prelude,
     ];
+    const emittedFence = emitFence(source, originalFence, statements);
+    const mappings = [...emittedFence.mappings];
+    const templateEmitter = createEmitter((code, node, generatedStart) => {
+      const range = rangeOfNode(source, node);
+      if (!range) return;
+      mappings.push({
+        sourceStart: range[0],
+        sourceEnd: range[1],
+        generatedStart: emittedFence.code.length + generatedStart,
+        generatedEnd: emittedFence.code.length + generatedStart + code.length,
+      });
+    });
+    const templateCode = emit(templateEmitter, ir);
     return {
-      code: `${addHoistedToFence(originalFence, statements)}${emitTemplate(ir)}`,
+      code: `${emittedFence.code}${templateCode}`,
+      mappings,
     };
   } catch (error) {
     if (error instanceof AstroTemplateError) throw error;

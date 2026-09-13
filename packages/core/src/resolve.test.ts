@@ -252,6 +252,21 @@ describe("one fixture per IR kind", () => {
       list: { code: "input.xs" },
     });
     expect(loop.params).toEqual(["item", "i"]);
+    expect(
+      loop.paramNodes.map((param) => ({
+        start: param.loc?.start,
+        end: param.loc?.end,
+      })),
+    ).toEqual([
+      {
+        start: expect.objectContaining({ line: 1, column: 5 }),
+        end: expect.objectContaining({ line: 1, column: 9 }),
+      },
+      {
+        start: expect.objectContaining({ line: 1, column: 11 }),
+        end: expect.objectContaining({ line: 1, column: 12 }),
+      },
+    ]);
     expect(loop.bindings).toEqual(["item", "i"]);
     expect(loop.key).toMatchObject({ code: '"id"', shape: "string" });
   });

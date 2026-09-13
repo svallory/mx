@@ -211,6 +211,8 @@ export type IrNode =
       source: ForSource;
       /** The tag params, as source text; at least one, enforced at resolve. */
       params: string[];
+      /** Original parser nodes for the params, retained for source mapping. */
+      paramNodes: Node[];
       /** Every name the params bind, for a host that tracks scopes. */
       bindings: string[];
       /**
