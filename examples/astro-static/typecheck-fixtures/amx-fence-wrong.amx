@@ -1,0 +1,4 @@
+---
+const fenceValue: number = "wrong";
+---
+<p>Fence value: ${fenceValue}</p>

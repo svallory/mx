@@ -218,4 +218,23 @@ describe("mx-tsc", () => {
     },
     SPAWN_TIMEOUT_MS,
   );
+
+  it(
+    "reports a .amx fence error at its exact source column",
+    () => {
+      const result = run(mxTsc, [
+        "--astro",
+        "--noEmit",
+        "-p",
+        join(astroStatic, "typecheck-fixtures", "amx-fence-wrong.json"),
+      ]);
+
+      expect(result.status).not.toBe(0);
+      expect(result.output).toContain("amx-fence-wrong.amx(2,7): error TS2322");
+      expect(result.output).toContain(
+        "Type 'string' is not assignable to type 'number'",
+      );
+    },
+    SPAWN_TIMEOUT_MS,
+  );
 });

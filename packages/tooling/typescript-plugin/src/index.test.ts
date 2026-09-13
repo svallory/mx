@@ -1,10 +1,15 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { convertToTSX } from "@astrojs/compiler/sync";
 import { decode } from "@jridgewell/sourcemap-codec";
 import { print } from "@mxlang/parser";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { AMX_LANGUAGE_ID, createAmxLanguagePlugin } from "./amx-language.ts";
+import {
+  AMX_LANGUAGE_ID,
+  composeAmxMappings,
+  createAmxLanguagePlugin,
+} from "./amx-language.ts";
 import { createAstroLanguagePlugin } from "./astro-language.ts";
 import pluginFactory, { createConfiguredLanguagePlugins } from "./index.ts";
 import {
@@ -591,6 +596,40 @@ describe("AstroMX language plugin", () => {
       generatedOffsets: [generated.indexOf(expression)],
       lengths: [expression.length],
     });
+  });
+
+  it("discards a transformed hoist when Astro preserves only a partial overlap", () => {
+    const astro = [
+      "---",
+      "const answer: number = 42;",
+      "---",
+      "<p>answer</p>",
+    ].join("\n");
+    const converted = convertToTSX(astro, {
+      filename: "/src/partial.amx",
+      sourcemap: "external",
+    });
+    const generatedStart = astro.indexOf("const answer");
+    const generatedEnd = astro.indexOf("<p>");
+
+    const mappings = composeAmxMappings(
+      [
+        {
+          // Model `static const …` becoming `const …` while its generated
+          // whole-block span crosses the closing fence Astro rewrites away.
+          // Astro maps the statement, but not the complete generated span.
+          sourceStart: 0,
+          sourceEnd: generatedEnd - generatedStart + "static ".length,
+          generatedStart,
+          generatedEnd,
+        },
+      ],
+      converted.map,
+      converted.code,
+      astro,
+    );
+
+    expect(mappings).toEqual([]);
   });
 });
 
