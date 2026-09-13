@@ -7,6 +7,7 @@
  */
 
 import { type HostPolicy, TranslateError } from "@mxlang/core";
+import { compileHonoMx } from "@mxlang/hono";
 import { compile } from "@mxlang/html";
 import { parse } from "@mxlang/parser";
 import { compilePreactMx } from "@mxlang/preact";
@@ -97,6 +98,8 @@ export function diagnoseDocument(
       compilePreactMx(text, uri);
     } else if (hostPolicy.host === "react") {
       compileReactMx(text, uri);
+    } else if (hostPolicy.host === "hono") {
+      compileHonoMx(text, uri);
     } else {
       // Through `@mxlang/html`'s own front door, not `compileSource`
       // directly: this registers the host taglib and compiles via the IR.

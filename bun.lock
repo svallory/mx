@@ -326,6 +326,7 @@
       },
       "dependencies": {
         "@mxlang/core": "workspace:*",
+        "@mxlang/hono": "workspace:*",
         "@mxlang/html": "workspace:*",
         "@mxlang/parser": "workspace:*",
         "@mxlang/preact": "workspace:*",
@@ -363,6 +364,7 @@
         "@marko/compiler": "5.42.5",
         "@mxlang/astro": "workspace:*",
         "@mxlang/core": "workspace:*",
+        "@mxlang/hono": "workspace:*",
         "@mxlang/html": "workspace:*",
         "@mxlang/parser": "workspace:*",
         "@mxlang/preact": "workspace:*",

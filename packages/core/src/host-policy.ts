@@ -6,12 +6,12 @@
  *
  * 1. Walk upward from the file's directory looking for the nearest
  *    `package.json`. If it has a `"mxlang"` field, that field *is* the
- *    answer: `{ host: "html" | "astro" | "solid" | "preact" | "react", strict?: boolean }`
+ *    answer: `{ host: "html" | "astro" | "solid" | "preact" | "react" | "hono", strict?: boolean }`
  *    (with "translator" accepted as a deprecated alias for "html").
  * 2. Otherwise, if that same `package.json` depends (in `dependencies` or
  *    `devDependencies`) on exactly one `@mxlang/*` host package
  *    (`@mxlang/html`, `@mxlang/astro`, `@mxlang/solid`, `@mxlang/preact`,
- *    `@mxlang/react`;
+ *    `@mxlang/react`, `@mxlang/hono`;
  *    `@mxlang/core` itself does not count, since every host depends on it
  *    too), use that host.
  * 3. Otherwise, fall back to the translator's default (non-strict) policy.
@@ -35,7 +35,7 @@ import { dirname, join } from "node:path";
 
 /** The host a file compiles through, plus that host's strictness. */
 export interface HostPolicy {
-  host: "html" | "astro" | "solid" | "preact" | "react";
+  host: "html" | "astro" | "solid" | "preact" | "react" | "hono";
   strict?: boolean;
 }
 
@@ -45,6 +45,7 @@ const HOST_PACKAGES: Record<string, HostPolicy["host"]> = {
   "@mxlang/solid": "solid",
   "@mxlang/preact": "preact",
   "@mxlang/react": "react",
+  "@mxlang/hono": "hono",
 };
 
 const DEFAULT_POLICY: HostPolicy = { host: "html" };
@@ -64,7 +65,8 @@ function isKnownHost(
     value === "astro" ||
     value === "solid" ||
     value === "preact" ||
-    value === "react"
+    value === "react" ||
+    value === "hono"
   );
 }
 

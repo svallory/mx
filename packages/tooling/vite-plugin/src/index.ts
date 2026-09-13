@@ -50,6 +50,12 @@ async function compileMarko(
     };
     return compileReactMx(source, filename);
   }
+  if (host === "hono") {
+    const { compileHonoMx } = (await import("@mxlang/hono")) as {
+      compileHonoMx: (source: string, filename: string) => { code: string };
+    };
+    return compileHonoMx(source, filename);
+  }
   const { compile } = (await import("@mxlang/html")) as {
     compile: (
       source: string,

@@ -13,6 +13,7 @@ import {
   resolve,
   resolveHostPolicy,
 } from "@mxlang/core";
+import { compileHonoMx, honoDeclarations } from "@mxlang/hono";
 import { compile, policy, strictPolicy, translator } from "@mxlang/html";
 import { compilePreactMx, preactDeclarations } from "@mxlang/preact";
 import { compileReactMx, reactDeclarations } from "@mxlang/react";
@@ -65,7 +66,9 @@ export function createMxLanguagePlugin(
               ? compilePreactMx(source, fileName)
               : hostPolicy.host === "react"
                 ? compileReactMx(source, fileName)
-                : compile(source, fileName, { strict });
+                : hostPolicy.host === "hono"
+                  ? compileHonoMx(source, fileName)
+                  : compile(source, fileName, { strict });
         const generated =
           hostPolicy.host === "astro"
             ? createAstroTypeSurface(compiled.code)
@@ -94,7 +97,9 @@ export function createMxLanguagePlugin(
                   ? preactDeclarations
                   : hostPolicy.host === "react"
                     ? reactDeclarations
-                    : undefined,
+                    : hostPolicy.host === "hono"
+                      ? honoDeclarations
+                      : undefined,
                 compiled.mappings,
               );
         syntaxErrors.delete(fileName);
