@@ -1,0 +1,12 @@
+import { Boom } from "./Boom.tsx";
+
+export interface Input {
+  fail: boolean;
+}
+
+<try>
+  <Boom fail=input.fail/>
+  <@catch|error|>
+    <p data-testid="boom-caught">caught: ${(error as Error).message}</p>
+  </@catch>
+</try>

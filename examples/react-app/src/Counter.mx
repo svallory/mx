@@ -1,0 +1,20 @@
+import { useState } from "react";
+
+export interface Input {
+  label: string;
+  start?: number;
+}
+
+<const/state=useState(input.start ?? 0)/>
+<const/count=state[0]/>
+<const/setCount=state[1]/>
+
+<section.counter>
+  <h1>${input.label}</h1>
+  <output data-testid="count">${count}</output>
+  <button data-testid="inc" onClick() { setCount(count + 1); }>increment</button>
+  <button data-testid="reset" onClick() { setCount(0); }>reset</button>
+  <p data-testid="parity" class={even: count % 2 === 0, odd: count % 2 !== 0}>
+    ${count % 2 === 0 ? "even" : "odd"}
+  </p>
+</section>

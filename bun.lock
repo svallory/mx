@@ -22,6 +22,9 @@
         "@types/babel__helper-validator-identifier": "7.15.2",
         "@types/charcodes": "0.2.2",
         "@types/node": "26.5.1",
+        "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0",
+        "@vitejs/plugin-react": "6.1.1",
         "@volar/language-core": "2.4.28",
         "@volar/typescript": "2.4.28",
         "charcodes": "0.2.0",
@@ -121,6 +124,27 @@
         "@mxlang/vite-plugin": "workspace:*",
         "@preact/preset-vite": "2.10.6",
         "@types/node": "26.5.1",
+        "playwright": "1.63.0",
+        "typescript": "5.9.3",
+        "vite": "8.2.2",
+        "vitest": "3.2.7",
+      },
+    },
+    "examples/react-app": {
+      "name": "@mxlang/example-react-app",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mxlang/react": "workspace:*",
+        "react": "19.3.0",
+        "react-dom": "19.3.0",
+      },
+      "devDependencies": {
+        "@mxlang/tsc": "workspace:*",
+        "@mxlang/vite-plugin": "workspace:*",
+        "@types/node": "26.5.1",
+        "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0",
+        "@vitejs/plugin-react": "6.1.1",
         "playwright": "1.63.0",
         "typescript": "5.9.3",
         "vite": "8.2.2",
@@ -699,6 +723,8 @@
 
     "@mxlang/example-preact-app": ["@mxlang/example-preact-app@workspace:examples/preact-app"],
 
+    "@mxlang/example-react-app": ["@mxlang/example-react-app@workspace:examples/react-app"],
+
     "@mxlang/example-todomvc": ["@mxlang/example-todomvc@workspace:examples/todomvc"],
 
     "@mxlang/html": ["@mxlang/html@workspace:packages/hosts/html"],
@@ -908,6 +934,8 @@
     "@types/unist": ["@types/unist@3.0.3", "", {}, "sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q=="],
 
     "@ungap/structured-clone": ["@ungap/structured-clone@1.4.0", "", {}, "sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ=="],
+
+    "@vitejs/plugin-react": ["@vitejs/plugin-react@6.1.1", "", { "dependencies": { "@rolldown/pluginutils": "^1.0.1" }, "peerDependencies": { "@rolldown/plugin-babel": "^0.1.7 || ^0.2.0", "babel-plugin-react-compiler": "^1.0.0", "oxc-transform-react": "^0.145.0", "vite": "^8.0.0" }, "optionalPeers": ["@rolldown/plugin-babel", "babel-plugin-react-compiler", "oxc-transform-react"] }, "sha512-yxLaQV9gkhS8ezJqCM6+ndU7mDY6gqAg75NQ+0IjwEI8IYOmQCgkRwHKVSfWXW076DsqMo0Dk+0FK1U+M5RgFw=="],
 
     "@vitest/expect": ["@vitest/expect@3.2.7", "", { "dependencies": { "@types/chai": "^5.2.2", "@vitest/spy": "3.2.7", "@vitest/utils": "3.2.7", "chai": "^5.2.0", "tinyrainbow": "^2.0.0" } }, "sha512-E8eBXaKibuvH2pSZErOjdVb5vF4PbKYcrnluBTYxEk1l/VhhwZg1kZQsdtjq+CsF5CFydf2Rdkz7jDHKSisi3w=="],
 

@@ -18,6 +18,7 @@ const repoRoot = join(here, "..", "..", "..", "..");
 const fixtures = join(here, "fixtures");
 const astroStatic = join(repoRoot, "examples", "astro-static");
 const preactApp = join(repoRoot, "examples", "preact-app");
+const reactApp = join(repoRoot, "examples", "react-app");
 
 /**
  * `mx-tsc` is a real `tsc` with Volar's program proxy spliced in, so there is
@@ -212,6 +213,39 @@ describe("mx-tsc", () => {
 
       expect(result.status).not.toBe(0);
       expect(result.output).toContain("wrong-prop.tsx(5,19): error TS2322");
+      expect(result.output).toContain(
+        "Type 'number' is not assignable to type 'string'",
+      );
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  it(
+    "accepts a correctly typed React-host .mx component prop",
+    () => {
+      const result = run(mxTsc, [
+        "--noEmit",
+        "-p",
+        join(reactApp, "typecheck-fixtures", "correct.json"),
+      ]);
+
+      expect(result.output).toBe("");
+      expect(result.status).toBe(0);
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  it(
+    "reports a wrong React-host .mx component prop",
+    () => {
+      const result = run(mxTsc, [
+        "--noEmit",
+        "-p",
+        join(reactApp, "typecheck-fixtures", "wrong.json"),
+      ]);
+
+      expect(result.status).not.toBe(0);
+      expect(result.output).toContain("wrong-prop.tsx(4,19): error TS2322");
       expect(result.output).toContain(
         "Type 'number' is not assignable to type 'string'",
       );
