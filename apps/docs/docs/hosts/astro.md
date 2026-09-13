@@ -148,6 +148,15 @@ Components, layouts and pages all come from this one extension — `src/pages/ab
 | `<for\|n\| from=a to=b>` | `{Array.from({length: …}, …).map(…)}` |
 | `class={a: true}` / `class=[…]` | `class:list={…}` |
 | `<@name>` on a component | `<Fragment slot="name">…</Fragment>` |
+| `attr="static"` | unchanged |
+| `attr=expr` | `attr={expr}` |
+| `...obj` | `{...obj}` |
+| Text containing `{` or `}` | escaped to `&#123;` / `&#125;` |
+| Ordinary children of a component | the default slot |
+| HTML comments | HTML comments |
+| Several root elements | several root elements |
+
+The `---` fence passes through byte for byte, with Astro's own semantics: `Astro.props`, imports, and `getStaticPaths` all work exactly as they do in a `.astro` file. `static` statements from the MX template are hoisted into that fence.
 
 ### Not supported
 
@@ -167,11 +176,24 @@ Nothing silently degrades: every construct this target cannot express is a build
 
 ## Typing `.mx` imports
 
-Add to `src/env.d.ts`:
+Each `.mx` file gets **its own** `Input` type, derived from the file, through the TypeScript plugin. Add one Volar plugin entry to `tsconfig.json`:
 
-```typescript
-/// <reference types="astro/client" />
-/// <reference types="@mxlang/astro/types" />
+```jsonc
+{
+  "compilerOptions": {
+    "plugins": [
+      { "name": "@mxlang/typescript-plugin", "astro": true }
+    ]
+  }
+}
 ```
 
-This types every `.mx` (and `.marko`) import as `(input: any) => string` — one generic shape for every file, not each file's own `Input` interface.
+Do not also list `@astrojs/ts-plugin`: a second Volar tsserver plugin is silently skipped, so adding it would disable this one. `astro: true` composes Astro's own language plugin, which is what also type-checks `.amx` itself; without it, `.amx` files are ignored.
+
+Command-line checks use `mx-tsc --astro --noEmit`, not `tsc --noEmit` — `tsc` ignores `compilerOptions.plugins` entirely, so a plain `tsc` run would miss every error inside an MX file.
+
+There is deliberately no ambient `declare module "*.mx"` shim. A shim asserts one generic `(input: any) => string` shape for every file, which hides both each component's real props and every error inside it.
+
+## Example
+
+`examples/astro-static` is a full static Astro site built on this host: `.mx` components with props and named slots, `.mx` pages with `getStaticPaths` and a layout, an `.amx` template, and an e2e suite that asserts no page contains a `<script>` — the host's whole claim. It also asserts the two builds that *must* fail: `<let>` in a component, and `client:load` on one.

@@ -64,3 +64,19 @@ isn't MX-specific syntax to avoid — it isn't Marko syntax at all. Marko's own 
 ```
 
 There's no MX behavior to document here because no `.mx` file using the colon-modifier form compiles in the first place.
+
+## An ambiguous `>` in an attribute value
+
+A `>` preceded by whitespace ends the tag, so a comparison written bare in an attribute value splits the tag in a way you did not intend:
+
+```html
+<if=count > 9><p>double digits</p></if>
+```
+
+fails with *Ambiguous ">" in attribute*. Wrap the expression in parentheses:
+
+```html
+<if=(count > 9)><p>double digits</p></if>
+```
+
+The same applies to any attribute value, not only `<if>`. `<`, and a `>` with no space before it, are unambiguous and need no parentheses.
