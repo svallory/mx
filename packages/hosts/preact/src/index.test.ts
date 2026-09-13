@@ -1,0 +1,417 @@
+/**
+ * One test per lowering row and per error, as the brief requires.
+ *
+ * The assertions are on the *emitted JSX text*, not on rendered HTML: render
+ * parity with `@mxlang/html` is the oracle's job (`bun run oracle:preact`),
+ * and duplicating it here would test Preact rather than this lowering. What
+ * these pin is the shape an author reads back out of the generated file —
+ * which `key` lands on a row, which prop raw HTML goes through, which import
+ * a `<try>` pulls in.
+ */
+
+import { describe, expect, it } from "vitest";
+import { compilePreactMx } from "./index.ts";
+
+/** Compiles one template and returns the emitted module. */
+function compile(source: string): string {
+  return compilePreactMx(source, "/fixtures/test.mx").code;
+}
+
+/** The body of the emitted component's `return (…)`, without the wrapper. */
+function markup(source: string): string {
+  const code = compile(source);
+  const match = code.match(/return \(<>([\s\S]*)<\/>\);/);
+  if (!match) throw new Error(`no render body in:\n${code}`);
+  return match[1] as string;
+}
+
+/** The message of the error a template throws, for an error-row assertion. */
+function errorOf(source: string): string {
+  try {
+    compile(source);
+  } catch (error) {
+    return (error as Error).message;
+  }
+  throw new Error("expected a compile error, but the template compiled");
+}
+
+describe("module shape", () => {
+  it("emits the JSX pragma, the props type and a default export", () => {
+    const code = compile("<p>hi</p>");
+    expect(code).toContain("/** @jsxImportSource preact */");
+    expect(code).toContain("export interface Input {}");
+    expect(code).toContain("export default function (input: Input) {");
+  });
+
+  it("keeps the author's own `export interface Input`", () => {
+    const code = compile(
+      "export interface Input { title: string }\n<h1>${input.title}</h1>",
+    );
+    expect(code).toContain("export interface Input { title: string }");
+    expect(code).not.toContain("export interface Input {}");
+  });
+
+  it("hoists imports and `static` blocks to module scope", () => {
+    const code = compile(
+      'import Card from "./card.mx"\nstatic const G = 1;\n<p>${G}</p>',
+    );
+    // Above the component, not inside it.
+    const componentAt = code.indexOf("export default function");
+    expect(code.indexOf('import Card from "./card.mx"')).toBeLessThan(
+      componentAt,
+    );
+    expect(code.indexOf("const G = 1;")).toBeLessThan(componentAt);
+  });
+
+  it("imports nothing when the template uses no helper", () => {
+    const code = compile("<p>hi</p>");
+    expect(code).not.toContain('from "preact"');
+    expect(code).not.toContain("@mxlang/preact/runtime");
+  });
+});
+
+describe("elements and text", () => {
+  it("emits an element with its attributes", () => {
+    expect(markup('<div class="card" id="x">hi</div>')).toBe(
+      '<div class="card" id="x">hi</div>',
+    );
+  });
+
+  it("emits a void element self-closed", () => {
+    expect(markup("<input value=input.v>")).toBe("<input value={input.v} />");
+  });
+
+  it("escapes braces in text, which JSX would read as an expression", () => {
+    expect(markup("<p>a {b} c</p>")).toBe("<p>a &#123;b&#125; c</p>");
+  });
+
+  it("emits an escaped placeholder as an expression container", () => {
+    expect(markup("<p>${input.name}</p>")).toBe("<p>{input.name}</p>");
+  });
+
+  it("carries an attribute method as a callable prop", () => {
+    expect(markup("<button onClick() { go(); }>x</button>")).toContain(
+      "onClick={() =>",
+    );
+  });
+
+  it("emits a spread attribute", () => {
+    expect(markup("<div ...input.rest>x</div>")).toBe(
+      "<div {...input.rest}>x</div>",
+    );
+  });
+});
+
+describe("class and style", () => {
+  it("passes a plain string class through", () => {
+    expect(markup('<div class="a b">x</div>')).toBe('<div class="a b">x</div>');
+  });
+
+  it("joins an object class through the emitted helper", () => {
+    const code = compile("<div class={active: input.on}>x</div>");
+    expect(code).toContain("class={mxClass({ active: input.on })}");
+    expect(code).toContain('import { mxClass } from "@mxlang/preact/runtime";');
+  });
+
+  it("joins the `.class` shorthand merged with an object", () => {
+    expect(markup("<div.card class={active: input.on}>x</div>")).toContain(
+      "mxClass(",
+    );
+  });
+
+  it("emits an object style as a Preact style object", () => {
+    expect(markup("<div style={color: input.c}>x</div>")).toBe(
+      "<div style={{ color: input.c }}>x</div>",
+    );
+  });
+
+  it("rejects a non-object `style=` value", () => {
+    expect(errorOf("<div style=input.s>x</div>")).toContain(
+      "`style=` takes an object literal",
+    );
+  });
+
+  it("leaves `#id` beside an explicit `id=` to Marko's own parse error", () => {
+    // Marko rejects the pair in its parser, before any host declaration runs,
+    // so this host adds no check of its own — it would be unreachable.
+    expect(errorOf('<div#one id="two">x</div>')).toContain(
+      "Cannot have shorthand id and id attribute",
+    );
+  });
+});
+
+describe("raw HTML", () => {
+  it("lowers a sole `$!{…}` child to the raw-HTML prop", () => {
+    expect(markup("<div>$!{input.html}</div>")).toBe(
+      "<div dangerouslySetInnerHTML={{ __html: input.html }} />",
+    );
+  });
+
+  it("rejects a raw placeholder beside other children", () => {
+    expect(errorOf("<div>$!{input.html}<span>x</span></div>")).toContain(
+      "raw placeholder (`$!{…}`) must be the only child",
+    );
+  });
+
+  it("rejects a raw placeholder beside an explicit raw-HTML attribute", () => {
+    expect(
+      errorOf("<div dangerouslySetInnerHTML=input.x>$!{input.html}</div>"),
+    ).toContain("combined with an explicit `dangerouslySetInnerHTML=`");
+  });
+});
+
+describe("<if> chains", () => {
+  it("lowers a lone `<if>` to a ternary ending in null", () => {
+    expect(markup("<if=input.a><p>A</p></if>")).toBe(
+      "{input.a ? <p>A</p> : null}",
+    );
+  });
+
+  it("lowers `<if>`/`<else>` to one ternary", () => {
+    expect(markup("<if=input.a><p>A</p></if>\n<else><p>B</p></else>")).toBe(
+      "{input.a ? <p>A</p> : <p>B</p>}",
+    );
+  });
+
+  it("chains `<else-if>` branches", () => {
+    expect(
+      markup(
+        "<if=input.a><p>A</p></if>\n<else-if=input.b><p>B</p></else-if>\n<else><p>C</p></else>",
+      ),
+    ).toBe("{input.a ? <p>A</p> : input.b ? <p>B</p> : <p>C</p>}");
+  });
+
+  it("wraps a multi-node branch in a fragment", () => {
+    expect(markup("<if=input.a><p>A</p><p>B</p></if>")).toContain(
+      "<><p>A</p><p>B</p></>",
+    );
+  });
+});
+
+describe("<for> loops", () => {
+  it("keys an `of` loop by the row itself when `by=` is absent", () => {
+    expect(markup("<for|x| of=input.items><li>${x}</li></for>")).toBe(
+      "{[...input.items].map((x) => <Fragment key={x}><li>{x}</li></Fragment>)}",
+    );
+  });
+
+  it("keys an `of` loop by the field a string `by=` names", () => {
+    expect(
+      markup('<for|item| of=input.items by="id"><li>${item.name}</li></for>'),
+    ).toContain("key={item.id}");
+  });
+
+  it("keys an `of` loop by a `by=` function applied to the row", () => {
+    expect(
+      markup("<for|item| of=input.items by=keyOf><li>x</li></for>"),
+    ).toContain("key={(keyOf)(item)}");
+  });
+
+  it("binds the index parameter only when the author declares one", () => {
+    expect(markup("<for|x, i| of=input.items><li>${i}</li></for>")).toContain(
+      "map((x, i) =>",
+    );
+    expect(markup("<for|x| of=input.items><li>x</li></for>")).toContain(
+      "map((x) =>",
+    );
+  });
+
+  it("keys an `in` loop by the property name", () => {
+    expect(markup("<for|k, v| in=input.obj><p>${k}</p></for>")).toBe(
+      "{Object.entries(input.obj).map(([k, v]) => <Fragment key={k}><p>{k}</p></Fragment>)}",
+    );
+  });
+
+  it("names the `in` loop's value binding when the author omits it", () => {
+    expect(markup("<for|k| in=input.obj><p>${k}</p></for>")).toContain(
+      "([k, value])",
+    );
+  });
+
+  it("lowers an inclusive range and keys rows by their value", () => {
+    const out = markup("<for|i| from=1 to=3><b>${i}</b></for>");
+    expect(out).toContain("(3) - (1) + 1");
+    expect(out).toContain("map((i) => <Fragment key={i}>");
+  });
+
+  it("lowers an exclusive range without the inclusive adjustment", () => {
+    expect(markup("<for|i| from=0 until=3><b>${i}</b></for>")).toContain(
+      "Math.max(0, (3) - (0))",
+    );
+  });
+
+  it("folds `step` into the emitted row value", () => {
+    const out = markup("<for|i| from=1 to=9 step=2><b>${i}</b></for>");
+    expect(out).toContain("(1) + mxIndex * (2)");
+    expect(out).toContain("Math.floor(((9) - (1)) / (2)) + 1");
+  });
+
+  it("renders an empty list for a backwards range rather than throwing", () => {
+    expect(markup("<for|i| from=5 until=1><b>${i}</b></for>")).toContain(
+      "Math.max(0,",
+    );
+  });
+
+  it("picks a non-colliding counter when the body already uses `mxIndex`", () => {
+    expect(
+      markup("<for|mxIndex| from=0 to=2 step=1><b>${mxIndex}</b></for>"),
+    ).toContain("mxIndex2");
+  });
+});
+
+describe("components", () => {
+  it("passes attributes as props", () => {
+    expect(
+      markup('import Card from "./card.mx"\n<Card title="x" n=input.n/>'),
+    ).toBe('<Card title="x" n={input.n} />');
+  });
+
+  it("passes ordinary children as JSX children", () => {
+    expect(
+      markup('import Card from "./card.mx"\n<Card><p>body</p></Card>'),
+    ).toBe("<Card><p>body</p></Card>");
+  });
+
+  it("passes an attribute tag as a prop", () => {
+    expect(
+      markup(
+        'import Card from "./card.mx"\n<Card><@footer>f</@footer><p>b</p></Card>',
+      ),
+    ).toContain("footer={<>f</>}");
+  });
+
+  it("passes an attribute tag with params as a function prop", () => {
+    expect(
+      markup(
+        'import Card from "./card.mx"\n<Card><@row|item|>${item}</@row></Card>',
+      ),
+    ).toContain("row={(item) => item}");
+  });
+
+  it("passes tag params as a render-prop child", () => {
+    expect(
+      markup(
+        'import List from "./list.mx"\n<List|item| items=input.items><span>${item}</span></List>',
+      ),
+    ).toBe("<List items={input.items}>{(item) => <span>{item}</span>}</List>");
+  });
+
+  it("rejects a dynamic tag name that has a body", () => {
+    expect(errorOf("<${input.tag}>hi</>")).toContain("dynamic tag name");
+  });
+
+  it("treats a bare `<${expr}/>` as the placeholder Marko parses it as", () => {
+    // Marko's concise mode has no other shape for a top-level `${expr}` line:
+    // an expression-named tag with no attributes and no body *is* the
+    // placeholder, so it lowers to an interpolation rather than a tag.
+    expect(markup("<${input.tag}/>")).toBe("{input.tag}");
+  });
+});
+
+describe("<define> and <const>", () => {
+  it("lowers a top-level `<const>` to a binding in the component body", () => {
+    const code = compile("<const/n=input.a * 2/>\n<p>${n}</p>");
+    expect(code).toContain("const n = input.a * 2;");
+    expect(code).toContain("<p>{n}</p>");
+  });
+
+  it("lowers a top-level `<define>` to a local function", () => {
+    const code = compile(
+      "<define/Row|label|><li>${label}</li></define>\n<Row('a')/>",
+    );
+    expect(code).toContain("const Row = (label) => (<><li>{label}</li></>);");
+    expect(code).toContain("{Row('a')}");
+  });
+
+  it("rejects a `<const>` nested inside markup", () => {
+    expect(errorOf("<div><const/n=1/><p>${n}</p></div>")).toContain(
+      "`<const>` must appear at the top level",
+    );
+  });
+});
+
+describe("<try>", () => {
+  it("lowers `<@catch>` to the error boundary with a function fallback", () => {
+    const code = compile(
+      'import Body from "./body.mx"\n<try><Body/><@catch|err|><p>${err}</p></@catch></try>',
+    );
+    expect(code).toContain(
+      'import { MxErrorBoundary } from "@mxlang/preact/runtime";',
+    );
+    expect(code).toContain(
+      "<MxErrorBoundary fallback={(err) => <p>{err}</p>}>",
+    );
+  });
+
+  it("passes a param-less `<@catch>` body as a plain fallback node", () => {
+    expect(
+      markup(
+        'import Body from "./body.mx"\n<try><Body/><@catch><p>failed</p></@catch></try>',
+      ),
+    ).toContain("fallback={<p>failed</p>}");
+  });
+
+  it("lowers `<@placeholder>` to the suspense wrapper", () => {
+    const code = compile(
+      'import Body from "./body.mx"\n<try><Body/><@placeholder><p>loading</p></@placeholder></try>',
+    );
+    expect(code).toContain(
+      'import { MxPlaceholder } from "@mxlang/preact/runtime";',
+    );
+    expect(code).toContain("<MxPlaceholder fallback={<p>loading</p>}>");
+  });
+
+  it("nests the placeholder inside the boundary when both are given", () => {
+    const out = markup(
+      'import Body from "./body.mx"\n<try><Body/><@catch><p>e</p></@catch><@placeholder><p>l</p></@placeholder></try>',
+    );
+    expect(out.indexOf("<MxErrorBoundary")).toBeLessThan(
+      out.indexOf("<MxPlaceholder"),
+    );
+  });
+
+  it("rejects an unknown attribute tag inside `<try>`", () => {
+    expect(
+      errorOf(
+        'import Body from "./body.mx"\n<try><Body/><@other>x</@other></try>',
+      ),
+    ).toContain("attribute tag `<@other>` inside `<try>`");
+  });
+
+  it("rejects a repeated attribute tag inside `<try>`", () => {
+    expect(
+      errorOf(
+        'import Body from "./body.mx"\n<try><Body/><@catch>a</@catch><@catch>b</@catch></try>',
+      ),
+    ).toContain("given twice");
+  });
+});
+
+describe("stateful Marko tags are errors naming the Preact equivalent", () => {
+  it.each([
+    ["<let>", "<let/count=0/>\n<p>${count}</p>", "useState"],
+    ["<effect>", "<effect() { go(); }/>", "useEffect"],
+    ["<lifecycle>", "<lifecycle onMount() { go(); }/>", "useEffect"],
+    ["<id>", "<id/x/>\n<p>${x}</p>", "useId"],
+  ])("rejects %s", (_name, source, hint) => {
+    expect(errorOf(source)).toContain(hint);
+  });
+
+  it("rejects `:=`, which has no Preact equivalent", () => {
+    expect(errorOf("<input value:=input.v>")).toContain(
+      "Marko's two-way binding",
+    );
+  });
+
+  it("rejects an attribute modifier with Preact's own spelling", () => {
+    expect(errorOf("<div class:active=input.on>x</div>")).toContain(
+      "is not Preact syntax",
+    );
+  });
+
+  it("rejects a document type, which belongs in the HTML shell", () => {
+    expect(errorOf("<!doctype html>\n<p>x</p>")).toContain(
+      "cannot appear in a Preact component",
+    );
+  });
+});

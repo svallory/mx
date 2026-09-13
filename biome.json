@@ -70,6 +70,8 @@
         "packages/core/src/core.ts",
         "packages/core/src/emit-statement.test.ts",
         "packages/core/src/hooks.test.ts",
+        "packages/hosts/preact/src/emitter.ts",
+        "packages/hosts/preact/src/index.test.ts",
         "packages/hosts/html/scripts/consumer-check.ts"
       ],
       "linter": {
