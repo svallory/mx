@@ -23,12 +23,16 @@
 import {
   type Attr,
   type AttributeTag,
+  concatMapped,
   drive,
   type Emitter,
   type Expr,
+  type GeneratedMapping,
   type HostDeclarations,
   type Ir,
   type IrNode,
+  type MappedCode,
+  mapped,
   type Position,
   TranslateError,
 } from "@mxlang/core";
@@ -301,7 +305,7 @@ function hygienicName(base: string, params: string[], body: string): string {
 
 /** Preact JSX text emitter over the shared core IR. */
 export class PreactEmitter implements Emitter<string> {
-  readonly #out: string[] = [];
+  readonly #out: MappedCode[] = [];
   readonly #target: Target;
   /**
    * Runtime names this emitter's output needs an import for.
@@ -345,10 +349,10 @@ export class PreactEmitter implements Emitter<string> {
     return new PreactEmitter(this.#target, this.#runtimeImports, this.#aliases);
   }
 
-  #render(nodes: IrNode[]): string {
+  #render(nodes: IrNode[]): MappedCode {
     const child = this.#child();
     drive(child, nodes);
-    return child.done();
+    return child.result();
   }
 
   /**
@@ -359,12 +363,14 @@ export class PreactEmitter implements Emitter<string> {
    * slot to fill. A lone escaped placeholder becomes its bare expression,
    * which keeps `<if=c>${x}</if>` from emitting `<>{x}</>`.
    */
-  #expression(nodes: IrNode[]): string {
+  #expression(nodes: IrNode[]): MappedCode {
     const content = meaningful(nodes);
-    if (content.length === 0) return "null";
+    if (content.length === 0) return concatMapped("null");
     if (content.length === 1) {
       const only = content[0] as IrNode;
-      if (only.kind === "Interpolation" && only.escaped) return only.expr.code;
+      if (only.kind === "Interpolation" && only.escaped) {
+        return concatMapped(only.expr.code);
+      }
       if (
         only.kind === "Element" ||
         only.kind === "Component" ||
@@ -375,17 +381,27 @@ export class PreactEmitter implements Emitter<string> {
         return this.#render(content);
       }
     }
-    return `<>${this.#render(content)}</>`;
+    return concatMapped("<>", this.#render(content), "</>");
   }
 
-  #attr(attr: Attr): string {
+  #attr(attr: Attr, mapName: boolean): MappedCode {
     switch (attr.kind) {
       case "spread":
-        return ` {...${attr.value.code}}`;
+        return concatMapped(` {...${attr.value.code}}`);
       case "boolean":
-        return ` ${attr.name}={true}`;
-      case "static":
-        return ` ${this.#attrName(attr.name)}="${escapeAttribute(attr.value)}"`;
+        return concatMapped(
+          " ",
+          mapped(this.#attrName(attr.name), mapName ? attr.nameSpan : null),
+          "={true}",
+        );
+      case "static": {
+        const name = this.#attrName(attr.name);
+        return concatMapped(
+          " ",
+          mapped(name, mapName ? attr.nameSpan : null),
+          `="${escapeAttribute(attr.value)}"`,
+        );
+      }
       case "bound":
         // `value:=x` binds two ways in Marko: the value renders *and* edits
         // write back. Preact has no two-way binding — a controlled input is a
@@ -401,12 +417,22 @@ export class PreactEmitter implements Emitter<string> {
         // constant, and reads better as one in the emitted JSX.
         if (attr.name === "class") {
           const fixed = staticTemplateValue(attr.value);
-          if (fixed !== null) return ` ${name}="${escapeAttribute(fixed)}"`;
+          if (fixed !== null) {
+            return concatMapped(
+              " ",
+              mapped(name, mapName ? attr.nameSpan : null),
+              `="${escapeAttribute(fixed)}"`,
+            );
+          }
           if (attr.value.shape === "object" || attr.value.shape === "array") {
             // Marko's structured class value; Preact's `class` takes a string,
             // so the object/array form is joined by the emitted helper.
             this.#runtimeImports.add("mxClass");
-            return ` ${name}={mxClass(${attr.value.code})}`;
+            return concatMapped(
+              " ",
+              mapped(name, mapName ? attr.nameSpan : null),
+              `={mxClass(${attr.value.code})}`,
+            );
           }
         }
         if (attr.name === "style" && attr.value.shape !== "object") {
@@ -418,7 +444,11 @@ export class PreactEmitter implements Emitter<string> {
             attr,
           );
         }
-        return ` ${name}={${methodExpression(attr.value) ?? attr.value.code}}`;
+        return concatMapped(
+          " ",
+          mapped(name, mapName ? attr.nameSpan : null),
+          `={${methodExpression(attr.value) ?? attr.value.code}}`,
+        );
       }
     }
   }
@@ -440,15 +470,15 @@ export class PreactEmitter implements Emitter<string> {
    * id and id attribute"* — so a check here would be unreachable code
    * pretending to be a guard.
    */
-  #attrs(attrs: Attr[]): string {
-    return attrs.map((attr) => this.#attr(attr)).join("");
+  #attrs(attrs: Attr[], mapNames = false): MappedCode {
+    return concatMapped(...attrs.map((attr) => this.#attr(attr, mapNames)));
   }
 
   /** One attribute tag's body, as the value its prop takes. */
-  #attributeTagValue(tag: AttributeTag): string {
+  #attributeTagValue(tag: AttributeTag): MappedCode {
     const value = this.#expression(tag.block.children);
     if (!tag.block.hasParams) return value;
-    return `(${tag.block.params.join(", ")}) => ${value}`;
+    return concatMapped(`(${tag.block.params.join(", ")}) => `, value);
   }
 
   /**
@@ -460,31 +490,54 @@ export class PreactEmitter implements Emitter<string> {
    * the prop twice instead (the shape this replaced) let the last one win, so
    * the callee's loop iterated a single node and threw on the spread.
    */
-  #attributeTags(tags: AttributeTag[]): string {
-    const byName = new Map<string, string[]>();
+  #attributeTags(tags: AttributeTag[]): MappedCode {
+    const byName = new Map<
+      string,
+      Array<{ tag: AttributeTag; value: MappedCode }>
+    >();
     for (const tag of tags) {
       const values = byName.get(tag.name);
-      if (values) values.push(this.#attributeTagValue(tag));
-      else byName.set(tag.name, [this.#attributeTagValue(tag)]);
+      const value = { tag, value: this.#attributeTagValue(tag) };
+      if (values) values.push(value);
+      else byName.set(tag.name, [value]);
     }
-    return [...byName]
-      .map(([name, values]) =>
-        values.length === 1
-          ? ` ${name}={${values[0]}}`
-          : ` ${name}={[${values.join(", ")}]}`,
-      )
-      .join("");
+    return concatMapped(
+      ...[...byName].map(([name, values]) => {
+        const nameCode = mapped(name, values[0]?.tag.nameSpan ?? null);
+        if (values.length === 1) {
+          return concatMapped(
+            " ",
+            nameCode,
+            "={",
+            values[0]?.value ?? "",
+            "}",
+          );
+        }
+        const joined = values.flatMap(({ value }, index) =>
+          index === 0 ? [value] : [", ", value],
+        );
+        const result = concatMapped(" ", nameCode, "={[", ...joined, "]}");
+        result.mappings.push(
+          ...values.slice(1).map(({ tag }): GeneratedMapping => ({
+            ...tag.nameSpan,
+            generatedStart: 1,
+            generatedEnd: 1 + name.length,
+          })),
+        );
+        return result;
+      }),
+    );
   }
 
   text(node: Extract<IrNode, { kind: "Text" }>): void {
-    this.#out.push(escapeText(node.value));
+    this.#out.push(concatMapped(escapeText(node.value)));
   }
 
   interpolation(node: Extract<IrNode, { kind: "Interpolation" }>): void {
     if (!node.escaped) {
       fail("raw placeholder (`$!{…}`) must be the only child", node);
     }
-    this.#out.push(`{${node.expr.code}}`);
+    this.#out.push(concatMapped(`{${node.expr.code}}`));
   }
 
   element(node: Extract<IrNode, { kind: "Element" }>): void {
@@ -501,16 +554,22 @@ export class PreactEmitter implements Emitter<string> {
       ? ` ${this.#target.rawHtmlProp}={${this.#target.rawHtmlValue(raw.expr.code)}}`
       : "";
     if (node.void) {
-      this.#out.push(`<${node.name}${attrs}${rawHtml} />`);
+      this.#out.push(concatMapped(`<${node.name}`, attrs, `${rawHtml} />`));
       return;
     }
-    const children = raw ? "" : this.#render(node.children);
-    if (children === "") {
-      this.#out.push(`<${node.name}${attrs}${rawHtml} />`);
+    const children = raw ? concatMapped() : this.#render(node.children);
+    if (children.code === "") {
+      this.#out.push(concatMapped(`<${node.name}`, attrs, `${rawHtml} />`));
       return;
     }
     this.#out.push(
-      `<${node.name}${attrs}${rawHtml}>${children}</${node.name}>`,
+      concatMapped(
+        `<${node.name}`,
+        attrs,
+        `${rawHtml}>`,
+        children,
+        `</${node.name}>`,
+      ),
     );
   }
 
@@ -539,7 +598,9 @@ export class PreactEmitter implements Emitter<string> {
         node.args.length > 0
           ? node.args.map((arg: Expr) => arg.code).join(", ")
           : this.#defineProps(node);
-      this.#out.push(`{${node.target.name}(${args})}`);
+      this.#out.push(
+        concatMapped("{", mapped(node.target.name, node.nameSpan), `(${args})}`),
+      );
       return;
     }
 
@@ -558,13 +619,21 @@ export class PreactEmitter implements Emitter<string> {
       );
     }
 
-    const attrs = this.#attrs(node.attrs);
+    const attrs = this.#attrs(node.attrs, true);
     const tags = this.#attributeTags(node.attributeTags);
     const rawHtml = raw
       ? ` ${this.#target.rawHtmlProp}={${this.#target.rawHtmlValue(raw.expr.code)}}`
       : "";
     if (!node.content || raw) {
-      this.#out.push(`<${name}${attrs}${tags}${rawHtml} />`);
+      this.#out.push(
+        concatMapped(
+          "<",
+          mapped(name, node.nameSpan),
+          attrs,
+          tags,
+          `${rawHtml} />`,
+        ),
+      );
       return;
     }
 
@@ -572,13 +641,29 @@ export class PreactEmitter implements Emitter<string> {
     // the shape that lets a Preact component taking a function child be
     // called from MX. Without params the children are ordinary JSX children.
     const children = node.content.hasParams
-      ? `{(${node.content.params.join(", ")}) => ${this.#expression(contentNodes)}}`
+      ? concatMapped(
+          `{(${node.content.params.join(", ")}) => `,
+          this.#expression(contentNodes),
+          "}",
+        )
       : this.#render(contentNodes);
-    if (children === "") {
-      this.#out.push(`<${name}${attrs}${tags} />`);
+    if (children.code === "") {
+      this.#out.push(
+        concatMapped("<", mapped(name, node.nameSpan), attrs, tags, " />"),
+      );
       return;
     }
-    this.#out.push(`<${name}${attrs}${tags}>${children}</${name}>`);
+    this.#out.push(
+      concatMapped(
+        "<",
+        mapped(name, node.nameSpan),
+        attrs,
+        tags,
+        ">",
+        children,
+        `</${name}>`,
+      ),
+    );
   }
 
   /** The props object for a `<define>` called by name rather than positionally. */
@@ -609,18 +694,16 @@ export class PreactEmitter implements Emitter<string> {
    * the same result Marko gives for an unmatched `<if>`.
    */
   ifChain(node: Extract<IrNode, { kind: "IfChain" }>): void {
-    const parts: string[] = [];
+    const parts: Array<string | MappedCode> = [];
     for (const branch of node.branches) {
       if (branch.condition) {
-        parts.push(
-          `${branch.condition.code} ? ${this.#expression(branch.children)} : `,
-        );
+        parts.push(branch.condition.code, " ? ", this.#expression(branch.children), " : ");
       } else {
         parts.push(this.#expression(branch.children));
       }
     }
     if (node.branches.at(-1)?.condition) parts.push("null");
-    this.#out.push(`{${parts.join("")}}`);
+    this.#out.push(concatMapped("{", ...parts, "}"));
   }
 
   /**
@@ -659,7 +742,11 @@ export class PreactEmitter implements Emitter<string> {
       const params = second ? `${first}, ${second}` : first;
       const key = keyFrom(first);
       this.#out.push(
-        `{[...${source.list.code}].map((${params}) => <Fragment key={${key}}>${body}</Fragment>)}`,
+        concatMapped(
+          `{[...${source.list.code}].map((${params}) => <Fragment key={${key}}>`,
+          body,
+          "</Fragment>)}",
+        ),
       );
       this.#runtimeImports.add("Fragment");
       return;
@@ -669,7 +756,11 @@ export class PreactEmitter implements Emitter<string> {
       const value = second ?? "value";
       const key = keyFrom(first);
       this.#out.push(
-        `{Object.entries(${source.object.code}).map(([${first}, ${value}]) => <Fragment key={${key}}>${body}</Fragment>)}`,
+        concatMapped(
+          `{Object.entries(${source.object.code}).map(([${first}, ${value}]) => <Fragment key={${key}}>`,
+          body,
+          "</Fragment>)}",
+        ),
       );
       this.#runtimeImports.add("Fragment");
       return;
@@ -678,7 +769,7 @@ export class PreactEmitter implements Emitter<string> {
     const from = source.from?.code ?? "0";
     const bound = source.bound.code;
     const step = source.step;
-    const counter = hygienicName("mxIndex", node.params, body);
+    const counter = hygienicName("mxIndex", node.params, body.code);
     // The row count, computed the same way for both bound forms: `to=` is
     // inclusive, `until=` is not. `Math.max(0, …)` is what makes a backwards
     // or empty range render nothing rather than throwing on a negative length.
@@ -696,7 +787,11 @@ export class PreactEmitter implements Emitter<string> {
     // author's param already names.
     const key = keyFrom(first);
     this.#out.push(
-      `{Array.from({ length: Math.max(0, ${span}) }, (_, ${counter}) => ${value}).map((${first}) => <Fragment key={${key}}>${body}</Fragment>)}`,
+      concatMapped(
+        `{Array.from({ length: Math.max(0, ${span}) }, (_, ${counter}) => ${value}).map((${first}) => <Fragment key={${key}}>`,
+        body,
+        "</Fragment>)}",
+      ),
     );
     this.#runtimeImports.add("Fragment");
   }
@@ -745,7 +840,13 @@ export class PreactEmitter implements Emitter<string> {
       // name so the emitted text is target-independent.
       this.#runtimeImports.add(this.#target.suspenseName);
       const fallback = this.#expression(placeholder.block.children);
-      inner = `<${this.#target.suspenseName} fallback={${fallback}}>${inner}</${this.#target.suspenseName}>`;
+      inner = concatMapped(
+        `<${this.#target.suspenseName} fallback={`,
+        fallback,
+        `}>`,
+        inner,
+        `</${this.#target.suspenseName}>`,
+      );
     }
     if (!catchTag) {
       this.#out.push(inner);
@@ -759,10 +860,16 @@ export class PreactEmitter implements Emitter<string> {
     const params = catchTag.block.params.join(", ");
     const caught = this.#expression(catchTag.block.children);
     const fallback = catchTag.block.hasParams
-      ? `(${params}) => ${caught}`
+      ? concatMapped(`(${params}) => `, caught)
       : caught;
     this.#out.push(
-      `<${this.#target.errorBoundaryName} fallback={${fallback}}>${inner}</${this.#target.errorBoundaryName}>`,
+      concatMapped(
+        `<${this.#target.errorBoundaryName} fallback={`,
+        fallback,
+        "}>",
+        inner,
+        `</${this.#target.errorBoundaryName}>`,
+      ),
     );
   }
 
@@ -780,7 +887,11 @@ export class PreactEmitter implements Emitter<string> {
   }
 
   done(): string {
-    return this.#out.join("");
+    return this.result().code;
+  }
+
+  result(): MappedCode {
+    return concatMapped(...this.#out);
   }
 }
 

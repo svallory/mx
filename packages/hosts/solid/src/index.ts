@@ -2,6 +2,7 @@ import generate from "@babel/generator";
 import { parse as parseBabel } from "@babel/parser";
 import {
   type Node,
+  type GeneratedMapping,
   newCtx,
   parseFragment,
   resolve,
@@ -11,11 +12,18 @@ import MagicString from "magic-string";
 import {
   createEmitter,
   emitSolid,
+  emitSolidWithMappings,
   SolidEmitter,
   solidDeclarations,
 } from "./emitter.ts";
 
-export { createEmitter, emitSolid, SolidEmitter, solidDeclarations };
+export {
+  createEmitter,
+  emitSolid,
+  emitSolidWithMappings,
+  SolidEmitter,
+  solidDeclarations,
+};
 
 export interface CompileSolidMxOptions {
   filename: string;
@@ -38,6 +46,7 @@ export interface RawSourceMap {
 export interface CompileSolidMxResult {
   code: string;
   map: RawSourceMap;
+  mappings: GeneratedMapping[];
 }
 
 /**
@@ -127,7 +136,8 @@ export function compileSolidMx(
       options.baseColumn ?? 0,
     );
   }
-  const code = emitSolid(ir);
+  const emitted = emitSolidWithMappings(ir);
+  const code = emitted.code;
   const rewritten = new MagicString(source);
   rewritten.overwrite(0, source.length, code);
   const map = rewritten.generateMap({
@@ -136,5 +146,5 @@ export function compileSolidMx(
     includeContent: true,
     hires: true,
   });
-  return { code, map: map as RawSourceMap };
+  return { code, map: map as RawSourceMap, mappings: emitted.mappings };
 }

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import {
   type CompileResult,
+  type CompilePreactResult,
   compilePreactMx,
   type RawSourceMap,
 } from "@mxlang/preact";
@@ -14,7 +15,7 @@ export type { CompileResult, RawSourceMap };
 export function compileReactMx(
   source: string,
   filename: string,
-): CompileResult {
+): CompilePreactResult {
   return compilePreactMx(source, filename, {
     target: reactTarget,
     declarations: reactDeclarations,

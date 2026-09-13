@@ -1,12 +1,15 @@
 import {
   type Attr,
   type AttributeTag,
+  concatMapped,
   drive,
   type Emitter,
   type Expr,
   type HostDeclarations,
   type Ir,
   type IrNode,
+  type MappedCode,
+  mapped,
   type Position,
   TranslateError,
 } from "@mxlang/core";
@@ -176,14 +179,22 @@ function methodExpression(expr: Expr): string | null {
   return `${match[1] ?? ""}(${match[2] ?? ""}) => ${match[3] ?? "{}"}`;
 }
 
-function renderAttr(attr: Attr): string {
+function renderAttr(attr: Attr, mapName = false): MappedCode {
   switch (attr.kind) {
     case "spread":
-      return ` {...${attr.value.code}}`;
+      return concatMapped(` {...${attr.value.code}}`);
     case "boolean":
-      return ` ${attr.name}={true}`;
+      return concatMapped(
+        " ",
+        mapped(attr.name, mapName ? attr.nameSpan : null),
+        "={true}",
+      );
     case "static":
-      return ` ${attr.name}="${escapeAttribute(attr.value)}"`;
+      return concatMapped(
+        " ",
+        mapped(attr.name, mapName ? attr.nameSpan : null),
+        `="${escapeAttribute(attr.value)}"`,
+      );
     case "bound":
       return fail(
         "bound attribute (`:=`) is Marko reactive state; use Solid state and an explicit event handler",
@@ -196,14 +207,22 @@ function renderAttr(attr: Attr): string {
       const fixed =
         attr.name === "class" ? staticTemplateValue(attr.value) : null;
       if (fixed !== null) {
-        return ` ${attr.name}="${escapeAttribute(fixed)}"`;
+        return concatMapped(
+          " ",
+          mapped(attr.name, mapName ? attr.nameSpan : null),
+          `="${escapeAttribute(fixed)}"`,
+        );
       }
-      return ` ${attr.name}={${methodExpression(attr.value) ?? attr.value.code}}`;
+      return concatMapped(
+        " ",
+        mapped(attr.name, mapName ? attr.nameSpan : null),
+        `={${methodExpression(attr.value) ?? attr.value.code}}`,
+      );
     }
   }
 }
 
-function renderAttrs(attrs: Attr[]): string {
+function renderAttrs(attrs: Attr[], mapNames = false): MappedCode {
   const ids = attrs.filter(
     (attr) => attr.kind !== "spread" && attr.name === "id",
   );
@@ -253,7 +272,7 @@ function renderAttrs(attrs: Attr[]): string {
         classEntries.at(-1)?.attr as Attr,
       );
     }
-    return attrs.map(renderAttr).join("");
+    return concatMapped(...attrs.map((attr) => renderAttr(attr, mapNames)));
   }
 
   const strings = classEntries.flatMap(({ attr }) => {
@@ -263,25 +282,33 @@ function renderAttrs(attrs: Attr[]): string {
     return value === null ? [] : [value];
   });
   const merged = strings.join(" ");
-  return attrs
-    .map((attr, index) => {
+  return concatMapped(
+    ...attrs.map((attr, index) => {
       if (
         attr.kind !== "spread" &&
         attr.name === "class" &&
         index !== structured.index
       ) {
-        return "";
+        return concatMapped();
       }
       if (index !== structured.index || attr.kind !== "dynamic") {
-        return renderAttr(attr);
+        return renderAttr(attr, mapNames);
       }
-      if (merged === "") return renderAttr(attr);
+      if (merged === "") return renderAttr(attr, mapNames);
       if (attr.value.shape === "array") {
-        return ` class={[${JSON.stringify(merged)}, ...${attr.value.code}]}`;
+        return concatMapped(
+          " ",
+          mapped("class", mapNames ? attr.nameSpan : null),
+          `={[${JSON.stringify(merged)}, ...${attr.value.code}]}`,
+        );
       }
-      return ` class={[${JSON.stringify(merged)}, ${attr.value.code}]}`;
-    })
-    .join("");
+      return concatMapped(
+        " ",
+        mapped("class", mapNames ? attr.nameSpan : null),
+        `={[${JSON.stringify(merged)}, ${attr.value.code}]}`,
+      );
+    }),
+  );
 }
 
 function meaningful(nodes: IrNode[]): IrNode[] {
@@ -315,17 +342,19 @@ function hasNamedAttr(attrs: Attr[], name: string): boolean {
   return attrs.some((attr) => attr.kind !== "spread" && attr.name === name);
 }
 
-function renderWithNewEmitter(nodes: IrNode[]): string {
+function renderWithNewEmitter(nodes: IrNode[]): MappedCode {
   const child = new SolidEmitter();
   drive(child, nodes);
-  return child.done();
+  return child.result();
 }
 
-function blockExpression(nodes: IrNode[]): string {
+function blockExpression(nodes: IrNode[]): MappedCode {
   const content = meaningful(nodes);
   if (content.length === 1) {
     const only = content[0] as IrNode;
-    if (only.kind === "Interpolation" && only.escaped) return only.expr.code;
+    if (only.kind === "Interpolation" && only.escaped) {
+      return concatMapped(only.expr.code);
+    }
     if (
       only.kind === "Element" ||
       only.kind === "Component" ||
@@ -336,13 +365,21 @@ function blockExpression(nodes: IrNode[]): string {
       return renderWithNewEmitter(content);
     }
   }
-  return `<>${renderWithNewEmitter(content)}</>`;
+  return concatMapped("<>", renderWithNewEmitter(content), "</>");
 }
 
-function attributeTag(tag: AttributeTag): string {
+function attributeTag(tag: AttributeTag): MappedCode {
   const value = blockExpression(tag.block.children);
-  if (!tag.block.hasParams) return ` ${tag.name}={${value}}`;
-  return ` ${tag.name}={(${tag.block.params.join(", ")}) => ${value}}`;
+  if (!tag.block.hasParams) {
+    return concatMapped(" ", mapped(tag.name, tag.nameSpan), "={", value, "}");
+  }
+  return concatMapped(
+    " ",
+    mapped(tag.name, tag.nameSpan),
+    `={(${tag.block.params.join(", ")}) => `,
+    value,
+    "}",
+  );
 }
 
 function identifierNames(text: string): Set<string> {
@@ -359,15 +396,15 @@ function hygienicIndex(params: string[], body: string): string {
 
 /** Solid JSX text emitter over the shared core IR. */
 export class SolidEmitter implements Emitter<string> {
-  readonly #out: string[] = [];
+  readonly #out: MappedCode[] = [];
 
   text(node: Extract<IrNode, { kind: "Text" }>): void {
-    this.#out.push(escapeText(node.value));
+    this.#out.push(concatMapped(escapeText(node.value)));
   }
 
   interpolation(node: Extract<IrNode, { kind: "Interpolation" }>): void {
     if (!node.escaped) fail("raw placeholder must be the only child", node);
-    this.#out.push(`{${node.expr.code}}`);
+    this.#out.push(concatMapped(`{${node.expr.code}}`));
   }
 
   element(node: Extract<IrNode, { kind: "Element" }>): void {
@@ -382,12 +419,18 @@ export class SolidEmitter implements Emitter<string> {
     const attrs = renderAttrs(node.attrs);
     const innerHtml = raw ? ` innerHTML={${raw.expr.code}}` : "";
     if (node.void) {
-      this.#out.push(`<${node.name}${attrs}${innerHtml} />`);
+      this.#out.push(concatMapped(`<${node.name}`, attrs, `${innerHtml} />`));
       return;
     }
-    const children = raw ? "" : renderWithNewEmitter(node.children);
+    const children = raw ? concatMapped() : renderWithNewEmitter(node.children);
     this.#out.push(
-      `<${node.name}${attrs}${innerHtml}>${children}</${node.name}>`,
+      concatMapped(
+        `<${node.name}`,
+        attrs,
+        `${innerHtml}>`,
+        children,
+        `</${node.name}>`,
+      ),
     );
   }
 
@@ -407,19 +450,41 @@ export class SolidEmitter implements Emitter<string> {
       );
     }
 
-    const attrs = renderAttrs(node.attrs);
-    const tags = node.attributeTags.map(attributeTag).join("");
+    const attrs = renderAttrs(node.attrs, true);
+    const tags = concatMapped(...node.attributeTags.map(attributeTag));
     const innerHtml = raw ? ` innerHTML={${raw.expr.code}}` : "";
     if (!node.content || raw) {
-      this.#out.push(`<${name}${attrs}${tags}${innerHtml} />`);
+      this.#out.push(
+        concatMapped(
+          "<",
+          mapped(name, node.nameSpan),
+          attrs,
+          tags,
+          `${innerHtml} />`,
+        ),
+      );
       return;
     }
 
     const body = blockExpression(contentNodes);
     const children = node.content.hasParams
-      ? `{(${node.content.params.join(", ")}) => ${body}}`
+      ? concatMapped(
+          `{(${node.content.params.join(", ")}) => `,
+          body,
+          "}",
+        )
       : renderWithNewEmitter(contentNodes);
-    this.#out.push(`<${name}${attrs}${tags}>${children}</${name}>`);
+    this.#out.push(
+      concatMapped(
+        "<",
+        mapped(name, node.nameSpan),
+        attrs,
+        tags,
+        ">",
+        children,
+        `</${name}>`,
+      ),
+    );
   }
 
   ifChain(node: Extract<IrNode, { kind: "IfChain" }>): void {
@@ -427,30 +492,43 @@ export class SolidEmitter implements Emitter<string> {
     const fallback = node.branches.find((branch) => !branch.condition);
     const renderShow = (
       index: number,
-      finalFallback: string | null,
-    ): string => {
+      finalFallback: MappedCode | null,
+    ): MappedCode => {
       const branch = conditioned[index];
-      if (!branch?.condition) return finalFallback ?? "<></>";
+      if (!branch?.condition) return finalFallback ?? concatMapped("<></>");
       const next =
         index + 1 < conditioned.length
           ? renderShow(index + 1, finalFallback)
           : finalFallback;
-      const fallbackAttr = next === null ? "" : ` fallback={${next}}`;
-      return `<Show when={${branch.condition.code}}${fallbackAttr}>${blockExpression(branch.children)}</Show>`;
+      const fallbackAttr = next === null
+        ? concatMapped()
+        : concatMapped(" fallback={", next, "}");
+      return concatMapped(
+        `<Show when={${branch.condition.code}}`,
+        fallbackAttr,
+        ">",
+        blockExpression(branch.children),
+        "</Show>",
+      );
     };
     const fallbackCode = fallback ? blockExpression(fallback.children) : null;
     if (conditioned.length <= 2) {
       this.#out.push(renderShow(0, fallbackCode));
       return;
     }
-    const fallbackAttr = fallbackCode ? ` fallback={${fallbackCode}}` : "";
-    const matches = conditioned
-      .map(
-        (branch) =>
-          `<Match when={${branch.condition?.code}}>${blockExpression(branch.children)}</Match>`,
-      )
-      .join("");
-    this.#out.push(`<Switch${fallbackAttr}>${matches}</Switch>`);
+    const fallbackAttr = fallbackCode
+      ? concatMapped(" fallback={", fallbackCode, "}")
+      : concatMapped();
+    const matches = concatMapped(
+      ...conditioned.map((branch) =>
+        concatMapped(
+          `<Match when={${branch.condition?.code}}>`,
+          blockExpression(branch.children),
+          "</Match>",
+        ),
+      ),
+    );
+    this.#out.push(concatMapped("<Switch", fallbackAttr, ">", matches, "</Switch>"));
   }
 
   forLoop(node: Extract<IrNode, { kind: "For" }>): void {
@@ -468,13 +546,21 @@ export class SolidEmitter implements Emitter<string> {
       } else if (node.key.code.trim() === "identity") keyed = "";
       else keyed = ` keyed={${node.key.code}}`;
       this.#out.push(
-        `<For each={${node.source.list.code}}${keyed}>{(${node.params.join(", ")}) => ${body}}</For>`,
+        concatMapped(
+          `<For each={${node.source.list.code}}${keyed}>{(${node.params.join(", ")}) => `,
+          body,
+          "}</For>",
+        ),
       );
       return;
     }
     if (node.source.kind === "in") {
       this.#out.push(
-        `<For each={Object.entries(${node.source.object.code})} keyed={e => e[0]}>{([${first}, ${second ?? "value"}]) => ${body}}</For>`,
+        concatMapped(
+          `<For each={Object.entries(${node.source.object.code})} keyed={e => e[0]}>{([${first}, ${second ?? "value"}]) => `,
+          body,
+          "}</For>",
+        ),
       );
       return;
     }
@@ -497,7 +583,11 @@ export class SolidEmitter implements Emitter<string> {
             : `(${bound}) - (${from})`;
       const fromAttr = node.source.from ? ` from={${from}}` : "";
       this.#out.push(
-        `<Repeat count={${count}}${fromAttr}>{(${node.params.join(", ")}) => ${body}}</Repeat>`,
+        concatMapped(
+          `<Repeat count={${count}}${fromAttr}>{(${node.params.join(", ")}) => `,
+          body,
+          "}</Repeat>",
+        ),
       );
       return;
     }
@@ -519,9 +609,13 @@ export class SolidEmitter implements Emitter<string> {
       const rounded = `${node.source.inclusive ? "Math.floor" : "Math.ceil"}(((${bound}) - (${from})) / (${step.code}))${node.source.inclusive ? " + 1" : ""}`;
       count = `Number.isFinite(${rounded}) ? Math.max(0, ${rounded}) : 0`;
     }
-    const counter = hygienicIndex(node.params, body);
+    const counter = hygienicIndex(node.params, body.code);
     this.#out.push(
-      `<Repeat count={${count}}>{(${counter}) => { const ${first} = (${from}) + ${counter} * (${step.code}); return ${body}; }}</Repeat>`,
+      concatMapped(
+        `<Repeat count={${count}}>{(${counter}) => { const ${first} = (${from}) + ${counter} * (${step.code}); return `,
+        body,
+        "; }}</Repeat>",
+      ),
     );
   }
 
@@ -551,9 +645,15 @@ export class SolidEmitter implements Emitter<string> {
       (tag) => tag.name === "placeholder",
     );
     const fallback = placeholder
-      ? ` fallback={${blockExpression(placeholder.block.children)}}`
-      : "";
-    const loading = `<Loading${fallback}>${renderWithNewEmitter(node.tag.children)}</Loading>`;
+      ? concatMapped(" fallback={", blockExpression(placeholder.block.children), "}")
+      : concatMapped();
+    const loading = concatMapped(
+      "<Loading",
+      fallback,
+      ">",
+      renderWithNewEmitter(node.tag.children),
+      "</Loading>",
+    );
     if (!catchTag) {
       this.#out.push(loading);
       return;
@@ -561,7 +661,13 @@ export class SolidEmitter implements Emitter<string> {
     const params = catchTag.block.params.join(", ");
     const caught = blockExpression(catchTag.block.children);
     this.#out.push(
-      `<Errored fallback={(${params}) => ${caught}}>${loading}</Errored>`,
+      concatMapped(
+        `<Errored fallback={(${params}) => `,
+        caught,
+        "}>",
+        loading,
+        "</Errored>",
+      ),
     );
   }
 
@@ -572,7 +678,11 @@ export class SolidEmitter implements Emitter<string> {
   comment(_node: Extract<IrNode, { kind: "Comment" }>): void {}
 
   done(): string {
-    return this.#out.join("");
+    return this.result().code;
+  }
+
+  result(): MappedCode {
+    return concatMapped(...this.#out);
   }
 }
 
@@ -584,4 +694,10 @@ export function emitSolid(ir: Ir): string {
   const emitter = createEmitter();
   drive(emitter, ir.body);
   return emitter.done();
+}
+
+export function emitSolidWithMappings(ir: Ir): MappedCode {
+  const emitter = createEmitter();
+  drive(emitter, ir.body);
+  return emitter.result();
 }

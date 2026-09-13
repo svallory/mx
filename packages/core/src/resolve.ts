@@ -55,6 +55,7 @@ import type {
   IrNode,
   Position,
 } from "./ir.ts";
+import type { SourceSpan } from "./mapping.ts";
 
 /** A node's start position, in `TranslateError`'s own 1-based/0-based shape. */
 function posOf(node: Node): Position {
@@ -66,6 +67,32 @@ function posOf(node: Node): Position {
 function endPosOf(node: Node): Position {
   const end = node?.loc?.end ?? node?.end ?? {};
   return { line: end.line ?? 0, column: end.column ?? 0 };
+}
+
+function offsetOf(ctx: Ctx, position: Position & { index?: number }): number {
+  if (typeof position.index === "number") return position.index;
+  let offset = 0;
+  for (let line = 1; line < position.line; line++) {
+    offset += (ctx.lines[line - 1]?.length ?? 0) + 1;
+  }
+  return Math.min(ctx.source.length, offset + position.column);
+}
+
+function nodeSpan(ctx: Ctx, node: Node): SourceSpan {
+  const start = node?.loc?.start ?? node?.start ?? {};
+  const end = node?.loc?.end ?? node?.end ?? start;
+  return {
+    sourceStart: offsetOf(ctx, start),
+    sourceEnd: offsetOf(ctx, end),
+  };
+}
+
+function attrNameSpan(ctx: Ctx, attr: Node): SourceSpan {
+  const sourceStart = offsetOf(ctx, attr?.loc?.start ?? attr?.start ?? {});
+  const sourceName = attr.modifier
+    ? `${attr.name}:${attr.modifier}`
+    : String(attr.name ?? "");
+  return { sourceStart, sourceEnd: sourceStart + sourceName.length };
 }
 
 /** Classifies an expression once, while its parsed node is still available. */
@@ -118,6 +145,7 @@ function resolveAttr(
   on: "element" | "component" = "element",
 ): Attr {
   const loc = posOf(attr);
+  const nameSpan = attrNameSpan(ctx, attr);
 
   if (attr.type === "MarkoSpreadAttribute") {
     return { kind: "spread", value: exprOf(ctx, attr.value), loc };
@@ -137,6 +165,7 @@ function resolveAttr(
     return {
       kind: "bound",
       name: attr.name,
+      nameSpan,
       value: exprOf(ctx, attr.value),
       loc,
     };
@@ -153,6 +182,7 @@ function resolveAttr(
       return {
         kind: "dynamic",
         name: resolvedName,
+        nameSpan,
         value: exprOf(ctx, attr.value),
         loc,
       };
@@ -171,12 +201,24 @@ function resolveAttr(
   const value = attr.value;
   // A bare attribute (`download`, `checked`) is HTML's spelling of `true`.
   if (value?.type === "BooleanLiteral" && value.value === true) {
-    return { kind: "boolean", name: attr.name, loc };
+    return { kind: "boolean", name: attr.name, nameSpan, loc };
   }
   if (value?.type === "StringLiteral") {
-    return { kind: "static", name: attr.name, value: value.value, loc };
+    return {
+      kind: "static",
+      name: attr.name,
+      value: value.value,
+      nameSpan,
+      loc,
+    };
   }
-  return { kind: "dynamic", name: attr.name, value: exprOf(ctx, value), loc };
+  return {
+    kind: "dynamic",
+    name: attr.name,
+    value: exprOf(ctx, value),
+    nameSpan,
+    loc,
+  };
 }
 
 function resolveAttrs(
@@ -246,6 +288,10 @@ function resolveAttributeTags(ctx: Ctx, node: Node): AttributeTag[] {
     if (block.type !== "MarkoTag") continue;
     tags.push({
       name: String(block.name.value).replace(/^@/, ""),
+      nameSpan: (() => {
+        const span = nodeSpan(ctx, block.name);
+        return { sourceStart: span.sourceStart + 1, sourceEnd: span.sourceEnd };
+      })(),
       block: resolveBlock(ctx, block),
       loc: posOf(block),
     });
@@ -610,6 +656,7 @@ function resolveComponent(
   return {
     kind: "Component",
     target,
+    nameSpan: target.kind === "dynamic" ? null : nodeSpan(ctx, node.name),
     attrs: resolveAttrs(ctx, node, targetName(target), "component"),
     content: hasContent(children) ? resolveBlock(ctx, node) : null,
     attributeTags: resolveAttributeTags(ctx, node),

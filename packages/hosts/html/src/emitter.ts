@@ -37,13 +37,17 @@ import {
   type AttributeTag,
   type Block,
   type ComponentTarget,
+  concatMapped,
   drive,
   type Emitter,
   type Expr,
+  type GeneratedMapping,
   // biome-ignore lint/suspicious/noShadowRestrictedNames: the compiler calls the same helper the emitted module imports, so a static value and a runtime one are escaped by one implementation
   escape,
   type Ir,
   type IrNode,
+  type MappedCode,
+  mapped,
   propKey,
   quote,
   TranslateError,
@@ -80,6 +84,7 @@ function fail(
  */
 interface State {
   body: string[];
+  bodyMappings: GeneratedMapping[][];
   prelude: string[];
   /**
    * Statements this host lifts to **module** scope, beside the template's own
@@ -110,13 +115,16 @@ export interface StringEmitter extends Emitter<string[]> {
 export function createEmitter(): StringEmitter {
   const state: State = {
     body: [],
+    bodyMappings: [],
     prelude: [],
     moduleHoisted: [],
     indent: 1,
   };
 
-  const push = (line: string): void => {
-    state.body.push(INDENT.repeat(state.indent) + line);
+  const push = (line: string | MappedCode): void => {
+    const emitted = concatMapped(INDENT.repeat(state.indent), line);
+    state.body.push(emitted.code);
+    state.bodyMappings.push(emitted.mappings);
   };
 
   /**
@@ -148,26 +156,41 @@ export function createEmitter(): StringEmitter {
    * enclosing template's buffer and can be called zero or many times by the
    * component that receives it.
    */
-  const blockFunction = (children: IrNode[], params = ""): string => {
+  const blockFunction = (children: IrNode[], params = ""): MappedCode => {
     const outerBody = state.body;
+    const outerBodyMappings = state.bodyMappings;
     const outerPrelude = state.prelude;
     const outerIndent = state.indent;
     state.body = [];
+    state.bodyMappings = [];
     state.prelude = [];
     state.indent = outerIndent + 1;
     push('let out = "";');
     drive(emitter, children);
     push("return out;");
     const lines = state.body;
+    const lineMappings = state.bodyMappings;
     // A statement hoisted from inside this block belongs at *this* function's
     // head, not the enclosing one's: it may read the block's own params.
     const prelude = state.prelude.map(
       (code) => INDENT.repeat(outerIndent + 1) + code,
     );
     state.body = outerBody;
+    state.bodyMappings = outerBodyMappings;
     state.prelude = outerPrelude;
     state.indent = outerIndent;
-    return `(${params}) => {\n${[...prelude, ...lines].join("\n")}\n${INDENT.repeat(outerIndent)}}`;
+    const emittedLines = lines.map((code, index) => ({
+      code,
+      mappings: lineMappings[index] ?? [],
+    }));
+    return concatMapped(
+      `(${params}) => {\n`,
+      ...prelude.flatMap((code) => [code, "\n"]),
+      ...emittedLines.flatMap((line, index) =>
+        index === emittedLines.length - 1 ? [line] : [line, "\n"],
+      ),
+      `\n${INDENT.repeat(outerIndent)}}`,
+    );
   };
 
   /**
@@ -253,7 +276,7 @@ export function createEmitter(): StringEmitter {
     attributeTags: AttributeTag[],
     content: Block | null,
   ): {
-    parts: string[];
+    parts: MappedCode[];
     named: Map<string, string>;
     spreads: string[];
   } => {
@@ -263,47 +286,59 @@ export function createEmitter(): StringEmitter {
     // and is overridden by the second. Partitioning spreads out and emitting
     // them first (the shape this replaced) silently inverted that for every
     // key a spread shares with an earlier named prop.
-    const parts: string[] = [];
+    const parts: MappedCode[] = [];
     // The named values alone, for the positional `<define>` lookup, which asks
     // by parameter name rather than by position in the source.
     const named = new Map<string, string>();
     const spreads: string[] = [];
 
-    const setNamed = (name: string, value: string): void => {
-      named.set(name, value);
-      parts.push(`${propKey(name)}: ${value}`);
+    const setNamed = (
+      name: string,
+      value: string | MappedCode,
+      span: { sourceStart: number; sourceEnd: number } | null = null,
+    ): void => {
+      named.set(name, typeof value === "string" ? value : value.code);
+      parts.push(concatMapped(mapped(propKey(name), span), ": ", value));
     };
 
     for (const attr of attrs) {
       switch (attr.kind) {
         case "spread":
           spreads.push(attr.value.code);
-          parts.push(`...${attr.value.code}`);
+          parts.push(concatMapped(`...${attr.value.code}`));
           break;
         case "boolean":
-          setNamed(attr.name, "true");
+          setNamed(attr.name, "true", attr.nameSpan);
           break;
         case "static":
-          setNamed(attr.name, quote(attr.value));
+          setNamed(attr.name, quote(attr.value), attr.nameSpan);
           break;
         default:
-          setNamed(attr.name, attr.value.code);
+          setNamed(attr.name, attr.value.code, attr.nameSpan);
       }
     }
 
     // A repeated attribute tag is an array, exactly as Marko does it — which
     // is what lets a component write `<for|it| of=input.item><${it}/></for>`.
-    const blocks = new Map<string, string[]>();
+    const blocks = new Map<string, Array<{ tag: AttributeTag; fn: MappedCode }>>();
     for (const tag of attributeTags) {
       const fn = blockFunction(tag.block.children, tag.block.params.join(", "));
       const existing = blocks.get(tag.name);
-      if (existing) existing.push(fn);
-      else blocks.set(tag.name, [fn]);
+      if (existing) existing.push({ tag, fn });
+      else blocks.set(tag.name, [{ tag, fn }]);
     }
-    for (const [name, fns] of blocks) {
+    for (const [name, entries] of blocks) {
+      const fns = entries.map(({ fn }) => fn);
       setNamed(
         name,
-        fns.length === 1 ? (fns[0] as string) : `[${fns.join(", ")}]`,
+        fns.length === 1
+          ? (fns[0] as MappedCode)
+          : concatMapped(
+              "[",
+              ...fns.flatMap((fn, index) => (index === 0 ? [fn] : [", ", fn])),
+              "]",
+            ),
+        entries[0]?.tag.nameSpan ?? null,
       );
     }
 
@@ -348,6 +383,11 @@ export function createEmitter(): StringEmitter {
         node.content,
       );
       const target = node.target;
+      const joinedParts = concatMapped(
+        ...parts.flatMap((part, index) =>
+          index === 0 ? [part] : [", ", part],
+        ),
+      );
 
       if (target.kind === "dynamic") {
         // The value may be a component function, a renderable block, or a tag
@@ -356,7 +396,11 @@ export function createEmitter(): StringEmitter {
         // `parts` carries spreads in source order too: dropping them here (the
         // shape this replaced) silently lost every spread on a dynamic tag.
         push(
-          `out += renderDynamic(${target.expr.code}, { ${parts.join(", ")} });`,
+          concatMapped(
+            `out += renderDynamic(${target.expr.code}, { `,
+            joinedParts,
+            " });",
+          ),
         );
         return;
       }
@@ -375,11 +419,25 @@ export function createEmitter(): StringEmitter {
           node.args.length > 0
             ? node.args.map((a: Expr) => a.code)
             : target.params.map((param) => named.get(param) ?? "undefined");
-        push(`out += ${target.name}(${args.join(", ")});`);
+        push(
+          concatMapped(
+            "out += ",
+            mapped(target.name, node.nameSpan),
+            `(${args.join(", ")});`,
+          ),
+        );
         return;
       }
 
-      push(`out += ${target.name}({ ${parts.join(", ")} });`);
+      push(
+        concatMapped(
+          "out += ",
+          mapped(target.name, node.nameSpan),
+          "({ ",
+          joinedParts,
+          " });",
+        ),
+      );
     },
 
     ifChain(node) {
@@ -608,6 +666,7 @@ export function createEmitter(): StringEmitter {
         emitter.component({
           kind: "Component",
           target: { kind: "dynamic", expr: data.expr } as ComponentTarget,
+          nameSpan: null,
           // Spreads included: `renderDynamic` receives them in source order
           // like any other component call.
           attrs: tag.attrs,
@@ -631,12 +690,14 @@ export function createEmitter(): StringEmitter {
  * module scope, their `Input` interface, and one default-exported render
  * function concatenating into a single local.
  */
-export function emitModule(ir: Ir, escapeFrom: string): string {
+export function emitModuleWithMappings(ir: Ir, escapeFrom: string): MappedCode {
   const emitter = createEmitter();
   drive(emitter, ir.body);
   const body = emitter.done();
 
-  const lines: string[] = [`import { escape } from "${escapeFrom}";`];
+  const lines: Array<string | MappedCode> = [
+    `import { escape } from "${escapeFrom}";`,
+  ];
   const hoisted = [
     ...ir.imports.map((node) => node.code),
     ...ir.hoisted.map((node) => node.code),
@@ -655,12 +716,23 @@ export function emitModule(ir: Ir, escapeFrom: string): string {
     ...[...ir.prelude.map((node) => node.code), ...emitter.state.prelude].map(
       (code) => INDENT + code,
     ),
-    ...body,
+    ...body.map((code, index) => ({
+      code,
+      mappings: emitter.state.bodyMappings[index] ?? [],
+    })),
     `${INDENT}return out;`,
     "}",
     "",
   );
-  return lines.join("\n");
+  return concatMapped(
+    ...lines.flatMap((line, index) =>
+      index === lines.length - 1 ? [line] : [line, "\n"],
+    ),
+  );
+}
+
+export function emitModule(ir: Ir, escapeFrom: string): string {
+  return emitModuleWithMappings(ir, escapeFrom).code;
 }
 
 export { DYNAMIC };

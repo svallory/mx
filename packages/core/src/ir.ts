@@ -36,6 +36,7 @@
  */
 
 import type { Node } from "./core.ts";
+import type { SourceSpan } from "./mapping.ts";
 
 /** A source position, as Marko reports one and `TranslateError` carries it. */
 export interface Position {
@@ -76,16 +77,19 @@ export interface IrBase {
  * keys are only known at run time.
  */
 export type Attr =
-  | ({ kind: "static"; name: string; value: string } & IrBase)
+  | ({ kind: "static"; name: string; value: string; nameSpan: SourceSpan } &
+      IrBase)
   /** A bare attribute (`disabled`), HTML's spelling of `true`. */
-  | ({ kind: "boolean"; name: string } & IrBase)
-  | ({ kind: "dynamic"; name: string; value: Expr } & IrBase)
+  | ({ kind: "boolean"; name: string; nameSpan: SourceSpan } & IrBase)
+  | ({ kind: "dynamic"; name: string; value: Expr; nameSpan: SourceSpan } &
+      IrBase)
   /**
    * `value:=expr`, Marko's two-way binding. Resolved rather than rejected: a
    * host with no update path emits the initial value, which is what Marko's
    * own server render does.
    */
-  | ({ kind: "bound"; name: string; value: Expr } & IrBase)
+  | ({ kind: "bound"; name: string; value: Expr; nameSpan: SourceSpan } &
+      IrBase)
   | ({ kind: "spread"; value: Expr } & IrBase);
 
 /**
@@ -170,6 +174,7 @@ export interface HostTag<Data = unknown> extends IrBase {
 /** `<@name>body</@name>` — a prop of the component call it sits inside. */
 export interface AttributeTag extends IrBase {
   name: string;
+  nameSpan: SourceSpan;
   block: Block;
 }
 
@@ -198,6 +203,8 @@ export type IrNode =
   | ({
       kind: "Component";
       target: ComponentTarget;
+      /** The opening tag name; null only for a run-time dynamic target. */
+      nameSpan: SourceSpan | null;
       attrs: Attr[];
       /** Ordinary children, or null when the call has no content. */
       content: Block | null;

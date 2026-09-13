@@ -13,13 +13,16 @@ import {
   type CompileResult,
   compileSource,
   createTranslator,
+  type GeneratedMapping,
+  type MappedCode,
   type RawSourceMap,
 } from "@mxlang/core";
 import markoTaglib from "../taglib/marko.json" with { type: "json" };
-import { emitModule } from "./emitter.ts";
+import { emitModuleWithMappings } from "./emitter.ts";
 import {
   escapeFrom,
   finalizeModule,
+  finalizeModuleWithMappings,
   policy,
   strictPolicy,
 } from "./translate.ts";
@@ -66,6 +69,10 @@ export interface CompileOptions {
   strict?: boolean;
 }
 
+export interface CompileHtmlResult extends CompileResult {
+  mappings: GeneratedMapping[];
+}
+
 /**
  * Compiles a `.mx`/`.marko` template to a runtime-free TypeScript module.
  *
@@ -82,8 +89,10 @@ export function compile(
   source: string,
   filename: string,
   options: CompileOptions = {},
-): CompileResult {
-  return compileSource(
+): CompileHtmlResult {
+  let emitted: MappedCode | null = null;
+  let mappings: GeneratedMapping[] = [];
+  const result = compileSource(
     source,
     filename,
     options.strict ? strictPolicy : policy,
@@ -93,10 +102,19 @@ export function compile(
       // appends the helpers a template actually calls and brands the default
       // export, both of which are properties of this target rather than of
       // the core.
-      emitIr: (ir) => emitModule(ir, escapeFrom),
-      postEmit: (code) => finalizeModule(code),
+      emitIr: (ir) => {
+        emitted = emitModuleWithMappings(ir, escapeFrom);
+        return emitted.code;
+      },
+      postEmit: (code) => {
+        if (!emitted || emitted.code !== code) return finalizeModule(code);
+        const finalized = finalizeModuleWithMappings(emitted);
+        mappings = finalized.mappings;
+        return finalized.code;
+      },
     },
   );
+  return { ...result, mappings };
 }
 
 /** `compile()` over a file on disk. */

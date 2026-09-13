@@ -37,8 +37,11 @@ import {
   expr,
   expressionShape,
   fail,
+  type MappedCode,
   type Node,
   type Policy,
+  concatMapped,
+  replaceMapped,
   rejectUnsupportedFields,
   sliceLoc,
 } from "@mxlang/core";
@@ -710,5 +713,34 @@ export function finalizeModule(code: string): string {
       DEFAULT_EXPORT,
       `\n${helpers.join("\n\n")}\n${DEFAULT_EXPORT}`,
     ),
+  );
+}
+
+/** `finalizeModule`, preserving emitter-recorded generated offsets. */
+export function finalizeModuleWithMappings(emitted: MappedCode): MappedCode {
+  const helpers = [
+    ["classValue(", CLASS_VALUE],
+    ["styleValue(", STYLE_VALUE],
+    ["escapeComment(", ESCAPE_COMMENT],
+    ["renderDynamic(", RENDER_DYNAMIC],
+  ]
+    .filter(([call]) => emitted.code.includes(call as string))
+    .map(([, source]) => source);
+  const withHelpers =
+    helpers.length === 0
+      ? emitted
+      : replaceMapped(
+          emitted,
+          DEFAULT_EXPORT,
+          `\n${helpers.join("\n\n")}\n${DEFAULT_EXPORT}`,
+        );
+  const branded = replaceMapped(
+    withHelpers,
+    DEFAULT_EXPORT,
+    "\nfunction render(input: Input): string {",
+  );
+  return concatMapped(
+    branded,
+    'Object.defineProperty(render, Symbol.for("mx.component"), { value: true });\n\nexport default render;\n',
   );
 }

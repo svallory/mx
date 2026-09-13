@@ -61,3 +61,11 @@ export type {
   Position,
 } from "./ir.ts";
 export { expressionShape, resolve, resolveChildren } from "./resolve.ts";
+export {
+  concatMapped,
+  type GeneratedMapping,
+  type MappedCode,
+  mapped,
+  replaceMapped,
+  type SourceSpan,
+} from "./mapping.ts";

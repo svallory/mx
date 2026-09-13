@@ -51,11 +51,14 @@ import { readFileSync } from "node:fs";
 import {
   type CompileResult,
   compileSource,
+  concatMapped,
   createTranslator,
   drive,
+  type GeneratedMapping,
   type HostDeclarations,
   type Ir,
   type IrNode,
+  type MappedCode,
   type RawSourceMap,
 } from "@mxlang/core";
 import {
@@ -133,25 +136,32 @@ function importLines(names: Set<string>, target: Target): string[] {
  * `<const>` deeper in the tree stays an error (see the emitter), because
  * lifting one out of a `<for>` body would change which values it closes over.
  */
-export function emitModule(ir: Ir, target: Target = preactTarget): string {
+export function emitModuleWithMappings(
+  ir: Ir,
+  target: Target = preactTarget,
+): MappedCode {
   const emitter = createEmitter(target);
 
   // Statements first, markup second. Splitting on the top level only: a
   // nested one is refused by the emitter rather than silently relocated.
-  const statements: string[] = [];
+  const statements: MappedCode[] = [];
   const markup: IrNode[] = [];
   for (const node of ir.body) {
     if (node.kind === "Const") {
-      statements.push(`const ${node.name} = ${node.init.code};`);
+      statements.push(concatMapped(`const ${node.name} = ${node.init.code};`));
     } else if (node.kind === "Define") {
       const body = createEmitter(target);
       drive(body, node.children);
-      const rendered = body.done();
+      const rendered = body.result();
       for (const name of body.runtimeImports) {
         emitter.runtimeImports.add(name);
       }
       statements.push(
-        `const ${node.name} = (${node.params.join(", ")}) => (<>${rendered}</>);`,
+        concatMapped(
+          `const ${node.name} = (${node.params.join(", ")}) => (<>`,
+          rendered,
+          "</>);",
+        ),
       );
     } else {
       markup.push(node);
@@ -159,7 +169,7 @@ export function emitModule(ir: Ir, target: Target = preactTarget): string {
   }
 
   drive(emitter, markup);
-  const body = emitter.done();
+  const body = emitter.result();
 
   const lines: string[] = [`/** @jsxImportSource ${target.jsxImportSource} */`];
   const imports = importLines(emitter.runtimeImports, target);
@@ -207,10 +217,25 @@ export function emitModule(ir: Ir, target: Target = preactTarget): string {
   // A statement lifted by the core's own hoist hook precedes the author's, so
   // a binding it introduces is in scope for everything that follows.
   for (const node of ir.prelude) lines.push(`  ${node.code}`);
-  for (const statement of statements) lines.push(`  ${statement}`);
-  lines.push(`  return (<>${body}</>);`, "}", "");
+  const prefix = `${lines.join("\n")}\n`;
+  const statementCode = concatMapped(
+    ...statements.flatMap((statement) => ["  ", statement, "\n"]),
+  );
+  return concatMapped(
+    prefix,
+    statementCode,
+    "  return (<>",
+    body,
+    "</>);\n}\n",
+  );
+}
 
-  return lines.join("\n");
+export function emitModule(ir: Ir, target: Target = preactTarget): string {
+  return emitModuleWithMappings(ir, target).code;
+}
+
+export interface CompilePreactResult extends CompileResult {
+  mappings: GeneratedMapping[];
 }
 
 /**
@@ -225,17 +250,23 @@ export function compilePreactMx(
   source: string,
   filename: string,
   options: CompilePreactOptions = {},
-): CompileResult {
+): CompilePreactResult {
   const target = options.target ?? preactTarget;
-  return compileSource(
+  let mappings: GeneratedMapping[] = [];
+  const result = compileSource(
     source,
     filename,
     options.declarations ?? preactDeclarations,
     {
       ...host,
-      emitIr: (ir) => emitModule(ir, target),
+      emitIr: (ir) => {
+        const emitted = emitModuleWithMappings(ir, target);
+        mappings = emitted.mappings;
+        return emitted.code;
+      },
     },
   );
+  return { ...result, mappings };
 }
 
 /** `compilePreactMx()` over a file on disk. */
