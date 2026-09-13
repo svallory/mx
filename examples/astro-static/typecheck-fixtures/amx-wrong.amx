@@ -1,0 +1,10 @@
+---
+import Card from "../src/components/card.mx";
+
+function needsNumber(value: number) {
+  return value;
+}
+---
+<Card title=1>
+  <p>Before ${needsNumber("wrong")} after.</p>
+</Card>

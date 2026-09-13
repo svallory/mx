@@ -179,4 +179,43 @@ describe("mx-tsc", () => {
     },
     SPAWN_TIMEOUT_MS,
   );
+
+  it(
+    "accepts a correctly typed .amx page in Astro mode",
+    () => {
+      const result = run(mxTsc, [
+        "--astro",
+        "--noEmit",
+        "-p",
+        join(astroStatic, "typecheck-fixtures", "amx-correct.json"),
+      ]);
+
+      expect(result.output).toBe("");
+      expect(result.status).toBe(0);
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  it(
+    "reports .amx prop and interpolation errors at exact source columns",
+    () => {
+      const result = run(mxTsc, [
+        "--astro",
+        "--noEmit",
+        "-p",
+        join(astroStatic, "typecheck-fixtures", "amx-wrong.json"),
+      ]);
+
+      expect(result.status).not.toBe(0);
+      expect(result.output).toContain("amx-wrong.amx(8,7): error TS2322");
+      expect(result.output).toContain("amx-wrong.amx(9,27): error TS2345");
+      expect(result.output).toContain(
+        "Type 'number' is not assignable to type 'string'",
+      );
+      expect(result.output).toContain(
+        "Argument of type 'string' is not assignable to parameter of type 'number'",
+      );
+    },
+    SPAWN_TIMEOUT_MS,
+  );
 });

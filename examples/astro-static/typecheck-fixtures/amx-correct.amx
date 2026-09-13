@@ -1,0 +1,10 @@
+---
+import Card from "../src/components/card.mx";
+
+function needsNumber(value: number) {
+  return value;
+}
+---
+<Card title="Correct prop">
+  <p>Before ${needsNumber(42)} after.</p>
+</Card>
