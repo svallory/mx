@@ -16,6 +16,8 @@
  */
 
 export interface Target {
+  /** Human-readable target name used in host-specific diagnostics. */
+  name: string;
   /** Value of the emitted `/** @jsxImportSource … *\/` pragma. */
   jsxImportSource: string;
   /**
@@ -26,6 +28,8 @@ export interface Target {
    * author writes `class=` and reads `class=` back out of the generated JSX.
    */
   classAttr: string;
+  /** How this target spells HTML's `for` attribute in JSX. */
+  forAttr: string;
   /** The prop that sets raw HTML from a sole `$!{expr}` child. */
   rawHtmlProp: string;
   /**
@@ -46,8 +50,10 @@ export interface Target {
 
 /** The Preact target. */
 export const preactTarget: Target = {
+  name: "Preact",
   jsxImportSource: "preact",
   classAttr: "class",
+  forAttr: "for",
   rawHtmlProp: "dangerouslySetInnerHTML",
   rawHtmlValue: (code) => `{ __html: ${code} }`,
   errorBoundaryModule: "@mxlang/preact/runtime",

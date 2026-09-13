@@ -42,50 +42,46 @@ import { preactTarget, type Target } from "./target.ts";
  * holds — the message says what this target cannot express and where the
  * equivalent lives, never "not implemented".
  */
-const STATEFUL_ERRORS: HostDeclarations["tags"] = {
-  let: {
-    kind: "error",
-    reason:
-      "`<let>` is Marko reactive state; use Preact's `useState` via `<const/x=useState(0)/>` or in the surrounding module",
-  },
-  effect: {
-    kind: "error",
-    reason:
-      "`<effect>` is a Marko reactive effect; use Preact's `useEffect` via `<const/_=useEffect(...)/>` or in the surrounding module",
-  },
-  lifecycle: {
-    kind: "error",
-    reason:
-      "`<lifecycle>` is a Marko lifecycle hook; use Preact's `useEffect`/`useLayoutEffect` instead",
-  },
-  script: {
-    kind: "error",
-    reason:
-      "`<script>` is a Marko client-runtime tag; write client code in a module the component imports",
-  },
-  client: {
-    kind: "error",
-    reason:
-      "a `client` block is Marko's client-runtime split; a Preact component is already client code",
-  },
-  id: {
-    kind: "error",
-    reason:
-      "`<id>` allocates an identifier for Marko's reactive runtime; use Preact's `useId`",
-  },
-  await: {
-    kind: "error",
-    reason:
-      "`<await>` needs Marko's suspense; use `<try>` with a `<@placeholder>`, whose body may suspend",
-  },
-  return: {
-    kind: "error",
-    reason:
-      "`<return>` hands a value to a parent template; a Preact component returns its own markup",
-  },
-  else: { kind: "error", reason: "`<else>` must follow an `<if>`" },
-  "else-if": { kind: "error", reason: "`<else-if>` must follow an `<if>`" },
-};
+function statefulErrors(targetName: string): HostDeclarations["tags"] {
+  return {
+    let: {
+      kind: "error",
+      reason: `\`<let>\` is Marko reactive state; use ${targetName}'s \`useState\` via \`<const/x=useState(0)/>\` or in the surrounding module`,
+    },
+    effect: {
+      kind: "error",
+      reason: `\`<effect>\` is a Marko reactive effect; use ${targetName}'s \`useEffect\` via \`<const/_=useEffect(...)/>\` or in the surrounding module`,
+    },
+    lifecycle: {
+      kind: "error",
+      reason: `\`<lifecycle>\` is a Marko lifecycle hook; use ${targetName}'s \`useEffect\`/\`useLayoutEffect\` instead`,
+    },
+    script: {
+      kind: "error",
+      reason:
+        "`<script>` is a Marko client-runtime tag; write client code in a module the component imports",
+    },
+    client: {
+      kind: "error",
+      reason: `a \`client\` block is Marko's client-runtime split; a ${targetName} component is already client code`,
+    },
+    id: {
+      kind: "error",
+      reason: `\`<id>\` allocates an identifier for Marko's reactive runtime; use ${targetName}'s \`useId\``,
+    },
+    await: {
+      kind: "error",
+      reason:
+        "`<await>` needs Marko's suspense; use `<try>` with a `<@placeholder>`, whose body may suspend",
+    },
+    return: {
+      kind: "error",
+      reason: `\`<return>\` hands a value to a parent template; a ${targetName} component returns its own markup`,
+    },
+    else: { kind: "error", reason: "`<else>` must follow an `<if>`" },
+    "else-if": { kind: "error", reason: "`<else-if>` must follow an `<if>`" },
+  };
+}
 
 /** What `resolveHostTag` records for a claimed tag. */
 type HostTagData = { kind: "try" };
@@ -129,70 +125,75 @@ function isComponentName(name: string): boolean {
 }
 
 /** Resolve-time questions for a Preact/React JSX target. */
-export const preactDeclarations: HostDeclarations = {
-  tags: STATEFUL_ERRORS,
-  // Element-vs-component follows Marko's own rule — what the taglib lookup
-  // and the template's own bindings resolve the name to — not JSX's casing
-  // rule, so a `tags/`-discovered `<badge/>` is the component it is in Marko.
-  // The casing difference is handled at emit time by `componentAlias`.
-  isElement: (name, ctx) => {
-    const taglibId = ctx.lookup?.getTag(name)?.taglibId;
-    if (taglibId !== undefined) return ELEMENT_TAGLIBS.has(taglibId);
-    return !isComponentName(name);
-  },
-  isComponent: (name, ctx) => {
-    if (ctx.defines?.has(name) || ctx.imports?.has(name)) return true;
-    const taglibId = ctx.lookup?.getTag(name)?.taglibId;
-    if (taglibId !== undefined) return !ELEMENT_TAGLIBS.has(taglibId);
-    return isComponentName(name);
-  },
-  claimsTag: (name) => name === "try",
-  resolveHostTag(name, node): HostTagData {
-    if (name !== "try") rawFail(`unknown Preact host tag ${name}`, node);
-    if (node.body?.params?.length) {
-      rawFail("tag params (`|a, b|`) on `<try>`", node);
-    }
-    if (node.var) rawFail("tag variable (`/name`) on `<try>`", node);
-    if (node.arguments) rawFail("tag arguments `(...)` on `<try>`", node);
-    if ((node.attributes ?? []).length > 0) {
-      rawFail("attributes on `<try>` are not supported", node.attributes[0]);
-    }
+export function createJsxDeclarations(targetName: string): HostDeclarations {
+  return {
+    tags: statefulErrors(targetName),
+    // Element-vs-component follows Marko's own rule — what the taglib lookup
+    // and the template's own bindings resolve the name to — not JSX's casing
+    // rule, so a `tags/`-discovered `<badge/>` is the component it is in Marko.
+    // The casing difference is handled at emit time by `componentAlias`.
+    isElement: (name, ctx) => {
+      const taglibId = ctx.lookup?.getTag(name)?.taglibId;
+      if (taglibId !== undefined) return ELEMENT_TAGLIBS.has(taglibId);
+      return !isComponentName(name);
+    },
+    isComponent: (name, ctx) => {
+      if (ctx.defines?.has(name) || ctx.imports?.has(name)) return true;
+      const taglibId = ctx.lookup?.getTag(name)?.taglibId;
+      if (taglibId !== undefined) return !ELEMENT_TAGLIBS.has(taglibId);
+      return isComponentName(name);
+    },
+    claimsTag: (name) => name === "try",
+    resolveHostTag(name, node): HostTagData {
+      if (name !== "try")
+        rawFail(`unknown ${targetName} host tag ${name}`, node);
+      if (node.body?.params?.length) {
+        rawFail("tag params (`|a, b|`) on `<try>`", node);
+      }
+      if (node.var) rawFail("tag variable (`/name`) on `<try>`", node);
+      if (node.arguments) rawFail("tag arguments `(...)` on `<try>`", node);
+      if ((node.attributes ?? []).length > 0) {
+        rawFail("attributes on `<try>` are not supported", node.attributes[0]);
+      }
 
-    const seen = new Set<string>();
-    for (const tag of node.attributeTags ?? []) {
-      const tagName = String(tag.name?.value ?? "").replace(/^@/, "");
-      if (tagName !== "catch" && tagName !== "placeholder") {
-        rawFail(`attribute tag \`<@${tagName}>\` inside \`<try>\``, tag);
+      const seen = new Set<string>();
+      for (const tag of node.attributeTags ?? []) {
+        const tagName = String(tag.name?.value ?? "").replace(/^@/, "");
+        if (tagName !== "catch" && tagName !== "placeholder") {
+          rawFail(`attribute tag \`<@${tagName}>\` inside \`<try>\``, tag);
+        }
+        if (seen.has(tagName)) {
+          rawFail(
+            `attribute tag \`@${tagName}\` given twice (repeatable attribute tags are not supported)`,
+            tag,
+          );
+        }
+        seen.add(tagName);
+        if ((tag.attributes ?? []).length > 0) {
+          rawFail(
+            "attribute tags take params or a body, not attributes (v1)",
+            tag,
+          );
+        }
+        if (tagName === "placeholder" && tag.body?.params?.length) {
+          rawFail("tag params (`|a, b|`) on `<@placeholder>`", tag);
+        }
       }
-      if (seen.has(tagName)) {
-        rawFail(
-          `attribute tag \`@${tagName}\` given twice (repeatable attribute tags are not supported)`,
-          tag,
-        );
-      }
-      seen.add(tagName);
-      if ((tag.attributes ?? []).length > 0) {
-        rawFail(
-          "attribute tags take params or a body, not attributes (v1)",
-          tag,
-        );
-      }
-      if (tagName === "placeholder" && tag.body?.params?.length) {
-        rawFail("tag params (`|a, b|`) on `<@placeholder>`", tag);
-      }
-    }
-    return { kind: "try" };
-  },
-  rejectModifier(attr) {
-    rawFail(
-      `attribute modifier \`${attr.name}:${attr.modifier}\` is not Preact syntax; write the prop directly (\`class={{ active: cond }}\` rather than \`class:active\`)`,
-      attr,
-    );
-  },
-  // An attribute method (`<button onClick() { … }>`) is an ordinary callable
-  // prop in JSX, so this target carries it rather than rejecting it.
-  resolveAttributeMethod: () => true,
-};
+      return { kind: "try" };
+    },
+    rejectModifier(attr) {
+      rawFail(
+        `attribute modifier \`${attr.name}:${attr.modifier}\` is not ${targetName} syntax; write the prop directly (\`class={{ active: cond }}\` rather than \`class:active\`)`,
+        attr,
+      );
+    },
+    // An attribute method (`<button onClick() { … }>`) is an ordinary callable
+    // prop in JSX, so this target carries it rather than rejecting it.
+    resolveAttributeMethod: () => true,
+  };
+}
+
+export const preactDeclarations = createJsxDeclarations("Preact");
 
 /**
  * Escapes text for a JSX child position.
@@ -391,7 +392,7 @@ export class PreactEmitter implements Emitter<string> {
         // value prop plus an explicit handler — so emitting only the value
         // would produce an input the user cannot type into.
         return fail(
-          "`:=` is Marko's two-way binding; Preact has no equivalent — pass the value and an explicit `onInput` handler",
+          `\`:=\` is Marko's two-way binding; ${this.#target.name} has no equivalent — pass the value and an explicit \`onInput\` handler`,
           attr,
         );
       case "dynamic": {
@@ -424,7 +425,9 @@ export class PreactEmitter implements Emitter<string> {
 
   /** An attribute name in this target's spelling. */
   #attrName(name: string): string {
-    return name === "class" ? this.#target.classAttr : name;
+    if (name === "class") return this.#target.classAttr;
+    if (name === "for") return this.#target.forAttr;
+    return name;
   }
 
   /**
@@ -765,7 +768,7 @@ export class PreactEmitter implements Emitter<string> {
 
   documentType(node: Extract<IrNode, { kind: "DocumentType" }>): void {
     fail(
-      "a document type (`<!doctype html>`) cannot appear in a Preact component; write it in the HTML shell that mounts the app",
+      `a document type (\`<!doctype html>\`) cannot appear in a ${this.#target.name} component; write it in the HTML shell that mounts the app`,
       node,
     );
   }

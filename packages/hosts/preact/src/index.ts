@@ -53,6 +53,7 @@ import {
   compileSource,
   createTranslator,
   drive,
+  type HostDeclarations,
   type Ir,
   type IrNode,
   type RawSourceMap,
@@ -67,6 +68,7 @@ import { preactTarget, type Target } from "./target.ts";
 export { TranslateError } from "@mxlang/core";
 export {
   createEmitter,
+  createJsxDeclarations,
   emitPreact,
   PreactEmitter,
   preactDeclarations,
@@ -93,6 +95,8 @@ export interface CompilePreactOptions {
    * own so it can reuse this emitter rather than fork it.
    */
   target?: Target;
+  /** Resolve-time declarations paired with a custom JSX target. */
+  declarations?: HostDeclarations;
 }
 
 /**
@@ -223,10 +227,15 @@ export function compilePreactMx(
   options: CompilePreactOptions = {},
 ): CompileResult {
   const target = options.target ?? preactTarget;
-  return compileSource(source, filename, preactDeclarations, {
-    ...host,
-    emitIr: (ir) => emitModule(ir, target),
-  });
+  return compileSource(
+    source,
+    filename,
+    options.declarations ?? preactDeclarations,
+    {
+      ...host,
+      emitIr: (ir) => emitModule(ir, target),
+    },
+  );
 }
 
 /** `compilePreactMx()` over a file on disk. */
