@@ -1,0 +1,8 @@
+{
+  "scopeName": "source.solidmx",
+  "patterns": [
+    {
+      "include": "source.tsx"
+    }
+  ]
+}

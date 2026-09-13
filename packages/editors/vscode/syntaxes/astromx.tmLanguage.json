@@ -1,0 +1,19 @@
+{
+  "scopeName": "source.amx",
+  "patterns": [
+    {
+      "begin": "\\A---$",
+      "end": "^---$",
+      "name": "meta.embedded.block.frontmatter.amx",
+      "contentName": "source.ts",
+      "patterns": [
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
+    {
+      "include": "text.marko"
+    }
+  ]
+}

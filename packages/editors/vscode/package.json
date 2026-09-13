@@ -1,12 +1,116 @@
 {
-  "name": "@mxlang/vscode",
+  "name": "vscode",
+  "displayName": "MX",
+  "description": "MX, AstroMX and SolidMX language support.",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "publisher": "mxlang",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "type": "commonjs",
+  "main": "dist/extension.cjs",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --root ../../.. --project @mxlang/vscode",
+    "build": "bun build src/extension.ts --outdir dist --target node --format cjs --entry-naming '[dir]/[name].cjs' --external vscode"
+  },
+  "dependencies": {
+    "vscode-languageclient": "10.1.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "3.9.2"
+  },
+  "activationEvents": [
+    "onLanguage:mx",
+    "onLanguage:solidmx",
+    "onLanguage:astromx"
+  ],
+  "extensionDependencies": [
+    "Marko-JS.marko-vscode"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "mx",
+        "aliases": [
+          "MX",
+          "mx"
+        ],
+        "extensions": [
+          ".mx",
+          ".marko"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "solidmx",
+        "aliases": [
+          "SolidMX",
+          "solidmx"
+        ],
+        "extensions": [
+          ".solid.mx"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "astromx",
+        "aliases": [
+          "AstroMX",
+          "astromx"
+        ],
+        "extensions": [
+          ".amx"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mx",
+        "scopeName": "source.mx",
+        "path": "./syntaxes/mx.tmLanguage.json"
+      },
+      {
+        "language": "astromx",
+        "scopeName": "source.amx",
+        "path": "./syntaxes/astromx.tmLanguage.json"
+      },
+      {
+        "language": "solidmx",
+        "scopeName": "source.solidmx",
+        "path": "./syntaxes/solidmx.tmLanguage.json"
+      }
+    ],
+    "typescriptServerPlugins": [
+      {
+        "name": "@mxlang/typescript-plugin",
+        "enableForWorkspaceTypeScriptVersions": true,
+        "languages": [
+          "mx",
+          "solidmx",
+          "astromx"
+        ]
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "MX",
+      "properties": {
+        "mxlang.languageServer.path": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the @mxlang/language-server executable. If not specified, the extension will attempt to find a local installation in node_modules, then globally via bunx or npx."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "mxlang.restartLanguageServer",
+        "title": "MX: Restart Language Server"
+      }
+    ]
   }
 }

@@ -1,0 +1,8 @@
+{
+  "scopeName": "source.mx",
+  "patterns": [
+    {
+      "include": "text.marko"
+    }
+  ]
+}
