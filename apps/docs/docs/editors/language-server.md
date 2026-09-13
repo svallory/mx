@@ -57,3 +57,22 @@ node node_modules/@mxlang/language-server/dist/bin.js --stdio
 ```
 
 `--stdio` is accepted for symmetry with other language servers, but stdio is the only transport this server speaks.
+
+## `package.json#mxlang` and Host Resolution
+
+The language server determines the correct host policy to use by reading the `mxlang` field in the project's `package.json`. For example:
+
+```json
+{
+  "mxlang": {
+    "host": "react",
+    "strict": true
+  }
+}
+```
+
+This tells the language server to apply the React host policy. If the `strict` flag is true, stateful tags like `<let>` or `<effect>` will be reported as diagnostics.
+
+### `.solid.mx` files
+
+For SolidMX (`.solid.mx`) files, the language server cannot use the whole-file HTML compilation. Instead, it uses a diagnose path that finds MX regions via the `@mxlang/parser` bridge and runs each through `@mxlang/solid`, mapping the resulting errors back to the correct source positions within the complete TypeScript file.

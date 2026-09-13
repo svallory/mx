@@ -152,3 +152,19 @@ no reactive target, for example — and reports nothing about TypeScript. These
 two check *TypeScript* and report nothing about host policy. Run both: an
 editor can register several servers and several tsserver plugins against one
 file kind, which is how ESLint and TypeScript already coexist.
+
+## Mapping Coverage
+
+The TypeScript plugin provides robust position mapping back to your original source:
+
+- **Component tags and attributes:** When you pass an incorrect prop type, the error highlights the exact attribute name or value in the `.mx` or `.solid.mx` file, not a location in the compiled output.
+- **Hoisted blocks:** Type errors inside `static` blocks or `import` statements are mapped correctly despite being hoisted to the top of the generated module.
+
+### Known Gaps
+
+- **Bare generic calls outside `${}`:** Type arguments (e.g., `fn<T>()`) used in expression position outside of a string interpolation block lose their type arguments due to `stripTypes` erasing them before source mapping can preserve them.
+- **Attribute-method bodies:** Method bodies on attributes (e.g., `onClick() { ... }`) are synthesized, meaning internal column mappings within the function block may be less precise.
+
+## Composed Plugin and `astro: true`
+
+When using the Astro host, the TypeScript plugin acts as a composed plugin. It maps `.mx` components to their underlying `.astro` JSX mappings. The command `mx-tsc --astro` runs type checking across the workspace with the Astro extensions enabled, ensuring that both `.mx` and `.amx` files are correctly typed alongside `.astro` components.
