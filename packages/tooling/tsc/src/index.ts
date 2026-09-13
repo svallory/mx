@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import {
+  createAmxLanguagePlugin,
   createAstroLanguagePlugin,
   createCompoundExtensionResolver,
   createMxLanguagePlugin,
@@ -14,6 +15,11 @@ import { runTsc } from "@volar/typescript/lib/quickstart/runTsc";
  * segment when probing for declaration files.
  */
 const EXTRA_SUPPORTED_EXTENSIONS = [".solid.mx", ".mx", ".marko"];
+const ASTRO_SUPPORTED_EXTENSIONS = [
+  ...EXTRA_SUPPORTED_EXTENSIONS,
+  ".astro",
+  ".amx",
+];
 
 /**
  * Resolves TypeScript's own `tsc.js`.
@@ -44,15 +50,16 @@ export function runMxTsc(): void {
   const astro = consumeAstroFlag(process.argv);
   runTsc(
     resolveTscPath(),
-    astro
-      ? [...EXTRA_SUPPORTED_EXTENSIONS, ".astro"]
-      : EXTRA_SUPPORTED_EXTENSIONS,
+    astro ? ASTRO_SUPPORTED_EXTENSIONS : EXTRA_SUPPORTED_EXTENSIONS,
     (typescript) => {
       const plugins: LanguagePlugin<string>[] = [
         createSolidMxLanguagePlugin(typescript),
         createMxLanguagePlugin(typescript),
       ];
-      if (astro) plugins.push(createAstroLanguagePlugin());
+      if (astro) {
+        plugins.push(createAmxLanguagePlugin(typescript));
+        plugins.push(createAstroLanguagePlugin());
+      }
       plugins.push(createCompoundExtensionResolver(typescript));
       return plugins;
     },

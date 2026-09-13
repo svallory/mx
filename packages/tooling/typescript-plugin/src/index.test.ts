@@ -4,6 +4,7 @@ import { decode } from "@jridgewell/sourcemap-codec";
 import { print } from "@mxlang/parser";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { AMX_LANGUAGE_ID, createAmxLanguagePlugin } from "./amx-language.ts";
 import { createAstroLanguagePlugin } from "./astro-language.ts";
 import pluginFactory, { createConfiguredLanguagePlugins } from "./index.ts";
 import {
@@ -474,6 +475,12 @@ describe("Astro language plugin composition", () => {
         (plugin) => plugin.getLanguageId("/project/src/page.astro") === "astro",
       ),
     ).toBe(true);
+    expect(
+      plugins.some(
+        (plugin) =>
+          plugin.getLanguageId?.("/project/src/page.amx") === "astromx",
+      ),
+    ).toBe(true);
   });
 
   it("does not load Astro's language plugin when astro is false", () => {
@@ -487,6 +494,12 @@ describe("Astro language plugin composition", () => {
     expect(
       plugins.some(
         (plugin) => plugin.getLanguageId("/project/src/page.astro") === "astro",
+      ),
+    ).toBe(false);
+    expect(
+      plugins.some(
+        (plugin) =>
+          plugin.getLanguageId?.("/project/src/page.amx") === "astromx",
       ),
     ).toBe(false);
   });
@@ -515,6 +528,69 @@ describe("Astro language plugin composition", () => {
     const plugin = createAstroLanguagePlugin();
 
     expect(plugin.isAssociatedFileOnly?.(fileName, "astro")).toBe(expected);
+  });
+});
+
+describe("AstroMX language plugin", () => {
+  it("recognizes .amx and exposes composed TSX virtual code", () => {
+    const source = [
+      "---",
+      "const items = [1, 2, 3];",
+      "---",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
+      "<for|item| of=items><p>${item}</p></for>",
+    ].join("\n");
+    const plugin = createAmxLanguagePlugin(ts);
+    const virtual = plugin.createVirtualCode?.(
+      "/src/page.amx",
+      AMX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+
+    expect(plugin.getLanguageId("/src/page.amx")).toBe("astromx");
+    expect(plugin.getLanguageId("/src/page.astro")).toBeUndefined();
+    if (!virtual) throw new Error("Expected AstroMX virtual code");
+    expect(virtual.languageId).toBe("typescriptreact");
+    expect(virtual.snapshot.getText(0, virtual.snapshot.getLength())).toContain(
+      "[...items].map((item) =>",
+    );
+    expect(virtual.mappings.length).toBeGreaterThan(0);
+    expect(plugin.typescript?.extraFileExtensions).toEqual([
+      {
+        extension: "amx",
+        isMixedContent: false,
+        scriptKind: ts.ScriptKind.TSX,
+      },
+    ]);
+  });
+
+  it("composes an inline expression through Astro's source map", () => {
+    const expression = 'needsNumber("bad")';
+    const source = [
+      "---",
+      "function needsNumber(value: number) { return value; }",
+      "---",
+      `<p>before ${"${"}${expression}} after</p>`,
+    ].join("\n");
+    const plugin = createAmxLanguagePlugin(ts);
+    const virtual = plugin.createVirtualCode?.(
+      "/src/column.amx",
+      AMX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+    if (!virtual) throw new Error("Expected AstroMX virtual code");
+    const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+    const mapping = virtual.mappings.find(
+      (candidate) => candidate.sourceOffsets[0] === source.indexOf(expression),
+    );
+
+    expect(mapping).toMatchObject({
+      sourceOffsets: [source.indexOf(expression)],
+      generatedOffsets: [generated.indexOf(expression)],
+      lengths: [expression.length],
+    });
   });
 });
 
