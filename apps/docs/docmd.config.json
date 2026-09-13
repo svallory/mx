@@ -28,38 +28,17 @@
   "copyCode": true,
   "pageNavigation": true,
   "navigation": [
-    { "title": "Introduction", "path": "/", "icon": "book-open" },
+    { "title": "Start Here: Introduction", "path": "/", "icon": "book-open" },
     {
       "title": "Language",
       "icon": "code",
       "children": [
         { "title": "Structural tags", "path": "/language/structural-tags/" },
-        {
-          "title": "Attribute tags and tag params",
-          "path": "/language/attribute-tags-and-params/"
-        },
-        {
-          "title": "Define, const, static, import",
-          "path": "/language/define-const-static-import/"
-        },
-        {
-          "title": "Interpolation and escaping",
-          "path": "/language/interpolation/"
-        },
+        { "title": "Attribute tags and tag params", "path": "/language/attribute-tags-and-params/" },
+        { "title": "Define, const, static, import", "path": "/language/define-const-static-import/" },
+        { "title": "Interpolation and escaping", "path": "/language/interpolation/" },
         { "title": "Stateful tags", "path": "/language/stateful-tags/" },
         { "title": "Errors", "path": "/language/errors/" }
-      ]
-    },
-    {
-      "title": "Architecture",
-      "icon": "layout-grid",
-      "children": [
-        { "title": "Core and hosts", "path": "/architecture/core-and-hosts/" },
-        { "title": "The IR", "path": "/architecture/ir/" },
-        {
-          "title": "Policy and hooks",
-          "path": "/architecture/policy-and-hooks/"
-        }
       ]
     },
     {
@@ -68,13 +47,13 @@
       "children": [
         { "title": "HTML host", "path": "/hosts/html/" },
         { "title": "Astro host", "path": "/hosts/astro/" },
-        { "title": "SolidMX", "path": "/hosts/solidmx/" },
+        { "title": "React host", "path": "/hosts/react/" },
         { "title": "Preact host", "path": "/hosts/preact/" },
-        { "title": "React host", "path": "/hosts/react/" }
+        { "title": "SolidMX", "path": "/hosts/solidmx/" }
       ]
     },
     {
-      "title": "Editors",
+      "title": "Editors & Tooling",
       "icon": "keyboard",
       "children": [
         { "title": "Zed", "path": "/editors/zed/" },
@@ -83,35 +62,37 @@
         { "title": "TypeScript", "path": "/editors/typescript/" }
       ]
     },
-    { "title": "Contributing", "path": "/contributing/", "icon": "git-branch" },
+    {
+      "title": "Architecture",
+      "icon": "layout-grid",
+      "children": [
+        { "title": "Core and hosts", "path": "/architecture/core-and-hosts/" },
+        { "title": "The IR", "path": "/architecture/ir/" },
+        { "title": "Policy and hooks", "path": "/architecture/policy-and-hooks/" },
+        { "title": "Spans and mappings", "path": "/architecture/spans-and-mappings/" }
+      ]
+    },
+    {
+      "title": "Project",
+      "icon": "git-branch",
+      "children": [
+        { "title": "Contributing", "path": "/contributing/" },
+        { "title": "Divergences & MX 2", "path": "/divergences-and-mx-2/" },
+        { "title": "Roadmap", "path": "/roadmap/" }
+      ]
+    },
     {
       "title": "Design notes",
       "icon": "lightbulb",
       "children": [
-        {
-          "title": "Why MX has no resume",
-          "path": "/design-notes/marko-runtime-modes/"
-        },
-        {
-          "title": "Arbitrary code in templates",
-          "path": "/design-notes/arbitrary-code-in-templates/"
-        },
-        {
-          "title": "MX vs JSX for framework authors",
-          "path": "/design-notes/mx-vs-jsx/"
-        }
+        { "title": "Why MX has no resume", "path": "/design-notes/marko-runtime-modes/" },
+        { "title": "Arbitrary code in templates", "path": "/design-notes/arbitrary-code-in-templates/" },
+        { "title": "MX vs JSX for framework authors", "path": "/design-notes/mx-vs-jsx/" }
       ]
     },
-    {
-      "title": "GitHub",
-      "path": "https://github.com/mxlang/mx",
-      "icon": "github",
-      "external": true
-    }
+    { "title": "GitHub", "path": "https://github.com/mxlang/mx", "icon": "github", "external": true }
   ],
   "plugins": {
-    "seo": {
-      "defaultDescription": "MX is a template language born from Marko: one markup language, many hosts."
-    }
+    "seo": { "defaultDescription": "MX is a template language born from Marko: one markup language, many hosts." }
   }
 }
