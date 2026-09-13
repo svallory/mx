@@ -1,0 +1,19 @@
+export function Fragments() {
+  return (
+    <>
+      <h1>Title</h1>
+      <p>${label()}</p>
+    </>
+  );
+}
+
+export function NestedFragments() {
+  return (
+    <>
+      <>
+        <span>A</span>
+      </>
+      <span>B</span>
+    </>
+  );
+}

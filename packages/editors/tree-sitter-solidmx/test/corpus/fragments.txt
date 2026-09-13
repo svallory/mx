@@ -1,14 +1,110 @@
 ================================================================================
-TSX fragment `<>...</>` is not yet supported: pins today's ERROR shape
+TSX fragment with two MX element children
 ================================================================================
 
-const a = <><p>1</p></>;
+const a = <><p>1</p><p>2</p></>;
 
 --------------------------------------------------------------------------------
 
 (program
-  (ERROR
-    (identifier)
-    (ERROR)
-    (mx_element)
-    (regex_pattern)))
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_fragment
+        (mx_fragment_open)
+        (mx_element)
+        (mx_element)
+        (mx_fragment_close)))))
+
+================================================================================
+Empty fragment
+================================================================================
+
+const a = <></>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_fragment
+        (mx_fragment_open)
+        (mx_fragment_close)))))
+
+================================================================================
+Nested fragment
+================================================================================
+
+const a = <><><p>x</p></></>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_fragment
+        (mx_fragment_open)
+        (mx_fragment
+          (mx_fragment_open)
+          (mx_element)
+          (mx_fragment_close))
+        (mx_fragment_close)))))
+
+================================================================================
+Fragment with a `{expr}` child
+================================================================================
+
+const a = <>{x()}<p>y</p></>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_fragment
+        (mx_fragment_open)
+        (jsx_expression
+          (call_expression
+            function: (identifier)
+            arguments: (arguments)))
+        (mx_element)
+        (mx_fragment_close)))))
+
+================================================================================
+Fragment as a function's return expression
+================================================================================
+
+function view() {
+  return <><p>a</p><p>b</p></>;
+}
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_declaration
+    name: (identifier)
+    parameters: (formal_parameters)
+    body: (statement_block
+      (return_statement
+        (mx_fragment
+          (mx_fragment_open)
+          (mx_element)
+          (mx_element)
+          (mx_fragment_close))))))
+
+================================================================================
+`<>` inside an MX region body is still MX text, not a fragment (scanner-rules 9.2)
+================================================================================
+
+const a = <div>a <></div>;
+
+--------------------------------------------------------------------------------
+
+(program
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier)
+      value: (mx_element))))
