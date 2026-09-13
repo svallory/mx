@@ -27,7 +27,6 @@ import {
   drive,
   type Emitter,
   type Expr,
-  type GeneratedMapping,
   type HostDeclarations,
   type Ir,
   type IrNode,
@@ -510,17 +509,12 @@ export class PreactEmitter implements Emitter<string> {
         const joined = values.flatMap(({ value }, index) =>
           index === 0 ? [value] : [", ", value],
         );
-        const result = concatMapped(" ", nameCode, "={[", ...joined, "]}");
-        result.mappings.push(
-          ...values.slice(1).map(
-            ({ tag }): GeneratedMapping => ({
-              ...tag.nameSpan,
-              generatedStart: 1,
-              generatedEnd: 1 + name.length,
-            }),
-          ),
-        );
-        return result;
+        // Only the first occurrence's name has a real position in the
+        // generated text (the emitted prop name, `name={[...`); a repeated
+        // `<@name>` contributes another array entry with no name string of
+        // its own to map to, so it gets no mapping at all rather than a
+        // fabricated one pointing at the first occurrence's position.
+        return concatMapped(" ", nameCode, "={[", ...joined, "]}");
       }),
     );
   }

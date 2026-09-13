@@ -120,6 +120,21 @@ describe("bindings may not shadow the input parameter", () => {
     const { code } = compile(src("<for|item| of=[1,2]><p>y</p></for>"), file);
     expect(code).toContain("for (const item of");
   });
+
+  it("emits a real function for <define>, not a stringified MappedCode object", () => {
+    // `blockFunction()` returns a `{ code, mappings }` object; interpolating
+    // it directly into a template string (`` `const ${node.name} = ${fn};` ``)
+    // stringifies to `const Row = [object Object];` — syntactically valid JS,
+    // so `compile()` does not throw and every `<define>` call breaks silently
+    // at render time instead. Pins the actual emitted text so a recurrence
+    // fails here rather than only in oracle:marko's HTML-rendering comparison.
+    const { code } = compile(
+      src('<define/Row|it|><li>${it}</li></define>\n<Row("a")/>'),
+      file,
+    );
+    expect(code).not.toContain("[object Object]");
+    expect(code).toMatch(/const Row = \(it\) => \{/);
+  });
 });
 
 describe("<html-comment> lowers placeholders", () => {

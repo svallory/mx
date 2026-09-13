@@ -306,6 +306,37 @@ describe("components", () => {
     ).toContain("item={[<>a</>, <>b</>]}");
   });
 
+  it("maps only the first repeated attribute tag's name, never a fabricated position for the rest", () => {
+    // A second (or later) `<@item>` contributes another array entry with no
+    // name string of its own in the generated text — `item={[<>a</>, <>b</>]}`
+    // has one `item` to map to, not two. A prior version of this code pushed
+    // a synthetic mapping for every repeat, hardcoded to the *first*
+    // occurrence's generated position — silently misattributing any
+    // diagnostic on the second tag's name to the first tag's source location.
+    const source =
+      'import List from "./list.mx"\n<List><@item>a</@item><@item>b</@item></List>';
+    const result = compilePreactMx(source, "/fixtures/test.mx");
+    const firstOffset = source.indexOf("item");
+    const secondOffset = source.indexOf("item", firstOffset + 1);
+    expect(firstOffset).not.toBe(secondOffset);
+
+    const firstMapping = result.mappings.find(
+      (mapping) => mapping.sourceStart === firstOffset,
+    );
+    expect(firstMapping).toBeDefined();
+    expect(
+      result.code.slice(
+        firstMapping?.generatedStart,
+        firstMapping?.generatedEnd,
+      ),
+    ).toBe("item");
+
+    const secondMapping = result.mappings.find(
+      (mapping) => mapping.sourceStart === secondOffset,
+    );
+    expect(secondMapping).toBeUndefined();
+  });
+
   it("passes an attribute tag with params as a function prop", () => {
     expect(
       markup(
