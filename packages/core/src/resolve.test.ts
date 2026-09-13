@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { compileSource } from "./compile.ts";
 import type { Ctx, Node } from "./core.ts";
-import { newCtx } from "./core.ts";
+import { expr, newCtx } from "./core.ts";
 import type { Policy } from "./declarations.ts";
 import type { Ir, IrNode } from "./ir.ts";
 import { resolve } from "./resolve.ts";
@@ -720,6 +720,89 @@ describe("binding scopes are per JS block", () => {
     expect(find(loop.children, "Interpolation").expr.code).toBe("count");
 
     expect(trailingInterpolation(ir.body).expr.code).toBe("count()");
+  });
+
+  describe("type arguments survive the non-empty binding registry path", () => {
+    /**
+     * `expr()` slices source text only when `ctx.bindings.size === 0`
+     * (packages/core/src/core.ts). Any other name in an expression alongside a
+     * registered one puts the registry in scope for the whole expression, and
+     * `rewriteReferencesSource` (not the node-cloning `rewriteReferences`) does
+     * the splice — this is the path a `resolveHostTag` binding (e.g. `<signal>`)
+     * takes for every interpolation once any binding is registered.
+     *
+     * No shipping host calls `ctx.bindings.register` today — `@mxlang/preact`'s
+     * `<let>` and `@mxlang/solid`'s equivalent are both hard compile errors
+     * (`packages/hosts/preact/src/emitter.ts`, `packages/hosts/solid/README.md`)
+     * — so this path is presently exercised only here, through the
+     * `fakeDeclarations`-built `signalPolicy` fixture below, not by any real
+     * host's own tests.
+     */
+    it("keeps a generic call's type arguments when rewriting a registered identifier", () => {
+      const ir = resolveSource(
+        [
+          "<signal/count=1/>",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+          "<p>${pick<string>(count)}</p>",
+          "",
+        ].join("\n"),
+        signalPolicy,
+      );
+
+      expect(trailingInterpolation(ir.body).expr.code).toBe(
+        "pick<string>(count())",
+      );
+    });
+
+    /** The identifier being rewritten is itself the one carrying type arguments as a callee. */
+    it("keeps type arguments when the registered identifier is not itself rewritten", () => {
+      const ir = resolveSource(
+        [
+          "<signal/count=1/>",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+          "<p>${pick<string>(other)}</p>",
+          "",
+        ].join("\n"),
+        signalPolicy,
+      );
+
+      expect(trailingInterpolation(ir.body).expr.code).toBe(
+        "pick<string>(other)",
+      );
+    });
+
+    /**
+     * A positioned expression whose matched, registered, unshadowed
+     * identifier has no position of its own (synthetic within an otherwise
+     * real tree — not producible through any MX construct today, but nothing
+     * in `rewriteReferencesSource` prevents one structurally) must not
+     * silently keep that one reference un-rewritten in the spliced output.
+     * `expr()` falls back to the whole-node AST print instead.
+     */
+    it("falls back to the AST print rather than silently dropping a position-less matched reference", () => {
+      const require = createRequire(import.meta.url);
+      const { parseExpression } = require("@marko/compiler/internal/babel");
+      const source = "pick<string>(count)";
+      const node = parseExpression(source, { plugins: [["typescript", {}]] });
+      // Strip the argument's own position (and its `loc`, which `expr()` also
+      // consults) while leaving the outer call's `start`/`end` intact, so
+      // `expr()` takes the real-positioned branch and only
+      // `rewriteReferencesSource`'s inner walk discovers the gap.
+      const arg = node.arguments[0];
+      arg.start = undefined;
+      arg.end = undefined;
+      arg.loc = undefined;
+
+      const ctx = newCtx(source, printExpression, fakeDeclarations());
+      ctx.bindings.register("count", (name: string) => `${name}()`);
+
+      // This node was parsed directly (not through `@marko/compiler`'s own
+      // `stripTypes` pass, which only runs on a whole-file compile), so its
+      // `typeParameters` are still present and the AST-print fallback keeps
+      // them; what this test pins is that `count` is rewritten to `count()`
+      // rather than silently kept as `count` by a partial splice.
+      expect(expr(ctx, node)).toBe("pick<string>(count())");
+    });
   });
 });
 

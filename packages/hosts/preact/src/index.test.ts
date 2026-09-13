@@ -113,7 +113,10 @@ describe("class and style", () => {
 
   it("joins an object class through the emitted helper", () => {
     const code = compile("<div class={active: input.on}>x</div>");
-    expect(code).toContain("class={mxClass({ active: input.on })}");
+    // The object's contents are sliced verbatim from source (this task's
+    // fix keeps TypeScript type arguments the same way), not reformatted by
+    // the generator, so no space follows `{` here.
+    expect(code).toContain("class={mxClass({active: input.on})}");
     expect(code).toContain('import { mxClass } from "@mxlang/preact/runtime";');
   });
 
@@ -124,8 +127,10 @@ describe("class and style", () => {
   });
 
   it("emits an object style as a Preact style object", () => {
+    // Sliced verbatim from source (no space after `{`), like the class case
+    // above.
     expect(markup("<div style={color: input.c}>x</div>")).toBe(
-      "<div style={{ color: input.c }}>x</div>",
+      "<div style={{color: input.c}}>x</div>",
     );
   });
 

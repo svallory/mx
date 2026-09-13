@@ -50,7 +50,10 @@ describe("Solid IR lowering", () => {
       `<div.card class={active: on()}>x</div>`,
       [`class={["card", { active: on() }]}`],
     ],
-    ["object style", `<div style={color: c()}/>`, ["style={{ color: c() }}"]],
+    // Sliced verbatim from source (no space after `{`): `expr()` keeps the
+    // author's own spacing once it can slice, the same seam that keeps
+    // TypeScript type arguments (see packages/core's core.ts).
+    ["object style", `<div style={color: c()}/>`, ["style={{color: c()}}"]],
     ["raw HTML", `<div>$!{html}</div>`, ["<div innerHTML={html}></div>"]],
     [
       "component render props",
