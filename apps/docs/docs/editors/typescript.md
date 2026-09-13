@@ -1,14 +1,14 @@
 ---
 title: "TypeScript"
-description: "Type-check SolidMX and whole-file MX imports in editors and CI."
+description: "Type-check SolidMX, whole-file MX, and AstroMX in editors and CI."
 ---
 
 # TypeScript
 
-TypeScript cannot parse either a `.solid.mx` module or a whole-file `.mx` /
-`.marko` template. Without help, an editor cannot derive their exports and an
-import is unresolved. MX projects the source to the host's generated
-TypeScript and keeps diagnostics mapped to the original file.
+TypeScript cannot parse a `.solid.mx` module, a whole-file `.mx` / `.marko`
+template, or an AstroMX `.amx` file. Without help, an editor cannot derive
+their exports and an import is unresolved. MX projects the source to the
+host's generated TypeScript and keeps diagnostics mapped to the original file.
 
 Two packages fix that, sharing a single lowering so an editor and a build can
 never disagree about whether a file compiles:
@@ -67,7 +67,7 @@ Zed's `vtsls` equivalent is:
               {
                 "name": "@mxlang/typescript-plugin",
                 "location": "/absolute/path/to/node_modules/@mxlang/typescript-plugin",
-                "languages": ["solidmx", "mx", "astro"],
+                "languages": ["solidmx", "mx", "astro", "astromx"],
                 "enableForWorkspaceTypeScriptVersions": true
               }
             ]
@@ -113,6 +113,9 @@ skipped. Configure only MX's plugin and let it compose Astro's language plugin:
 
 Do not also list `@astrojs/ts-plugin`. Install the optional
 `@astrojs/language-server@2.16.16` peer when enabling `astro: true`.
+That flag also enables `.amx`: MX first lowers its template to Astro syntax,
+then composes the emitter spans with Astro's TSX source map. Without
+`astro: true`, `.amx` files are intentionally ignored.
 
 ## In CI
 
@@ -125,8 +128,8 @@ command-line typecheck would silently miss what the editor reports. Use
 { "scripts": { "typecheck": "mx-tsc --noEmit" } }
 ```
 
-Astro projects use `mx-tsc --astro --noEmit` so `.astro` files and the MX
-components they import enter the same check.
+Astro projects use `mx-tsc --astro --noEmit` so `.astro` and `.amx` files and
+the MX components they import enter the same check.
 
 The difference is total rather than partial — plain `tsc` never opens a
 `.solid.mx` file at all:

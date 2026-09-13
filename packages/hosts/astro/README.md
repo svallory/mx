@@ -233,6 +233,13 @@ package's renderer; an `.amx` component **becomes** an Astro component. Use
 registered with `addPageExtension`, so `src/pages/about.amx` routes to
 `/about`.
 
+For TypeScript, enable Astro composition in `@mxlang/typescript-plugin` or run
+`mx-tsc --astro`. The `.amx` emitter records source spans while it writes the
+lowered Astro template; the TypeScript plugin composes those spans with
+Astro's `convertToTSX` map, so frontmatter, prop, and interpolation diagnostics
+land on the original `.amx` line and column. Without Astro mode, `.amx` is
+deliberately ignored.
+
 **Why the single dot.** The obvious spelling was `.astro.mx`, and it works for
 components. It cannot work for pages: Astro's route collection keys on
 `path.extname(basename)`, which returns only the **last** extension segment,
@@ -326,7 +333,7 @@ end in `.astro`. `resolveId` appends that suffix to whatever Vite's own
 resolver returns and `load` returns the lowered source, the same shape
 `@mxlang/vite-plugin` already uses for `.solid.mx`.
 
-## Typing `.mx` imports
+## Typing `.mx` imports and `.amx` templates
 
 Use `@mxlang/typescript-plugin`; it compiles each `.mx`/`.marko` file to a
 virtual TypeScript module and derives component props from that file's real
@@ -347,6 +354,8 @@ List only `@mxlang/typescript-plugin`; a separate `@astrojs/ts-plugin` entry is
 silently skipped because two Volar tsserver plugins cannot decorate one
 project. Enabling `astro: true` lazily loads the optional
 `@astrojs/language-server@2.16.16` peer and composes its Astro language plugin.
+It also enables `.amx` virtual TSX through the emitter-to-Astro source-map
+composition; this format is not claimed when `astro` is omitted.
 
 Do not add an ambient `declare module "*.mx"` shim or reference
 `@mxlang/astro/types`. The old wildcard erased each component's real props and

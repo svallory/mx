@@ -826,6 +826,12 @@ Four facts worth knowing before editing `src/astro-template.ts` or
   traversal. Astro-specific decisions happen in `HostDeclarations`; the
   emitter consumes IR and opaque `HostTag.data`, never Marko nodes. `static`
   statements resolve into `Ir.hoisted` and are inserted into the fence.
+- **Typing composes two maps.** The emitter records the unchanged fence,
+  expressions, attribute names, `<for>` params, and whole hoisted blocks at
+  their generated write offsets. `createAmxLanguagePlugin` composes those
+  `.amx`-to-Astro spans with `@astrojs/compiler/sync`'s `convertToTSX` map;
+  only intersections surviving both stages become Volar `CodeMapping`s.
+  `.amx` is registered only by `{ astro: true }` and `mx-tsc --astro`.
 - **The Vite mechanism is forced.** Astro's `astro:build` `transform` filters
   `include: [/\.astro$/, /\.astro\?/]` **and** re-checks
   `if (!parsedId.filename.endsWith(".astro")) return;`, so an `enforce: "pre"`
@@ -851,6 +857,8 @@ deleted: they erased every component's real `Input`. Configure one Volar
 plugin entry, `{ "name": "@mxlang/typescript-plugin", "astro": true }`; do
 not also list `@astrojs/ts-plugin`, because the second Volar tsserver plugin is
 silently skipped. Command-line checks use `mx-tsc --astro --noEmit`.
+Both paths also type-check `.amx` itself through the composed AstroMX plugin;
+without Astro mode, `.amx` files are ignored.
 
 ## `@mxlang/language-server`: diagnostics-only LSP server (decision 71/72)
 
