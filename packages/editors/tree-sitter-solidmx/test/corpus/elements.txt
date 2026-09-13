@@ -208,3 +208,29 @@ const a = <fragment><div>A</div><div>B</div></fragment>;
     (variable_declarator
       name: (identifier)
       value: (mx_element))))
+
+================================================================================
+TSX fragment
+================================================================================
+
+function App() {
+  return <><p>1</p></>;
+}
+
+--------------------------------------------------------------------------------
+
+(program
+  (function_declaration
+    name: (identifier)
+    parameters: (formal_parameters)
+    body: (statement_block
+      (return_statement
+        (jsx_element
+          open_tag: (jsx_opening_element)
+          (jsx_element
+            open_tag: (jsx_opening_element
+              name: (identifier))
+            (jsx_text)
+            close_tag: (jsx_closing_element
+              name: (identifier)))
+          close_tag: (jsx_closing_element))))))

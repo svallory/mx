@@ -1,7 +1,7 @@
 export function ControlFlow() {
   return (
     <div>
-      <if=user()|u|><p>${u().name}</p></if>
+      <if|u|=user()><p>${u().name}</p></if>
       <else if=loading()><Spin/></else>
       <else><Login/></else>
       <for|item, i| of=items()><li>${item().name}</li></for>

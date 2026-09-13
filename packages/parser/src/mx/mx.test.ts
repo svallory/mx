@@ -491,3 +491,17 @@ describe("void elements (review #6)", () => {
     expect((error as Error).message).toContain("void element");
   });
 });
+
+import { collectMxRegions } from "../index.ts";
+
+describe("collectMxRegions", () => {
+  it("collects the boundaries of MX regions and fragments", () => {
+    const source = `const a = <div>x</div>; const b = <><p>1</p><p>2</p></>;`;
+    const regions = collectMxRegions(source, "test.solid.mx");
+    expect(regions).toEqual([
+      { start: 10, end: 22 },
+      { start: 36, end: 44 },
+      { start: 44, end: 52 },
+    ]);
+  });
+});

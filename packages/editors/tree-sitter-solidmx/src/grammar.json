@@ -2065,6 +2065,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "_jsx_element"
+        },
+        {
+          "type": "SYMBOL",
           "name": "assignment_expression"
         },
         {
@@ -11296,6 +11300,10 @@
     [
       "template_literal_type",
       "template_string"
+    ],
+    [
+      "jsx_opening_element",
+      "type_parameter"
     ],
     [
       "jsx_namespace_name",

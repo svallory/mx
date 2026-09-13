@@ -14,6 +14,8 @@
 #      that class of defect (it is how Zed's real dev-install failure with
 #      "vendor/tree-sitter-typescript/common/scanner.h file not found" was
 #      caught and fixed — see UPSTREAM.md "A real defect this caused").
+#   5. scripts/differential.ts — ensures tree-sitter parse and @mxlang/parser
+#      extract the exact same MX regions for all files.
 #
 # Each step exits non-zero on failure and this script propagates it, so a red
 # step cannot be mistaken for a green run.
@@ -50,6 +52,10 @@ echo "==> highlight smoke over every .solid.mx fixture and example"
 echo
 echo "==> compile src/ from a clean clone of HEAD, as Zed's dev install does"
 ./scripts/zed-compile-check.sh
+
+echo
+echo "==> check region extraction equivalence between C scanner and TS walker"
+bun run scripts/differential.ts
 
 echo
 echo "all grammar checks passed"

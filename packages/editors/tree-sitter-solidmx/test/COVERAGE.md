@@ -672,10 +672,10 @@ The following are summarized from the lowering table. Each is a separate syntact
 | Line comment | ✓ | ✓ | Dropped from output |
 | MX in attr method | ✓ | ✓ | Nested in TS expression block |
 | TS expr in placeholder | ✓ | ✓ | Nested in MX placeholder |
-| `<let>` tag | ✗ | ✗ | v2 feature, not v1 |
-| `<const>` tag | ✗ | ✗ | v2 feature, not v1 |
-| `<effect>` tag | ✗ | ✗ | v2 feature, not v1 |
-| `:=` binding | ✗ | ✗ | v2 feature, not v1 |
+| `<let>` tag | ✓ | ✓ | Parses as ordinary tag (NON-GOAL for SolidMX) |
+| `<const>` tag | ✓ | ✓ | Parses as ordinary tag (NON-GOAL for SolidMX) |
+| `<effect>` tag | ✓ | ✓ | Parses as ordinary tag (NON-GOAL for SolidMX) |
+| `:=` binding | ✓ | ✓ | Parses as ordinary attribute (NON-GOAL for SolidMX) |
 
 ---
 
@@ -720,8 +720,8 @@ Not enumerated as checklist items, but relevant:
 
 **Total distinct syntactic constructs catalogued: 89**
 
-- **Valid constructs: ~70**
+- **Valid constructs: ~74**
 - **Parse errors (invalid in v1): ~10**
-- **Non-goals/v2 features: ~5**
+- **Non-goals/v2 features: ~1**
 - **Integration/file-level: ~4**
 

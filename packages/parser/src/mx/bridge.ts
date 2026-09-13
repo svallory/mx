@@ -70,6 +70,10 @@ export function mxParseElementAt(
     });
   }
 
+  if (Array.isArray(parser.options?.mxRegions)) {
+    parser.options.mxRegions.push({ start, end });
+  }
+
   let node: unknown;
   try {
     const region = source.slice(start, end);
@@ -105,8 +109,9 @@ export function mxParseElementAt(
         positionAt(source, offset, parser.state.startIndex),
         { message: error.message ?? "Invalid MX element." },
       );
+    } else {
+      throw err;
     }
-    throw err;
   }
 
   repositionTokenizer(parser, source, start, end, contextDepth);

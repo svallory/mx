@@ -255,12 +255,8 @@ const a = <div>never closed;
 --------------------------------------------------------------------------------
 
 (program
-  (lexical_declaration
-    (variable_declarator
-      name: (identifier)
-      (ERROR
-        (type_parameters
-          (type_parameter
-            name: (type_identifier)))
-        (identifier))
-      value: (identifier))))
+  (ERROR
+    (identifier)
+    (jsx_opening_element
+      name: (identifier))
+    (jsx_text)))

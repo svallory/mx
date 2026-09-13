@@ -952,7 +952,8 @@ static bool scan_mx_element(TSLexer *lexer) {
     advance_mx(lexer);
 
     // A markup declaration is not an element and cannot be an MX region root.
-    if (lexer->lookahead == '!' || lexer->lookahead == '?' || lexer->lookahead == '/') {
+    // `<>` is a TSX fragment and must be handled by the TSX grammar natively.
+    if (lexer->lookahead == '!' || lexer->lookahead == '?' || lexer->lookahead == '/' || lexer->lookahead == '>') {
         return false;
     }
 

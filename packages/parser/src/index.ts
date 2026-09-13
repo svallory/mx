@@ -28,7 +28,9 @@ export {
   babelParseExpression as parseBabelExpression,
 };
 
-export interface MxParseOptions extends ParserOptions {}
+export interface MxParseOptions extends ParserOptions {
+  mxRegions?: Array<{ start: number; end: number }>;
+}
 
 const MX_DEFAULT_PLUGINS: ParserOptions["plugins"] = ["typescript", "jsx"];
 
@@ -54,4 +56,37 @@ export function parse(
     // is byte-for-byte upstream Babel.
     mx: filename.endsWith(".solid.mx"),
   } as ParserOptions) as unknown as File;
+}
+
+/**
+ * Parses the file and collects all MX regions by walking the resulting AST.
+ * Returned ranges are absolute [start, end) offsets in the source string.
+ */
+export function collectMxRegions(
+  source: string,
+  filename: string,
+  options: MxParseOptions = {},
+): Array<{ start: number; end: number }> {
+  const regions: Array<{ start: number; end: number }> = [];
+  try {
+    parse(source, filename, { ...options, mxRegions: regions, errorRecovery: true });
+  } catch (e) {
+    // Ignore parse errors, the array is populated via the bridge.
+  }
+
+  // Sort by start position
+  regions.sort((a, b) => a.start - b.start);
+
+  // Filter out spurious regions from Babel backtracking:
+  // if a region is entirely contained within an earlier region, drop it.
+  const outerRegions: Array<{ start: number; end: number }> = [];
+  for (const r of regions) {
+    const last = outerRegions[outerRegions.length - 1];
+    if (last && r.start >= last.start && r.end <= last.end) {
+      continue;
+    }
+    outerRegions.push(r);
+  }
+
+  return outerRegions;
 }

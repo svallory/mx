@@ -101,6 +101,7 @@ export interface Options {
    * vendored parser behaving exactly like upstream @babel/parser.
    */
   mx?: boolean;
+  mxRegions?: Array<{ start: number; end: number }>;
 
   startIndex?: number;
 
