@@ -211,6 +211,17 @@ describe("<for> loops", () => {
     ).toContain("key={(keyOf)(item)}");
   });
 
+  it("keys by index through a `by=` arrow, the README's duplicates answer", () => {
+    // The default key is the row's own value, which collides for a list of
+    // duplicate primitives — so the README tells an author to key by
+    // position there. Pinned so that advice cannot drift from what compiles.
+    expect(
+      markup(
+        "<for|tag, index| of=input.tags by=(tag, index) => index><li>${tag}</li></for>",
+      ),
+    ).toContain("key={((tag, index) => index)(tag, index)}");
+  });
+
   it("binds the index parameter only when the author declares one", () => {
     expect(markup("<for|x, i| of=input.items><li>${i}</li></for>")).toContain(
       "map((x, i) =>",
@@ -439,6 +450,12 @@ describe("stateful Marko tags are errors naming the Preact equivalent", () => {
     ["<effect>", "<effect() { go(); }/>", "useEffect"],
     ["<lifecycle>", "<lifecycle onMount() { go(); }/>", "useEffect"],
     ["<id>", "<id/x/>\n<p>${x}</p>", "useId"],
+    ["<script>", "<script>go();</script>", "client-runtime tag"],
+    [
+      "a client block",
+      "client const x = 1;\n<p>${x}</p>",
+      "client-runtime split",
+    ],
   ])("rejects %s", (_name, source, hint) => {
     expect(errorOf(source)).toContain(hint);
   });

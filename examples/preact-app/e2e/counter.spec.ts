@@ -122,6 +122,21 @@ describe("the MX + Preact counter", () => {
     expect(await page.textContent('[data-testid="count"]')).toBe("0");
   });
 
+  it("catches a real thrown error through `<try>`'s boundary", async () => {
+    // The only place an error boundary actually runs: Preact's boundaries are
+    // a client-render mechanism, and `preact-render-to-string`'s sync
+    // renderer rethrows instead of invoking one (pinned in
+    // `@mxlang/preact`'s own `runtime.test.ts`). So this browser assertion is
+    // the live proof that `<@catch>` wires a working boundary — the sibling
+    // `<Risky fail=false/>` proves the boundary is transparent otherwise.
+    expect(await page.textContent('[data-testid="boom-ok"]')).toBe(
+      "child rendered fine",
+    );
+    expect(await page.textContent('[data-testid="boom-caught"]')).toBe(
+      "caught: boom from a child",
+    );
+  });
+
   it("renders a `<for>` loop's rows in order", async () => {
     expect(await page.textContent('[data-testid="item-0"]')).toBe("0: alpha");
     expect(await page.textContent('[data-testid="item-1"]')).toBe("1: beta");

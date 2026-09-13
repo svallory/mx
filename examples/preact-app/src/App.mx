@@ -1,9 +1,12 @@
 import Counter from "./Counter.mx";
+import Risky from "./Risky.mx";
 
 export interface Input {}
 
 <main>
   <Counter label="MX counter" start=3/>
+  <Risky fail=false/>
+  <Risky fail=true/>
   <for|name, index| of=["alpha", "beta", "gamma"]>
     <p data-testid=`item-${index}`>${index}: ${name}</p>
   </for>

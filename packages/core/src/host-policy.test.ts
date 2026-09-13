@@ -50,6 +50,19 @@ describe("resolveHostPolicy", () => {
     warnSpy.mockRestore();
   });
 
+  it("resolves the Preact host from an explicit mxlang.host field", () => {
+    // Branch 1 of the resolver, with this host's own name. The code path is
+    // generic, but "preact is a host the field accepts" is the fact worth
+    // pinning — `isKnownHost` is an explicit list, and a name missing from it
+    // falls through to the default host rather than failing loudly.
+    const filePath = join(FIXTURES, "preact-explicit/App.mx");
+
+    expect(resolveHostPolicy(filePath)).toEqual({
+      host: "preact",
+      strict: undefined,
+    });
+  });
+
   it("resolves the Preact host from a lone @mxlang/preact dependency", () => {
     const filePath = join(FIXTURES, "preact-dependency/App.mx");
 

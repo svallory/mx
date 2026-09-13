@@ -398,6 +398,117 @@ describe("MX language plugin", () => {
     ).toContain("<button title={count}>count</button>");
   });
 
+  it("compiles a whole-file .mx through the Preact host", () => {
+    // `createMxLanguagePlugin`'s preact branch, mirroring the html/astro/solid
+    // cases above. Its only other coverage is `@mxlang/tsc`'s end-to-end
+    // `mx-tsc` run, which cannot see this package's own virtual-code shape.
+    const preactFile = `${here}/fixtures/preact-policy/card.mx`;
+    const plugin = createMxLanguagePlugin(ts);
+    const source = [
+      "export interface Input { title: string }",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
+      "<h1>${input.title}</h1>",
+    ].join("\n");
+    const virtual = plugin.createVirtualCode?.(
+      preactFile,
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+
+    if (!virtual) throw new Error("Expected MX virtual code");
+    const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+    // The Preact host's own module shape, not the string host's.
+    expect(generated).toContain("/** @jsxImportSource preact */");
+    expect(generated).toContain("export default function (props: Input) {");
+    expect(generated).toContain("<h1>{input.title}</h1>");
+    expect(generated).not.toContain("let out =");
+    expect(virtual.mappings.length).toBeGreaterThan(0);
+    expect(plugin.getSyntaxError(preactFile)).toBeUndefined();
+  });
+
+  it("parses `<` comparisons and generic calls in the virtual TSX", () => {
+    // The regression the TSX script kind could plausibly have introduced: in
+    // TSX, `<T>x` is JSX rather than a type assertion. It does not reach a
+    // host's output (every host emits `x as T`), but `a < b` and a generic
+    // call sit in ordinary expression positions that any template may carry,
+    // and TypeScript's call-position disambiguation has to resolve
+    // `fn<string>("x")` as a call rather than as an element.
+    const preactFile = `${here}/fixtures/preact-policy/compare.mx`;
+    const plugin = createMxLanguagePlugin(ts);
+    // `pick` arrives by import rather than being declared here: Marko's own
+    // parser reads the `<` that opens a type-parameter list as a tag, so
+    // *declaring* a generic in a `static` block is a parse error before any
+    // host sees it. The generic **call site** in the template is what this
+    // test is about, and it is unaffected.
+    const source = [
+      'import { pick } from "./pick.ts";',
+      "export interface Input { a: number; b: number }",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
+      "<p>${input.a < input.b ? pick<string>('lo') : pick<string>('hi')}</p>",
+    ].join("\n");
+    const virtual = plugin.createVirtualCode?.(
+      preactFile,
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+
+    if (!virtual) throw new Error("Expected MX virtual code");
+    expect(plugin.getSyntaxError(preactFile)).toBeUndefined();
+    const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+
+    // Parsed as the service actually parses it — TSX — with no diagnostics.
+    const parsed = ts.createSourceFile(
+      "generated.tsx",
+      generated,
+      ts.ScriptTarget.ESNext,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    const parseDiagnostics = (
+      parsed as unknown as { parseDiagnostics?: unknown[] }
+    ).parseDiagnostics;
+    expect(parseDiagnostics ?? []).toHaveLength(0);
+    expect(generated).toContain("input.a < input.b");
+    // The generic call is emitted as a call. Its *type argument* does not
+    // survive the core's expression printer — `pick<string>("lo")` prints as
+    // `pick("lo")` — which is pre-existing and host-independent (the string
+    // host drops it identically), not something the TSX script kind
+    // introduced. Asserted as it behaves rather than as it ought to, so this
+    // test pins the parse and the mapping without silently encoding that
+    // erasure as correct.
+    expect(generated).toContain("pick(");
+
+    // A `<` comparison maps back to its own position in the `.mx` source, so
+    // a diagnostic on it is reported against the line the author wrote. The
+    // mapped unit is the whole placeholder expression, which is what the
+    // core's IR carries a position for — not the `input.a < input.b`
+    // sub-span. (An expression whose *source* spelling carries a type
+    // argument maps nowhere, since the printer's erasure means the code
+    // cannot be found in both texts and the builder emits nothing rather
+    // than a wrong column — a consequence of the same pre-existing erasure,
+    // pinned by the sibling test below.)
+    const plain = [
+      "export interface Input { a: number; b: number }",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
+      "<p>${input.a < input.b ? 'lo' : 'hi'}</p>",
+    ].join("\n");
+    const plainVirtual = plugin.createVirtualCode?.(
+      `${here}/fixtures/preact-policy/plain.mx`,
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(plain),
+      { getAssociatedScript: () => undefined },
+    );
+    const mapped = (plainVirtual?.mappings ?? []).map((mapping) =>
+      plain.slice(
+        mapping.sourceOffsets[0] ?? 0,
+        (mapping.sourceOffsets[0] ?? 0) + (mapping.lengths[0] ?? 0),
+      ),
+    );
+    expect(mapped).toContain("input.a < input.b ? 'lo' : 'hi'");
+  });
+
   it("reports an MX compile error once through tsserver diagnostics", () => {
     const fileName = "/project/broken.mx";
     const consumer = "/project/index.ts";
