@@ -1,32 +1,36 @@
 ---
-title: "Policy and hooks"
-description: "The Policy interface a host implements, and the three hooks for stateful tags."
+title: "Declarations and hooks"
+description: "The HostDeclarations interface a host implements, and the three hooks for stateful tags."
 ---
 
-# Policy and hooks
+# Declarations and hooks
 
-A host supplies one `Policy` object to `@mxlang/core`. Every member, purpose-first:
+A host supplies one `HostDeclarations` object to `@mxlang/core`. Every member answers a question the **resolver** asks while turning Marko's AST into IR — none of them emit anything. Emission is a separate interface, [`Emitter<Out>`](/architecture/core-and-hosts/), called later over the resolved IR.
 
 | Member | What it decides |
 | --- | --- |
 | `tags` | Per-tag-name disposition: `inert` (accepted, produces no output, in a declared shape) or `error` (this target cannot express the tag). |
 | `isElement(name, ctx)` | Whether an unbound lowercase tag name is a real HTML/SVG element. |
 | `isComponent(name, ctx)` | Whether a tag name resolves to a component in this host. |
-| `emitComponent(ctx, node, name)` | Emits the call to a component, using this host's props convention. |
-| `emitSpecial?(ctx, node, name)` | The tag handler — see below. Stateful tags live here. |
-| `emitModifier?(ctx, attr)` | Handles or rejects an attribute modifier like `class:foo="x"`. |
-| `attrValue?(ctx, name, source)` | Rewrites a structured attribute value (`class`, `style`); left undefined, the value interpolates unchanged. |
-| `emitBoundAttr?(ctx, attr)` | Lowers a `:=` two-way binding. |
-| `orderAttrs?(tagName, attrs)` | Reorders an element's attributes, for a target that must emit them in an order other than the author wrote them. |
+| `claimsTag?(name, ctx)` | Whether this host handles the tag itself, rather than letting the core route it to a component or an element. |
+| `resolveHostTag?(name, node, ctx)` | Records what this host decided about a claimed tag, into the `HostTag` node's `data` slot. |
+| `rejectModifier?(attr, on)` | Rejects an attribute modifier (`class:active`) in this host's own words. |
+| `resolveModifier?(attr, on)` | Accepts a modifier a host keeps as target syntax, returning the emitted name. |
+| `rejectAttributeMethod?(…)` | Rejects an attribute method (`onClick() { … }`) in this host's own words. |
+| `rejectElementAttributeTags?(…)` | Rejects an attribute tag on a native element. |
+| `rejectComponentTag?(…)` / `rejectUnknownTag?(…)` | This host's wording for an unresolvable tag. |
 | `checkBinding?(target, what)` | Inspects a name a construct is about to bind at render scope — not called for tag params, which open their own nested scope. |
 | `keepComments?` | Whether an HTML comment reaches the compiled output. |
-| `escapeFrom` | The import specifier the emitted module's `escape` helper comes from. |
+
+`Policy` still exists as a name, but only as a compatibility alias of `HostDeclarations`.
+
+Two patterns are worth noticing. The `reject*` hooks exist so a host phrases its own diagnostics: a Marko-parity target quotes Marko's own fix-it, which reads very differently from a generic "not supported here". And `claimsTag`/`resolveHostTag` replaced a single `emitSpecial` that decided by emitting and *then* returning true or false — declaring the claim up front is what lets the resolved `HostTag` node carry the decision in its `data` slot, so the emitter never needs the original Marko node.
 
 ## The three stateful-tag hooks
 
 MX itself defines no meaning for `<let>`, `<effect>`, `<lifecycle>`, `<script>`, or `:=` — those are framework territory, and each host that wants them gives them its own semantics through three capabilities the core provides.
 
-**1. The tag handler — `emitSpecial`.** Every tag the core has no lowering of its own for is offered to the policy by name before the core decides whether it's a component or an element; returning `true` claims it. A host implements a stateful tag like `<signal/count=1/>` here.
+**1. The tag handler — `claimsTag` / `resolveHostTag`.** Every tag the core has no lowering of its own for is offered to the host by name before the core decides whether it's a component or an element; `claimsTag` returning true claims it. The tag then resolves to the `HostTag` IR kind — attributes, children, attribute tags, params and `var` already resolved — and `resolveHostTag` stores whatever the host decided in its `data` slot, for the host's emitter to read. A host implements a stateful tag like `<signal/count=1/>` here.
 
 **2. Hoisting — `ctx.hoist(code)`.** Lifts a statement to the head of the enclosing function — the render function, or the nearest nested function a `<define>` opened. This is how a declaration written inside a conditional still resolves for code that runs after the conditional:
 

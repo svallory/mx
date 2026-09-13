@@ -12,7 +12,7 @@ The repository is a Bun workspace with two workspace globs, `packages/*` and `ex
 | Package | Purpose |
 |---|---|
 | `packages/parser` | A `@babel/parser` fork: MX in expression position lowers to JSX, for the SolidMX host. |
-| `packages/core` | The Marko-node consumer every MX host is built on: structural lowerings, the `Policy` contract, three stateful-tag hooks, two front doors. |
+| `packages/core` | The Marko-node consumer every MX host is built on: structural lowerings, the IR, `HostDeclarations`, `Emitter<Out>`, three stateful-tag hooks, two front doors. |
 | `packages/hosts/html` | The HTML host: `.mx`/`.marko` compile to a pure `(input) => string` function. |
 | `packages/hosts/astro` | The Astro host: components, pages, and `.amx` templates, all rendered to static markup. |
 | `packages/tooling/language-server` | A diagnostics-only LSP server for MX hosts. |
@@ -35,20 +35,35 @@ Three rules this chain is built around:
 
 This site (`apps/docs`) is wired into `verify` and CI the same way: `bun run --cwd apps/docs build` runs as part of the chain, and a broken page — a bad internal link, invalid config, a markdown file that fails to parse — fails the build and fails verify. The generated `site/` output directory is not committed.
 
-## The oracle
+## The oracles
 
-The oracle harness compares compiled output between an MX source file and a hand-written equivalent in the target framework's own syntax, across every backend and output variant that target supports. It exists so that a change to the structural core or a host's policy can be checked against real, working reference code rather than only against expectations recorded in a test file.
+Each host is checked against real, working reference code rather than only against expectations recorded in a test file. There are four runners, and they answer two different questions.
 
-A parallel harness checks the structural core specifically against real Marko: since MX 1.0 is a strict subset of Marko syntax, the same fixture rendered through Marko's own toolchain and through an MX host should produce semantically equivalent HTML. This is the regression guard for the subset rule itself — if MX's rendering of the structural core ever drifts from what Marko would produce for the same input, this is what catches it.
+| Command | What it compares | Current state |
+|---|---|---|
+| `bun run oracle` | Each SolidMX fixture against a hand-written Solid twin, across both Solid 2 backends and both generate variants | 20 rows, all pass |
+| `bun run oracle:marko` | Each stock fixture rendered through the real Marko toolchain *and* through the HTML host | 43 fixtures: 41 pass, 2 reasoned skips, 0 bugs |
+| `bun run oracle:preact` | The same 43 fixtures rendered with `preact-render-to-string` | 30 pass, 13 reasoned skips, 0 bugs |
+| `bun run oracle:react` | The same 43 fixtures rendered with `react-dom/server` | 30 pass, 13 reasoned skips, 0 bugs |
+
+`oracle` asks *does MX produce what a hand-written component would*. The other three ask *does the structural core still mean what Marko means* — the regression guard for the subset rule itself. A skip is a recorded, reasoned classification in the fixture's `meta.json`, not unfinished work; a run also fails if it processed too few fixtures, so a gate that silently does nothing cannot pass.
+
+The three host oracles are CI jobs rather than part of `verify`: the Marko toolchain is a real install and memory cost.
+
+### Adding a fixture
+
+A Marko-parity fixture is a directory under the HTML host's `fixtures-marko/` holding `input.marko`, `input.json` (the props) and `expected.html`. **Generate `expected.html` from real Marko; never hand-write it** — a hand-written expectation records what you believed, not what Marko does. If a construct is deliberately out of scope for a host, add a `meta.json` naming the reason instead of deleting the fixture.
+
+A SolidMX fixture is a directory holding `input.solid.mx` and a hand-written `twin.tsx`. The twin must not introduce whitespace MX drops: MX follows Marko's rule that a whitespace-only run containing a newline disappears, so `text<p>…` goes on one line in the twin wherever the MX source separates them only by indentation.
 
 ## How to add a host
 
-A host is a `Policy` implementation over `@mxlang/core` plus whatever integration glue its target ecosystem needs (a bundler plugin, a loader, a framework-specific renderer). Concretely:
+A host is a `HostDeclarations` object plus an `Emitter<Out>` over `@mxlang/core`, and whatever integration glue its target ecosystem needs (a bundler plugin, a loader, a framework-specific renderer). Concretely:
 
 1. Decide what your target's "public input language" is — the ordinary source format its own toolchain already knows how to compile (JSX text, a plain string-returning function, etc.).
-2. Implement the `Policy` interface: which tags are elements vs. components, how attribute values are structured, and — if your host wants any stateful tags to mean something — the three hooks (a tag handler, a way to hoist a statement, and a way to rewrite identifier references).
-3. Decide whether your host reuses the core's default string-emit model (appropriate for a statement-shaped string target) or needs to replace the emit layer entirely (appropriate for an expression-shaped target like JSX).
-4. Add fixtures and wire your host into the oracle so its output is checked against real reference code, not only assertions in a test file.
+2. Write the `HostDeclarations`: which names are elements versus components, which tags are inert or errors here, how a modifier or an attribute method is rejected *in your target's own words*, and — if your host wants stateful tags to mean something — the three hooks (claim a tag, hoist a statement, rewrite identifier references).
+3. Write the `Emitter<Out>`: one method per IR kind. Throw, naming the construct, for anything your target cannot express — never silently skip a kind.
+4. Add fixtures and wire your host into an oracle so its output is checked against real reference code, not only assertions in a test file.
 
 See [Core and hosts](/architecture/core-and-hosts/) and [Policy and hooks](/architecture/policy-and-hooks/) for the interface itself.
 
@@ -69,4 +84,9 @@ Many targets (React, Preact) share the same JSX structure. To add a new host on 
 
 ## The Edit Check Hook
 
-When contributing using the editor, an edit hook (`.claude/hyper.json` or `.git/hooks/...`) runs type checking and linting on every save. This runs `tsc --noEmit -p` incrementally so errors are reported immediately. If `mx-tsc` is not built yet, the hook tolerates the failure or skips checks on dependent packages until the build is complete.
+An edit hook (`.claude/hyper.json`) runs two checks after every edit to a `.ts`, `.tsx` or `.json` file, in order:
+
+1. `biome check .` — formatting and lint over the whole tree.
+2. A per-package TypeScript check. Each package with a `tsconfig.json` is checked with its own `typecheck` script when it has one (which is what lets the examples run `mx-tsc`), and with plain `tsc --noEmit -p` otherwise.
+
+Both commands use `./node_modules/.bin` paths directly, so they work without shell shims (proto, bun, nvm wrappers). One deliberate exception: a package whose `typecheck` depends on the built `mx-tsc` binary falls back to plain `tsc` when that binary is not built yet, rather than failing — so a fresh worktree still gets useful checks before its first `bun run build`.

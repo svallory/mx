@@ -119,3 +119,24 @@ its `plugins` array:
 
 For a command-line typecheck, `tsc` ignores `compilerOptions.plugins` — use
 `mx-tsc` from `@mxlang/tsc` instead.
+
+## Working on the grammar
+
+The SolidMX grammar is a `file://` dependency during development, and this has one consequence worth knowing before you lose an afternoon to it: **Zed only ever sees committed code.** Its checkout runs `git init`, `git fetch --depth 1 origin <rev>` and `git checkout <rev>` regardless of the URL scheme, so uncommitted changes in your working tree are invisible. There is no way to point Zed at a dirty tree, and Zed never runs `tree-sitter generate` itself — it compiles whatever `src/parser.c` is committed at that revision.
+
+The loop is therefore **commit, bump, reinstall**:
+
+1. Make the change under the grammar package and commit it.
+2. `git rev-parse HEAD` — copy the sha.
+3. Update the grammar's `rev` in `extension.toml` to that sha.
+4. Command Palette → **"zed: install dev extension"** → select the extension directory.
+
+Zed does not watch `extension.toml` or `languages/` for changes either, so re-run step 4 after editing anything in the extension itself.
+
+The first compile after a fresh dev install is slow: the generated parser is several megabytes of C, and clang can take tens of seconds over it. That is expected, not a hang.
+
+## Publishing
+
+The Zed extension registry expects a repository whose **root** holds `extension.toml`. This monorepo's extension lives in a subdirectory, so publishing goes through a subtree split — `git subtree split` rewrites every commit touching that directory into a commit at the repository root — pushed to a dedicated extension repo, with the grammar's `file://` dev dependency swapped for a real URL at the same time.
+
+The split only sees committed history, and the script refuses to run against a dirty tree. It touches no remote itself, so a bad split costs nothing but a deleted local branch. The extension package's own `PUBLISHING.md` carries the full checklist, including the registry submission itself.

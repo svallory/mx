@@ -5,19 +5,29 @@ description: "How @mxlang/core and each host divide responsibility."
 
 # Core and hosts
 
-`@mxlang/core` is the half of MX that is the same for every host. It depends on `@marko/compiler` and nothing else: it consumes Marko's AST, applies the structural lowerings — `<if>`, every `<for>` form, `<define>`, `<const>`, statement tags, and a set of guards that reject unsupported node shapes — and asks a `Policy` object for everything host-specific.
+`@mxlang/core` is the half of MX that is the same for every host. It depends on `@marko/compiler` and nothing else: it consumes Marko's AST, applies the structural lowerings — `<if>`, every `<for>` form, `<define>`, `<const>`, statement tags, and a set of guards that reject unsupported node shapes — and resolves the result into a host-independent [IR](/architecture/ir/).
+
+## Resolve, then emit
+
+The split runs in two stages, and they are separate interfaces:
+
+1. **Resolve.** `resolve()` turns Marko's AST into IR, carrying every validation and every error message. It asks the host's `HostDeclarations` object the questions it cannot answer itself — is this name an element or a component, is this tag inert or an error here, how should this modifier be rejected in your words.
+2. **Emit.** The host's `Emitter<Out>` walks that IR, one method per kind, driven by the core's `drive()`. An emitter never sees a Marko node; a resolve-time decision reaches it through `HostTag.data`.
+
+Keeping the two apart is what stops a host from re-deriving structure while it prints, and it is why the IR is the only thing an emitter needs to understand.
 
 ## What belongs where
 
 | Belongs to the core | Belongs to a host |
 | --- | --- |
 | The structural tag lowerings (`<if>`, `<for>`, `<define>`, `<const>`, statement tags) | The disposition table: which tags are inert, which are errors, and why |
-| Guards against unsupported fields and node shapes | Component-versus-element resolution, and what a component call emits |
-| The default string-emit model (below) | Structured attribute values (`class`, `style`), attribute order, modifiers |
-| The two front doors (`compileSource`, `parseFragment`) | Stateful tags (`<let>`, `<effect>`, `:=`), through three hooks |
-| The `escape` helper | Its own integration — a Vite plugin, a Bun loader, a TypeScript plugin |
+| Guards against unsupported fields and node shapes | Component-versus-element resolution |
+| Resolving Marko's AST into the IR | Emitting each IR kind into the target's own syntax |
+| The two front doors (`compileSource`, `parseFragment`) | Structured attribute values (`class`, `style`), attribute order, modifiers |
+| The `escape` helper | Stateful tags (`<let>`, `<effect>`, `:=`), through three hooks |
+| Positions on every IR node | Its own integration — a Vite plugin, a Bun loader, a TypeScript plugin |
 
-A host is small because most of the work — parsing, structural lowering, guarding against nonsense — never has to be rewritten. See [Policy and hooks](/architecture/policy-and-hooks/) for the full contract a host implements.
+A host is small because most of the work — parsing, structural lowering, guarding against nonsense — never has to be rewritten. See [Declarations and hooks](/architecture/policy-and-hooks/) for the full contract a host implements.
 
 ## Two front doors
 
@@ -25,8 +35,18 @@ A host is small because most of the work — parsing, structural lowering, guard
 
 **`parseFragment(source, { filename, baseOffset, baseLine, baseColumn })`** parses a Marko *substring* embedded inside a larger file, with every position shifted so error locations and source maps point at the right place in the outer file. This is what a host uses when MX syntax sits inside something else — Astro's `.amx` templates (MX after a frontmatter fence) and SolidMX's `.solid.mx` files (MX in JSX's position inside a TSX file) both use this door.
 
-## The emit model
+## Statement-shaped and expression-shaped hosts
 
-By default, the core emits plain strings: an `out += "..."` buffer, one block per function, a fixed set of void HTML tags, and a conventional module shape (an `escape` import, the author's hoisted `import`/`export` statements, one default-exported render function). Any host that itself renders to a string — the HTML host today, the Astro host for its component/page compilation — reuses this emit model as-is, which is most of why adding a second string-shaped host is inexpensive.
+Every host emits from the same IR, but targets fall into two shapes, and the difference shows up in the emitter rather than anywhere in the core.
 
-A host whose target is expression-shaped rather than statement-shaped — JSX, for SolidMX and for `.amx` templates — cannot configure its way into the default emit model, because JSX has no equivalent of `out += "..."`. Those hosts replace the emit layer entirely rather than trying to bend it: the structural walk (deciding what an `<if>` or a `<for>` means) is shared, but what gets *produced* for each node is different.
+**Statement-shaped.** The HTML host builds a string by appending: `out += "..."`, one block per function, ending in a conventional module (an `escape` import, the author's hoisted statements, one branded default-exported render function). An `<if>` becomes a real `if` statement.
+
+**Expression-shaped.** JSX has no equivalent of `out += "..."`, so the Solid, Preact, React and `.amx` emitters produce a single expression instead. An `<if>` becomes a ternary, a `<Show>`, or a `<Switch>` — whatever that target's own author would have written.
+
+Both walk the same IR through the same `drive()`. What differs is only what each method writes, which is why adding a target to an existing emitter can be as small as a vocabulary object: the React host is the Preact emitter plus a `Target` naming the JSX import source, `className`, `htmlFor`, and the runtime module.
+
+## What a host emits, and what it does not
+
+A host emits its target framework's **ordinary public input language** — plain JSX source text, or an ordinary string-concatenation function body — exactly the shape a human would have written by hand. The target's own toolchain then runs over that text unmodified.
+
+This is what keeps a host from becoming a second compiler for its framework. MX prints; Solid's compiler, Babel, or the bundler compiles. A host that emitted optimized or pre-compiled output would have to track its target's internals forever.

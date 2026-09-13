@@ -30,10 +30,13 @@ An editor only hands the server a file path and its text — nothing about which
 
 The Astro host always compiles under its strict policy — it has no non-strict mode — so `"host": "astro"` behaves as strict regardless of the field's own `strict` value.
 
-The dependency hosts are `@mxlang/html`, `@mxlang/astro`, and
-`@mxlang/solid`. A whole-file `.mx`/`.marko` document resolved to
-`"host": "solid"` is checked with the Solid host's fixed profile, so
-stateful Marko tags such as `<let>` are errors.
+`"host"` accepts `html`, `astro`, `solid`, `preact` and `react`, and the
+matching dependency packages are `@mxlang/html`, `@mxlang/astro`,
+`@mxlang/solid`, `@mxlang/preact` and `@mxlang/react`. (`"translator"` is
+accepted as a deprecated alias for `"html"` and warns.) A whole-file
+`.mx`/`.marko` document resolved to a host whose stateful tags are errors —
+`solid`, `preact` and `react` among them — reports `<let>` and the rest as
+errors, each naming that framework's own primitive.
 
 ## SolidMX documents
 
