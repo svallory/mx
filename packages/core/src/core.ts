@@ -343,6 +343,12 @@ function rewriteReferencesSource(
   );
 
   const rewrites: Array<{ start: number; end: number; text: string }> = [];
+  // Set only when a reference that *would* be rewritten has no position to
+  // splice at — never cleared, so one such reference anywhere in the tree
+  // forces the AST-clone fallback below rather than a silent partial rewrite
+  // (decision 65's "no silent drop": a matched-but-unspliceable identifier
+  // must not just keep its original, un-rewritten name in the output).
+  let unpositionedMatch = false;
 
   traverse(file, {
     // biome-ignore lint/style/useNamingConvention: a Babel visitor key is a node type
@@ -367,9 +373,22 @@ function rewriteReferencesSource(
           end: pathEnd,
           text: rewrite(path.node.name),
         });
+      } else {
+        unpositionedMatch = true;
       }
     },
   });
+
+  // No real-positioned expression node has been observed to contain a
+  // position-less identifier (the one synthetic node this printer documents,
+  // an attribute method's whole `FunctionExpression`, has no position at
+  // *any* level, so `expr()`'s outer check routes it to `rewriteReferences`
+  // before this function is ever entered) — but nothing here depends on that
+  // staying true, so a future synthetic-node shape is a loud AST reprint
+  // instead of a silently wrong splice.
+  if (unpositionedMatch) {
+    return ctx.generate(rewriteReferences(ctx, node));
+  }
 
   if (rewrites.length === 0) {
     return ctx.source.slice(exprStart, exprEnd);
