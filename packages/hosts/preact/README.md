@@ -117,9 +117,30 @@ host's documented default rather than an implicit one:
 | `in=obj` | the property name — `key={k}` |
 | `from=/to=/until=` | the loop value — `key={i}` |
 
-That default is correct for a list of primitives and for a stable range. For a
-list of **objects** it keys on object identity, which changes whenever the
-array is rebuilt — pass `by="id"` there.
+That default is correct for a list of **unique** primitives and for a stable
+range. Two cases need `by=`, and neither is detectable at compile time:
+
+- **Duplicates.** `["a", "b", "a"]` produces two rows keyed `"a"`. Preact
+  warns about the duplicate and may reconcile those rows wrongly — the second
+  `"a"` can take the first's DOM node and its state.
+- **Objects.** The key is object identity, which changes whenever the array is
+  rebuilt, so every row remounts on each render.
+
+```marko
+<!-- duplicates: key by position, since the value is not unique -->
+<for|tag, index| of=input.tags by=(tag, index) => index>
+  <li>${tag}</li>
+</for>
+
+<!-- objects: key by a stable field -->
+<for|todo| of=input.todos by="id">
+  <li>${todo.text}</li>
+</for>
+```
+
+Keying by index is the right answer only when the list is append-only or never
+reordered; for a list that is sorted or filtered, key by a stable field of the
+row instead.
 
 ### The `<try>` helper
 

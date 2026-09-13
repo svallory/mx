@@ -50,7 +50,7 @@ Hooks go in `<const>`, which lowers to a statement in the **component body** whe
 
 ## Two rules worth knowing
 
-**Every `<for>` row gets a `key`.** A Preact list without one re-creates its rows on each render. `by="id"` names a field of the row; `by=fn` is a function of it; with no `by=` the key is the row's own identity — the item for `of`, the property name for `in`, the loop value for a range. That default is right for primitives and stable ranges, and for a list of *objects* you want `by="id"`, since object identity changes whenever the array is rebuilt.
+**Every `<for>` row gets a `key`.** A Preact list without one re-creates its rows on each render. `by="id"` names a field of the row; `by=fn` is a function of it; with no `by=` the key is the row's own identity — the item for `of`, the property name for `in`, the loop value for a range. That default is right for *unique* primitives and stable ranges. Two cases need `by=`, neither detectable at compile time: **duplicates** (`["a", "b", "a"]` keys two rows `"a"`, which Preact warns about and may reconcile wrongly — key by position with `by=(tag, index) => index`), and **objects** (identity changes whenever the array is rebuilt, remounting every row — key by a stable field with `by="id"`).
 
 **Children cross the `content`/`children` gap.** Marko names a component's ordinary children `content`; JSX names the same slot `children`. The host emits calls the JSX way — so a hand-written Preact component can be called from MX — and the emitted component bridges the two names, so a template's own `${input.content}` still reads them.
 
