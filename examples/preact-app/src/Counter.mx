@@ -1,0 +1,23 @@
+import { useState } from "preact/hooks";
+
+export interface Input {
+  label: string;
+  start?: number;
+}
+
+// A hook belongs in the component body, and `<const>` is what lowers there —
+// `static` would hoist it to module scope, where the rules of hooks are
+// broken. See the package README's "Hooks" section.
+<const/state=useState(input.start ?? 0)/>
+<const/count=state[0]/>
+<const/setCount=state[1]/>
+
+<section.counter>
+  <h1>${input.label}</h1>
+  <output data-testid="count">${count}</output>
+  <button data-testid="inc" onClick() { setCount(count + 1); }>increment</button>
+  <button data-testid="reset" onClick() { setCount(0); }>reset</button>
+  <p data-testid="parity" class={even: count % 2 === 0, odd: count % 2 !== 0}>
+    ${count % 2 === 0 ? "even" : "odd"}
+  </p>
+</section>

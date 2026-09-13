@@ -1,0 +1,29 @@
+{
+  "name": "@mxlang/example-preact-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "mxlang": {
+    "host": "preact"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "node ../../packages/tooling/tsc/dist/bin.cjs --noEmit",
+    "e2e": "vitest run --config e2e/vitest.config.ts"
+  },
+  "dependencies": {
+    "@mxlang/preact": "workspace:*",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@mxlang/tsc": "workspace:*",
+    "@mxlang/vite-plugin": "workspace:*",
+    "@preact/preset-vite": "2.10.6",
+    "@types/node": "26.5.1",
+    "playwright": "1.63.0",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "vitest": "3.2.7"
+  }
+}

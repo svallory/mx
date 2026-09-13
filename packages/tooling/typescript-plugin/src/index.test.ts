@@ -233,23 +233,30 @@ describe("MX language plugin", () => {
     expect(generated).toContain("function render(input: Input): string");
     expect(generated).toContain("out += escape(input.title)");
     expect(virtual.mappings.length).toBeGreaterThan(0);
+    // TSX, not TS, for every host. The Preact host emits a component module
+    // whose body is JSX; parsed as plain TS its `return (<>…)` is a syntax
+    // error, which surfaced not as a parse error anyone could read but as the
+    // module appearing to have no exports at all ("File '…/Counter.mx' is not
+    // a module"). TSX is a superset for the JSX-free output of the other
+    // hosts, whose one narrowing — `<T>x` as a type assertion — none of them
+    // emits.
     expect(plugin.typescript?.extraFileExtensions).toEqual([
       {
         extension: "mx",
         isMixedContent: false,
-        scriptKind: ts.ScriptKind.TS,
+        scriptKind: ts.ScriptKind.TSX,
       },
       {
         extension: "marko",
         isMixedContent: false,
-        scriptKind: ts.ScriptKind.TS,
+        scriptKind: ts.ScriptKind.TSX,
       },
     ]);
     const serviceScript = plugin.typescript?.getServiceScript(virtual);
     expect(serviceScript).toMatchObject({
       code: virtual,
-      extension: ".ts",
-      scriptKind: ts.ScriptKind.TS,
+      extension: ".tsx",
+      scriptKind: ts.ScriptKind.TSX,
     });
     // `preventLeadingOffset` must stay unset for whole-file MX. With it set,
     // Volar's `runTsc` builds its `SourceFile` from the generated text alone,

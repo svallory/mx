@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "allowImportingTsExtensions": true,
+    "plugins": [
+      {
+        "name": "@mxlang/typescript-plugin"
+      }
+    ]
+  },
+  "include": ["src", "vite.config.ts", "e2e"],
+  "exclude": ["typecheck-fixtures"]
+}

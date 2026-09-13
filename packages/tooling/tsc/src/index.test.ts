@@ -17,6 +17,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..", "..");
 const fixtures = join(here, "fixtures");
 const astroStatic = join(repoRoot, "examples", "astro-static");
+const preactApp = join(repoRoot, "examples", "preact-app");
 
 /**
  * `mx-tsc` is a real `tsc` with Volar's program proxy spliced in, so there is
@@ -173,6 +174,44 @@ describe("mx-tsc", () => {
 
       expect(result.status).not.toBe(0);
       expect(result.output).toContain("wrong-prop.astro(5,7): error TS2322");
+      expect(result.output).toContain(
+        "Type 'number' is not assignable to type 'string'",
+      );
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  it(
+    "accepts a correctly typed .mx component prop from a .tsx file",
+    () => {
+      // The Preact host emits a component module whose body is JSX. Its
+      // virtual script kind has to be TSX for TypeScript to parse that at
+      // all: as plain TS the `return (<>…)` is a syntax error, which
+      // surfaced not as a parse error but as the module appearing to have no
+      // exports ("File '…/Counter.mx' is not a module").
+      const result = run(mxTsc, [
+        "--noEmit",
+        "-p",
+        join(preactApp, "typecheck-fixtures", "correct.json"),
+      ]);
+
+      expect(result.output).toBe("");
+      expect(result.status).toBe(0);
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  it(
+    "reports a wrong .mx component prop from a .tsx file",
+    () => {
+      const result = run(mxTsc, [
+        "--noEmit",
+        "-p",
+        join(preactApp, "typecheck-fixtures", "wrong.json"),
+      ]);
+
+      expect(result.status).not.toBe(0);
+      expect(result.output).toContain("wrong-prop.tsx(5,19): error TS2322");
       expect(result.output).toContain(
         "Type 'number' is not assignable to type 'string'",
       );

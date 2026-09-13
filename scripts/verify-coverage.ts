@@ -35,6 +35,7 @@ const NO_TEST_EXCEPTIONS: Record<string, string> = {
   "counter-app": "e2e only",
   "mx-site": "e2e only",
   "mx-vite": "e2e only",
+  "preact-app": "e2e only",
   todomvc: "e2e only",
   zed: "grammar and Rust extension, both build-verified in CI (zed-compile-check, zed-compile-check)",
   docs: "docs site: built in verify",

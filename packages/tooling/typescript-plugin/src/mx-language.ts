@@ -96,13 +96,20 @@ export function createMxLanguagePlugin(
       extraFileExtensions: MX_EXTENSIONS.map((extension) => ({
         extension,
         isMixedContent: false,
-        scriptKind: typescript.ScriptKind.TS,
+        scriptKind: typescript.ScriptKind.TSX,
       })),
       getServiceScript(root) {
+        // TSX, not TS, and for every host: the Preact host emits a component
+        // module whose body is JSX, and parsed as plain TS its `return (<>…)`
+        // is a syntax error — which surfaced as the module having no exports
+        // at all ("File '…/Counter.mx' is not a module"), not as a parse
+        // error anyone could read. TSX is a superset for the other hosts'
+        // JSX-free output, with one narrowing that does not reach it: `<T>x`
+        // as a type assertion, which no host emits (they emit `x as T`).
         return {
           code: root,
-          extension: ".ts",
-          scriptKind: typescript.ScriptKind.TS,
+          extension: ".tsx",
+          scriptKind: typescript.ScriptKind.TSX,
           // Deliberately no `preventLeadingOffset`. A compiled `.mx` module
           // does not preserve the source's line structure (the `escape` import
           // and the hoisted statements move), and with that flag set Volar's
