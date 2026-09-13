@@ -44,6 +44,7 @@ export {
   type FragmentBase,
   type FragmentResult,
   parseFragment,
+  parseFragmentNative,
 } from "./fragment.ts";
 export { type HostPolicy, resolveHostPolicy } from "./host-policy.ts";
 export type {

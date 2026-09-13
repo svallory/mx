@@ -202,3 +202,38 @@ export function parseFragment(
   shiftNode(ast, resolved);
   return { ast, body: ast.program?.body ?? [] };
 }
+
+/**
+ * `parseFragment` implemented on the upstream offset API
+ * (`docs/upstream/htmljs-parser-offset.patch` +
+ * `docs/upstream/marko-compiler-offset.patch`) instead of the post-hoc shift
+ * above: `@marko/compiler`'s `htmlParseOptions.{startOffset,startLine,
+ * startColumn}` produces already-file-relative positions directly, so there
+ * is no tree walk and no `seen` set here.
+ *
+ * Not used by any consumer — `docs/upstream/README.md` is the proof that it
+ * produces identical results to `parseFragment` for every case the shifted
+ * version is tested against. Exists only until the two patches land upstream
+ * (or are decided against); at that point this becomes `parseFragment` and
+ * the shifting implementation above is deleted.
+ */
+export function parseFragmentNative(
+  source: string,
+  base: FragmentBase = {},
+): FragmentResult {
+  const filename = base.filename ?? "fragment.mx";
+  const compiler = require("@marko/compiler");
+  const ast: Node = compiler.compileSync(source, filename, {
+    output: "source",
+    ast: true,
+    translator: PARSE_ONLY_TRANSLATOR,
+    htmlParseOptions: {
+      startOffset: base.baseOffset ?? 0,
+      startLine: base.baseLine ?? 0,
+      startColumn: base.baseColumn ?? 0,
+    },
+    // biome-ignore lint/suspicious/noExplicitAny: the compiler's result type is untyped here
+  } as any).ast;
+
+  return { ast, body: ast.program?.body ?? [] };
+}
