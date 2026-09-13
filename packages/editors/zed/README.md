@@ -238,6 +238,11 @@ Requires the `git-subtree` contrib command (ships with full Git installs, may
 need `brew install git` / your distro's `git-extras` or `git`-with-contrib
 package if `git subtree --help` reports "not a git command").
 
+See `PUBLISHING.md` for the full publish checklist: this split, the
+`repository`/`rev` swap for both grammars, the Zed extensions registry
+submission procedure, verifying the `.mx`/`.solid.mx` suffix precedence in a
+running Zed, and the manual `.mx`/`.amx` editor checks still owed.
+
 **Publish-time URL swap.** Both the dev-install steps above and
 `extension.toml`'s `[grammars.solidmx]` comment describe the `file://` form
 as temporary: once `packages/editors/zed` is subtree-split into its own

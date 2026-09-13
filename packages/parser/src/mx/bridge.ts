@@ -70,10 +70,6 @@ export function mxParseElementAt(
     });
   }
 
-  if (Array.isArray(parser.options?.mxRegions)) {
-    parser.options.mxRegions.push({ start, end });
-  }
-
   let node: unknown;
   try {
     const region = source.slice(start, end);

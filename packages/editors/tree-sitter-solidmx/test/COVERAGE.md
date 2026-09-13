@@ -1,5 +1,45 @@
 <!-- This is the 74-construct coverage baseline that packages/editors/tree-sitter-solidmx/test/corpus/*.txt is measured against. Copied verbatim from notes/zed/solidmx-corpus-checklist.md (see UPSTREAM.md "What the corpus is measured against"). -->
 
+<!--
+2026-09-13 re-audit (zed-solidmx-followups): this checklist predates decision
+72's subset rule and is stale in two places the corpus itself must not follow:
+
+- #33/#36: tag params on `<if>` (`<if=user()|u|>`) are REMOVED — decision 72
+  removed tag params on `<if>` and attribute tags/tag params on native HTML
+  elements as constructs real Marko itself rejects (see `divergences.md`
+  "Deferred to MX 2"). `test/corpus/control-flow.txt` and the shared
+  `.solid.mx` fixtures use `<if=cond()>` with no `|params|`.
+- #50/#72/lowering-table `<fragment>`: REMOVED — decision 72 retired
+  `<fragment>` entirely (it was the old `.mx` dialect's own construct, not
+  real Marko). It does not come back for SolidMX or any other host.
+
+The 4 stateful items (#56-59: `<let>`, `<const>`, `<effect>`, `:=`) are
+confirmed still NON-GOAL for lowering (decision 69/72: stateful tags are
+host errors), but the grammar itself parses them as ordinary tags/attributes
+so the language server can still report the host error — verified against
+`test/corpus/legacy-namespaces.txt` ("Legacy on: namespace scans as a
+region" etc. cover the parse-as-ordinary-tag shape) and the whole-file
+fixtures parsing cleanly with `<let>`/`<effect>`-shaped tag names present as
+plain elements. No corpus regression: these constructs were never given
+their own dedicated corpus case (there is no `<let>`/`<const>`/`<effect>`/
+`:=` line in any `test/corpus/*.txt` file), so nothing to add — they already
+fall out of the general "any unrecognized tag name scans as an ordinary MX
+element" behavior every other tag exercises.
+
+Everything else in this checklist (#1-32, #34-49, #51-71, #73) still matches
+current SolidMX syntax and is exercised by `test/corpus/*.txt` and/or the
+`.solid.mx` fixtures under `fixtures/`. Updated count: 74 valid constructs
+in the original list minus the 2 removed above (`<fragment>` #50/#72, tag
+params on `<if>` folded into #33/#36's still-valid non-`<if>` uses) = **72
+constructs remain current**; the corpus does not have a dedicated case per
+numbered entry (many entries share one corpus case), so "N/M covered" is not
+tracked as a literal count — the differential test (Z25, `scripts/
+differential.ts`) is the stronger guarantee: every fixture's tree-sitter
+`mx_element` ranges are asserted byte-identical to `@mxlang/parser`'s own
+region walk, not just "parses without ERROR/MISSING."
+-->
+
+
 # SolidMX Test Corpus Checklist
 ## Exhaustive Syntactic Constructs for Tree-sitter Coverage
 

@@ -12,7 +12,6 @@ declare module "@mxlang/parser" {
   export interface MxParseOptions {
     sourceType?: "script" | "module" | "unambiguous";
     plugins?: unknown[];
-    mxRegions?: Array<{ start: number; end: number }>;
     [option: string]: unknown;
   }
 
@@ -29,8 +28,8 @@ declare module "@mxlang/parser" {
   ): File;
 
   /**
-   * Parses the file and collects all MX regions by walking the resulting AST.
-   * Returned ranges are absolute [start, end) offsets in the source string.
+   * Parses the file and collects every MX region's absolute [start, end)
+   * source offsets, read off each region root's `extra.mx.range`.
    */
   export function collectMxRegions(
     source: string,

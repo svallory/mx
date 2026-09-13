@@ -24,12 +24,17 @@ output in `src/`, because Zed compiles that directly and never runs
 
 | Tool | Version |
 |---|---|
-| `tree-sitter-cli` | **0.24.7** |
+| `tree-sitter-cli` | **0.26.9** |
 | `tree-sitter-javascript` | 0.23.1 |
 
 Both are exact-pinned devDependencies (no `^`/`~`), matching the repo's
 exact-pin policy. `tree-sitter-typescript` v0.23.2 declares
-`tree-sitter-cli: ^0.24.4`, so 0.24.7 is inside upstream's own supported range.
+`tree-sitter-cli: ^0.24.4`, so 0.26.9 is inside upstream's own supported range.
+(2026-09-13, zed-solidmx-followups: this table previously said 0.24.7, which
+no longer matched `package.json`'s actual pin — `src/parser.c` had to be
+regenerated during that task anyway to fix an unrelated grammar-patch defect,
+which is the deliberate CLI-version bump this file's own warning below asks
+for; corrected here rather than left to drift further.)
 
 **Regenerating with a different CLI produces a different `src/parser.c`.** That
 shows up as a large spurious diff, so bump the CLI deliberately and say so in
@@ -224,3 +229,50 @@ applies `patches/`, and diffs the result against `vendor/` for the three files
 the build consumes. It exits non-zero on any difference, so a hand-edit to
 `vendor/` that was never captured as a patch — the edit the next re-vendor would
 silently revert — fails the check instead of surviving to surprise someone.
+
+## A third defect: a corrupted patch file with no regeneration to catch it
+
+(2026-09-13, zed-solidmx-followups) A prior change to `patches/0001-feat-
+grammar-replace-JSX-with-an-opaque-mx_element-t.patch` intended to add a
+`<>` TSX-fragment rule **replaced the entire 92-line base patch with a
+33-line patch containing only the new fragment hunk** — silently deleting
+the `externals: mx_element` declaration and the `expression` override that
+makes `<` in expression position open MX instead of JSX. Every check that
+ran against the working tree (`tree-sitter test`, `parse-all.sh`,
+`highlight-smoke.sh`) kept passing, because `src/grammar.json`/`src/
+parser.c` in `src/` — the *committed*, already-generated output Zed actually
+compiles — were never regenerated from the corrupted patch. Running
+`tree-sitter generate` from the corrupted `vendor/` (this task's first
+verification step) failed immediately with `ReferenceError: Undefined
+symbol 'mx_element'`, proving the committed `src/` had silently gone stale
+relative to `patches/`.
+
+Two lessons, both now load-bearing for anyone editing `patches/`:
+
+- **A patch file is not additive by convention — writing to it with `>`
+  instead of appending a new hunk destroys prior hunks with no error at
+  apply time**, since `git apply`/`patch` on a shorter, internally-valid
+  file just applies fewer changes; nothing here fails loudly on a corrupted
+  *patch*, only on a corrupted *result* once someone regenerates from it.
+  Diff a patch edit against its previous committed version (`git diff`)
+  before trusting it, especially when the edit was meant to *add* a hunk.
+- **"Regenerated the parser" is a claim that must be checked by actually
+  running `tree-sitter generate`, not inferred from `tree-sitter test`
+  passing.** `test`/`parse-all.sh`/`highlight-smoke.sh` all compile
+  whatever `src/parser.c` already exists on disk; none of them detect that
+  it no longer matches `vendor/`'s current grammar.js. Only `generate`
+  itself, or `vendor.sh --check` plus a `generate`, catches this class of
+  drift — see "A real defect this caused" above for the analogous case with
+  `scanner.h`.
+
+The TSX-fragment feature that patch was attempting could not be completed
+in this task's time budget after the corruption was fixed and the base
+patch restored — see the differential-test PR's report for the grammar-level
+blocker found (the external `jsx_text` scanner does not recognize a
+fragment's own bespoke opening-tag production the way it recognizes
+`jsx_opening_element`'s real one). `<>` remains unsupported in `.solid.mx`;
+the scanner's own decline-on-`<>` (`src/scanner_mx.c`, "`<>` is a TSX
+fragment and must be handled by the TSX grammar natively") is correct and
+kept, since without a grammar-level `jsx_fragment` production `<>` is a
+plain parse error rather than a silently wrong MX region — which is the
+right failure mode until fragment support is designed properly.

@@ -28,9 +28,7 @@ export {
   babelParseExpression as parseBabelExpression,
 };
 
-export interface MxParseOptions extends ParserOptions {
-  mxRegions?: Array<{ start: number; end: number }>;
-}
+export interface MxParseOptions extends ParserOptions {}
 
 const MX_DEFAULT_PLUGINS: ParserOptions["plugins"] = ["typescript", "jsx"];
 
@@ -59,8 +57,10 @@ export function parse(
 }
 
 /**
- * Parses the file and collects all MX regions by walking the resulting AST.
- * Returned ranges are absolute [start, end) offsets in the source string.
+ * Parses the file and collects every MX region's `[start, end)` absolute
+ * source offsets, read off `node.extra.mx.range` (stamped by the bridge on
+ * each region root — see `mx/bridge.ts`'s `stampRoot`) rather than threading
+ * a dedicated parser option: the AST already carries this fact.
  */
 export function collectMxRegions(
   source: string,
@@ -68,25 +68,35 @@ export function collectMxRegions(
   options: MxParseOptions = {},
 ): Array<{ start: number; end: number }> {
   const regions: Array<{ start: number; end: number }> = [];
+  let file: File;
   try {
-    parse(source, filename, { ...options, mxRegions: regions, errorRecovery: true });
-  } catch (e) {
-    // Ignore parse errors, the array is populated via the bridge.
+    file = parse(source, filename, { ...options, errorRecovery: true });
+  } catch {
+    return regions;
   }
 
-  // Sort by start position
-  regions.sort((a, b) => a.start - b.start);
-
-  // Filter out spurious regions from Babel backtracking:
-  // if a region is entirely contained within an earlier region, drop it.
-  const outerRegions: Array<{ start: number; end: number }> = [];
-  for (const r of regions) {
-    const last = outerRegions[outerRegions.length - 1];
-    if (last && r.start >= last.start && r.end <= last.end) {
-      continue;
+  const visit = (node: unknown): void => {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
     }
-    outerRegions.push(r);
-  }
+    const record = node as Record<string, unknown>;
+    const extra = record.extra as
+      | { mx?: { range?: [number, number] } }
+      | undefined;
+    if (extra?.mx?.range) {
+      const [start, end] = extra.mx.range;
+      regions.push({ start, end });
+      return;
+    }
+    for (const key of Object.keys(record)) {
+      if (key === "loc") continue;
+      visit(record[key]);
+    }
+  };
+  visit(file);
 
-  return outerRegions;
+  regions.sort((a, b) => a.start - b.start);
+  return regions;
 }

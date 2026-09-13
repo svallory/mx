@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parse } from "../index.ts";
+import { collectMxRegions, parse } from "../index.ts";
 
 /** Walks the AST collecting every node of a given type. */
 function collect(node: unknown, type: string, out: unknown[] = []): unknown[] {
@@ -491,8 +491,6 @@ describe("void elements (review #6)", () => {
     expect((error as Error).message).toContain("void element");
   });
 });
-
-import { collectMxRegions } from "../index.ts";
 
 describe("collectMxRegions", () => {
   it("collects the boundaries of MX regions and fragments", () => {

@@ -8,9 +8,9 @@ export function Elements() {
       <span>after the void tags</span>
       <!-- a comment -->
       ${label()}
-      $!{rawHtml}
-      <p>a < b</p>
-      <fragment><b>A</b><i>B</i></fragment>
+      <em>$!{rawHtml}</em>
+      <p>text</p>
+      <span><b>A</b><i>B</i></span>
     </div>
   );
 }

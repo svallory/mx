@@ -1,8 +1,8 @@
+import { readFileSync } from "node:fs";
+import { glob } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
 import { collectMxRegions } from "../../../parser/src/index.ts";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { glob } from "node:fs/promises";
 
 // Emulate the find command used in parse-all.sh
 const HERE = import.meta.dir;
@@ -19,7 +19,9 @@ async function findFiles(): Promise<string[]> {
   const files: string[] = [];
   for (const dir of dirs) {
     try {
-      const globFiles = await Array.fromAsync(glob("**/*.solid.mx", { cwd: dir }));
+      const globFiles = await Array.fromAsync(
+        glob("**/*.solid.mx", { cwd: dir }),
+      );
       for (const file of globFiles) {
         files.push(join(dir, file));
       }
@@ -52,9 +54,10 @@ async function run() {
     // 1. Get Tree-sitter regions
     const xml = await $`bunx tree-sitter parse -x ${file}`.quiet().text();
     const tsRegions: { start: number; end: number }[] = [];
-    const regex = /<mx_element[^>]*srow="(\d+)" scol="(\d+)" erow="(\d+)" ecol="(\d+)"/g;
-    let match;
-    while ((match = regex.exec(xml)) !== null) {
+    const regex =
+      /<mx_element[^>]*srow="(\d+)" scol="(\d+)" erow="(\d+)" ecol="(\d+)"/g;
+    let match = regex.exec(xml);
+    while (match !== null) {
       const srow = Number.parseInt(match[1], 10);
       const scol = Number.parseInt(match[2], 10);
       const erow = Number.parseInt(match[3], 10);
@@ -63,6 +66,7 @@ async function run() {
         start: offsetAt(source, srow, scol),
         end: offsetAt(source, erow, ecol),
       });
+      match = regex.exec(xml);
     }
 
     // 2. Get Walker regions
@@ -90,9 +94,10 @@ async function run() {
       mismatches++;
       console.error(`\nMismatch in ${file}`);
       console.error("  Tree-sitter found:");
-      tsRegions.forEach((r) => console.error(`    [${r.start}, ${r.end})`));
+      for (const r of tsRegions) console.error(`    [${r.start}, ${r.end})`);
       console.error("  Walker found:");
-      walkerRegions.forEach((r) => console.error(`    [${r.start}, ${r.end})`));
+      for (const r of walkerRegions)
+        console.error(`    [${r.start}, ${r.end})`);
 
       // Find first differing region
       const maxLen = Math.max(tsRegions.length, walkerRegions.length);

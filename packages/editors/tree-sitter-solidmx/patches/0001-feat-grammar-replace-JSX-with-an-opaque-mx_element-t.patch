@@ -1,33 +1,92 @@
+From 540ca38dd42cfbb339ea85e4c2739158df526ee8 Mon Sep 17 00:00:00 2001
+From: mx <mx@example.com>
+Date: Thu, 10 Sep 2026 16:17:26 -0300
+Subject: [PATCH] feat(grammar): replace JSX with an opaque mx_element token in
+ expression position
+
+The tsx dialect's JSX alternatives are swapped for a single external token so
+that in .solid.mx a `<` in expression position opens an MX region, scanned by
+src/scanner_mx.c and emitted as one opaque span.
+
+Three changes:
+
+* externals: declare `mx_element`.
+* expression: in the tsx branch, drop `_jsx_element` and add `mx_element`.
+* defineGrammar: take the grammar name as a second parameter, so SolidMX can
+  select the tsx behaviour while generating `tree_sitter_solidmx_*` symbols.
+
+The upstream `[jsx_opening_element, type_parameter]` conflict is deliberately
+NOT carried over: `mx_element` is a single token, so the choice is made in the
+lexer and never reaches a GLR fork. test/corpus/generics.txt pins both
+directions.
+---
+ common/define-grammar.js | 38 ++++++++++++++++++++++++++++++++++----
+ 1 file changed, 34 insertions(+), 4 deletions(-)
+
 diff --git a/common/define-grammar.js b/common/define-grammar.js
-index efb0b76..0fb6f5b 100644
+index efb0b76..87c308d 100644
 --- a/common/define-grammar.js
 +++ b/common/define-grammar.js
-@@ -116,6 +116,7 @@ module.exports = function defineGrammar(dialect) {
+@@ -1,12 +1,22 @@
+ const JavaScript = require('tree-sitter-javascript/grammar');
+ 
+-module.exports = function defineGrammar(dialect) {
++// MX: `name` is a second parameter so a grammar can select the tsx *behaviour*
++// while carrying its own *name*. The generated parser's C symbols are derived
++// from the name (`tree_sitter_<name>_external_scanner_scan`), so SolidMX must
++// be named `solidmx`, but every dialect conditional below must still take the
++// `tsx` branch. Defaults to `dialect`, so upstream's own two grammars are
++// unaffected.
++module.exports = function defineGrammar(dialect, name = dialect) {
+   return grammar(JavaScript, {
+-    name: dialect,
++    name,
+ 
+     externals: ($, previous) => previous.concat([
+       $._function_signature_automatic_semicolon,
+       $.__error_recovery,
++      // MX: the whole `<div>…</div>` span as one opaque token, found by the
++      // external scanner in src/scanner_mx.c. Only valid where the tsx dialect
++      // would have admitted a JSX element (see `expression` below).
++      $.mx_element,
+     ]),
+ 
+     supertypes: ($, previous) => previous.concat([
+@@ -115,7 +125,20 @@ module.exports = function defineGrammar(dialect) {
+       dialect === 'typescript' ? [
          [$.primary_type, $.type_parameter],
        ] : [
-         [$.jsx_opening_element, $.type_parameter],
-+        [$.jsx_fragment, $.type_parameter],
+-        [$.jsx_opening_element, $.type_parameter],
++        // MX: upstream declares `[$.jsx_opening_element, $.type_parameter]`
++        // here so GLR can explore both `<T,>(x) => x` and `<div>`. MX needs no
++        // equivalent, and declaring one is an error rather than a harmless
++        // extra: `mx_element` is a single external TOKEN, not a multi-symbol
++        // rule, so the decision is made in the lexer and never reaches a GLR
++        // fork. tree-sitter reports the declaration as an "unnecessary
++        // conflict" warning.
++        //
++        // The disambiguation still holds, and is verified in
++        // test/corpus/generics.txt in both directions: at a `<` where a
++        // type-parameter list is grammatical, the internal `<` token wins and
++        // `<T,>` / `<T extends U>` parse as `type_parameters`; everywhere else
++        // in expression position the external `mx_element` is the only valid
++        // token and `<div>` is scanned as an MX region.
          [$.jsx_namespace_name, $.primary_type],
        ],
      ),
-@@ -269,6 +270,20 @@ module.exports = function defineGrammar(dialect) {
-         '/>',
-       )),
- 
-+      jsx_fragment: $ => seq(
-+        field('open_tag', seq($._jsx_start_opening_element, '>')),
-+        repeat($._jsx_child),
-+        field('close_tag', $.jsx_closing_element)
-+      ),
-+
-+      _jsx_child: $ => choice(
-+        $.jsx_element,
-+        $.jsx_self_closing_element,
-+        $.jsx_text,
-+        $.jsx_expression,
-+        prec(1, $.mx_element)
-+      ),
-+
-       export_specifier: (_, previous) => seq(
-         optional(choice('type', 'typeof')),
-         previous,
+@@ -227,7 +250,14 @@ module.exports = function defineGrammar(dialect) {
+             member.name !== '_jsx_element',
+           ));
+         } else if (dialect === 'tsx') {
+-          choices.push(...previous.members);
++          // MX: keep every tsx expression alternative except JSX, and put the
++          // single opaque `mx_element` token in JSX's place. `_jsx_element` is
++          // the choice of `jsx_element`/`jsx_self_closing_element`; dropping it
++          // is what makes `<` in expression position start MX rather than JSX.
++          choices.push(...previous.members.filter((member) =>
++            member.name !== '_jsx_element',
++          ));
++          choices.push($.mx_element);
+         } else {
+           throw new Error(`Unknown dialect ${dialect}`);
+         }
