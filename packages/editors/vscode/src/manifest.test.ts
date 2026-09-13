@@ -13,10 +13,23 @@ describe("Manifest", () => {
 
   it("has languages", () => {
     expect(pkg.contributes.languages.length).toBeGreaterThan(0);
-    // biome-ignore lint/suspicious/noExplicitAny: reason
-    const mx = pkg.contributes.languages.find((l: any) => l.id === "mx");
+    const mx = pkg.contributes.languages.find(
+      (l: { id: string }) => l.id === "mx",
+    );
     expect(mx.extensions).toContain(".mx");
     expect(mx.extensions).toContain(".marko");
+  });
+
+  it("orders solidmx before mx in language contributions", () => {
+    // VS Code matches language extensions in contribution order.
+    // solidmx must come before mx so that .solid.mx is not mistakenly matched as .mx
+    const mxIndex = pkg.contributes.languages.findIndex(
+      (l: { id: string }) => l.id === "mx",
+    );
+    const solidMxIndex = pkg.contributes.languages.findIndex(
+      (l: { id: string }) => l.id === "solidmx",
+    );
+    expect(solidMxIndex).toBeLessThan(mxIndex);
   });
 
   it("references existing configuration", () => {

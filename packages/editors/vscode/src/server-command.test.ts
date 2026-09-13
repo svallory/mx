@@ -72,4 +72,16 @@ describe("getServerCommand", () => {
     expect(cmd.command).toBe("/usr/local/bin/npx");
     expect(cmd.args).toEqual(["@mxlang/language-server", "--stdio"]);
   });
+
+  it("throws if resolution fails entirely", () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    // biome-ignore lint/suspicious/noExplicitAny: reason
+    vi.spyOn(child_process, "execSync").mockImplementation((_cmd: any) => {
+      throw new Error();
+    });
+
+    expect(() => getServerCommand(undefined, [])).toThrow(
+      "could not find mxlang-language-server",
+    );
+  });
 });

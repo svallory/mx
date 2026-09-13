@@ -33,6 +33,17 @@
   "contributes": {
     "languages": [
       {
+        "id": "solidmx",
+        "aliases": [
+          "SolidMX",
+          "solidmx"
+        ],
+        "extensions": [
+          ".solid.mx"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
         "id": "mx",
         "aliases": [
           "MX",
@@ -41,17 +52,6 @@
         "extensions": [
           ".mx",
           ".marko"
-        ],
-        "configuration": "./language-configuration.json"
-      },
-      {
-        "id": "solidmx",
-        "aliases": [
-          "SolidMX",
-          "solidmx"
-        ],
-        "extensions": [
-          ".solid.mx"
         ],
         "configuration": "./language-configuration.json"
       },

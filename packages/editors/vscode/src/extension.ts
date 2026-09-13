@@ -4,7 +4,7 @@ import type {
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node";
-import { LanguageClient } from "vscode-languageclient/node";
+import { type Executable, LanguageClient } from "vscode-languageclient/node";
 import { getServerCommand } from "./server-command.js";
 
 let client: LanguageClient;
@@ -13,6 +13,7 @@ export function activate(context: ExtensionContext) {
   const outputChannel = window.createOutputChannel("MX Language Server");
 
   const startClient = async () => {
+    let serverCommand: Executable | undefined;
     try {
       const config = workspace.getConfiguration("mxlang");
       const configuredPath = config.get<string>("languageServer.path");
@@ -20,7 +21,7 @@ export function activate(context: ExtensionContext) {
         (f) => f.uri.fsPath,
       );
 
-      const serverCommand = getServerCommand(configuredPath, workspaceFolders);
+      serverCommand = getServerCommand(configuredPath, workspaceFolders);
       const serverOptions: ServerOptions = {
         run: serverCommand,
         debug: serverCommand,
@@ -48,7 +49,12 @@ export function activate(context: ExtensionContext) {
       await client.start();
       // biome-ignore lint/suspicious/noExplicitAny: reason
     } catch (e: any) {
-      outputChannel.appendLine(`Failed to start language server: ${e.message}`);
+      const cmdStr = serverCommand
+        ? `${serverCommand.command} ${serverCommand.args?.join(" ") || ""}`
+        : "resolution failed";
+      const msg = `Failed to start MX language server (Command: ${cmdStr}). To override, set "mxlang.languageServer.path" in settings. Error: ${e.message}`;
+      outputChannel.appendLine(msg);
+      window.showErrorMessage(msg);
     }
   };
 
