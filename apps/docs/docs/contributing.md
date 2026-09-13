@@ -55,3 +55,18 @@ See [Core and hosts](/architecture/core-and-hosts/) and [Policy and hooks](/arch
 ## How to add a fixture
 
 A fixture for the Marko-parity oracle lives in its own directory alongside a plain `.marko` input file, a small JSON file of props to render it with, and an `expected.html` file — generated from a real run of Marko's own toolchain, never hand-written, so the comparison is always against ground truth rather than a guess at what Marko would do. A fixture for the framework-parity oracle instead pairs an MX source file with a hand-written twin in the target framework's native syntax; both are compiled and their outputs compared across every backend and variant the target supports.
+
+## Consumer Check
+
+The verification chain includes a consumer smoke check. This step simulates how an end-user would consume the package, building and packing a tarball (via `npm pack`) and running a minimal test project against it. This proves the published artifact is structurally sound.
+
+## Adding a Host to the Shared JSX Emitter
+
+Many targets (React, Preact) share the same JSX structure. To add a new host on the shared JSX emitter:
+1. Provide a target object containing only the differences (e.g., `className` vs `class`, `htmlFor` vs `for`).
+2. Implement your specific runtime boundaries if needed (like `<try>`'s `MxErrorBoundary`).
+3. Point the shared emitter at your target configuration.
+
+## The Edit Check Hook
+
+When contributing using the editor, an edit hook (`.claude/hyper.json` or `.git/hooks/...`) runs type checking and linting on every save. This runs `tsc --noEmit -p` incrementally so errors are reported immediately. If `mx-tsc` is not built yet, the hook tolerates the failure or skips checks on dependent packages until the build is complete.
