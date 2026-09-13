@@ -114,15 +114,17 @@ function importLines(names: Set<string>, target: Target): string[] {
   if (names.has("Fragment")) {
     lines.push(`import { Fragment } from "${target.fragmentModule}";`);
   }
-  const runtime = [
-    target.errorBoundaryName,
-    target.suspenseName,
-    "mxClass",
-  ].filter((name) => names.has(name));
-  if (runtime.length > 0) {
+  const boundary = [target.errorBoundaryName, target.suspenseName].filter(
+    (name) => names.has(name),
+  );
+  if (boundary.length > 0) {
     lines.push(
-      `import { ${runtime.join(", ")} } from "${target.errorBoundaryModule}";`,
+      `import { ${boundary.join(", ")} } from "${target.errorBoundaryModule}";`,
     );
+  }
+  if (names.has("mxClass")) {
+    const mxClassModule = target.mxClassModule ?? target.errorBoundaryModule;
+    lines.push(`import { mxClass } from "${mxClassModule}";`);
   }
   return lines;
 }

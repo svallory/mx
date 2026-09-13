@@ -220,6 +220,19 @@
         "astro": "7.3.2",
       },
     },
+    "packages/hosts/hono": {
+      "name": "@mxlang/hono",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mxlang/preact": "workspace:*",
+      },
+      "devDependencies": {
+        "hono": "4.6.20",
+      },
+      "peerDependencies": {
+        "hono": "4.6.20",
+      },
+    },
     "packages/hosts/html": {
       "name": "@mxlang/html",
       "version": "0.1.0",
@@ -761,6 +774,8 @@
     "@mxlang/example-react-app": ["@mxlang/example-react-app@workspace:examples/react-app"],
 
     "@mxlang/example-todomvc": ["@mxlang/example-todomvc@workspace:examples/todomvc"],
+
+    "@mxlang/hono": ["@mxlang/hono@workspace:packages/hosts/hono"],
 
     "@mxlang/html": ["@mxlang/html@workspace:packages/hosts/html"],
 

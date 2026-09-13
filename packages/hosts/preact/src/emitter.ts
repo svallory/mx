@@ -860,10 +860,13 @@ export class PreactEmitter implements Emitter<string> {
     const caught = this.#expression(catchTag.block.children);
     const fallback = catchTag.block.hasParams
       ? concatMapped(`(${params}) => `, caught)
-      : caught;
+      : this.#target.errorBoundaryFallbackAlwaysFunction
+        ? concatMapped("() => ", caught)
+        : caught;
+    const fallbackProp = this.#target.errorBoundaryFallbackProp ?? "fallback";
     this.#out.push(
       concatMapped(
-        `<${this.#target.errorBoundaryName} fallback={`,
+        `<${this.#target.errorBoundaryName} ${fallbackProp}={`,
         fallback,
         "}>",
         inner,
