@@ -36,10 +36,21 @@ The rule holds until MX 2. From MX 2 on, MX may diverge from Marko, but only del
 
 Every deliberate divergence from Marko syntax is recorded in a table — what changed, why, and what test guards it — before it ships, and it lands only together with the tooling it affects (grammar, formatter, language server). As of this writing there are no deliberate divergences: MX 1.0 is Marko syntax, unmodified. Two cases where the HTML host used to be more permissive than Marko were implementation bugs rather than divergences, and both are fixed — the Marko-parity oracle now reports no translator bugs.
 
-## Where to go next
+## Start here
+
+If you are new to MX, read these four in order — about twenty minutes end to end:
+
+1. [Structural tags](/language/structural-tags/) — `<if>`, `<for>`, and the rest of the portable core. This is the part that means the same thing on every host.
+2. [Interpolation and escaping](/language/interpolation/) — `${}` versus `$!{}`, and the whitespace rule that surprises people coming from JSX.
+3. Pick your host and follow its install: [HTML](/hosts/html/) for a plain string, [Astro](/hosts/astro/) for static markup, [React](/hosts/react/) or [Preact](/hosts/preact/) for components, [SolidMX](/hosts/solidmx/) for MX inside a Solid file.
+4. [Stateful tags](/language/stateful-tags/) — what `<let>` and friends mean, which is the one place hosts deliberately disagree.
+
+Then set up your editor: [Zed](/editors/zed/), [VS Code](/editors/vscode/), and the [TypeScript](/editors/typescript/) integration that type-checks MX files.
+
+## Reference
 
 - [Language](/language/structural-tags/) — the structural tags, attribute tags, interpolation, and what a host is free to define itself.
 - [Architecture](/architecture/core-and-hosts/) — how the core and hosts fit together.
-- [Hosts](/hosts/html/) — install and use the HTML, Astro, React, or Preact hosts, or read about SolidMX's status.
 - [Editors](/editors/zed/) — Zed, VS Code, and the diagnostics language server.
 - [Contributing](/contributing/) — repo layout, the verification chain, and how to add a host.
+- [Divergences & MX 2](/divergences-and-mx-2/) — what MX deliberately does not do yet, and why.

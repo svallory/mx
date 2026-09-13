@@ -34,9 +34,18 @@
       "icon": "code",
       "children": [
         { "title": "Structural tags", "path": "/language/structural-tags/" },
-        { "title": "Attribute tags and tag params", "path": "/language/attribute-tags-and-params/" },
-        { "title": "Define, const, static, import", "path": "/language/define-const-static-import/" },
-        { "title": "Interpolation and escaping", "path": "/language/interpolation/" },
+        {
+          "title": "Attribute tags and tag params",
+          "path": "/language/attribute-tags-and-params/"
+        },
+        {
+          "title": "Define, const, static, import",
+          "path": "/language/define-const-static-import/"
+        },
+        {
+          "title": "Interpolation and escaping",
+          "path": "/language/interpolation/"
+        },
         { "title": "Stateful tags", "path": "/language/stateful-tags/" },
         { "title": "Errors", "path": "/language/errors/" }
       ]
@@ -68,8 +77,14 @@
       "children": [
         { "title": "Core and hosts", "path": "/architecture/core-and-hosts/" },
         { "title": "The IR", "path": "/architecture/ir/" },
-        { "title": "Policy and hooks", "path": "/architecture/policy-and-hooks/" },
-        { "title": "Spans and mappings", "path": "/architecture/spans-and-mappings/" }
+        {
+          "title": "Declarations and hooks",
+          "path": "/architecture/policy-and-hooks/"
+        },
+        {
+          "title": "Spans and mappings",
+          "path": "/architecture/spans-and-mappings/"
+        }
       ]
     },
     {
@@ -85,14 +100,30 @@
       "title": "Design notes",
       "icon": "lightbulb",
       "children": [
-        { "title": "Why MX has no resume", "path": "/design-notes/marko-runtime-modes/" },
-        { "title": "Arbitrary code in templates", "path": "/design-notes/arbitrary-code-in-templates/" },
-        { "title": "MX vs JSX for framework authors", "path": "/design-notes/mx-vs-jsx/" }
+        {
+          "title": "Why MX has no resume",
+          "path": "/design-notes/marko-runtime-modes/"
+        },
+        {
+          "title": "Arbitrary code in templates",
+          "path": "/design-notes/arbitrary-code-in-templates/"
+        },
+        {
+          "title": "MX vs JSX for framework authors",
+          "path": "/design-notes/mx-vs-jsx/"
+        }
       ]
     },
-    { "title": "GitHub", "path": "https://github.com/mxlang/mx", "icon": "github", "external": true }
+    {
+      "title": "GitHub",
+      "path": "https://github.com/mxlang/mx",
+      "icon": "github",
+      "external": true
+    }
   ],
   "plugins": {
-    "seo": { "defaultDescription": "MX is a template language born from Marko: one markup language, many hosts." }
+    "seo": {
+      "defaultDescription": "MX is a template language born from Marko: one markup language, many hosts."
+    }
   }
 }
