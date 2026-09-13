@@ -1,0 +1,534 @@
+From 64b82a5d3f7913de22cd74fcf9876c77660d04b8 Mon Sep 17 00:00:00 2001
+From: Saulo Vallory <me@saulo.engineer>
+Date: Sun, 13 Sep 2026 17:50:48 -0300
+Subject: [PATCH 1/2] feat: base position for parseMarko to support offset
+ fragment parsing
+
+Config.htmlParseOptions gains startOffset/startLine/startColumn. When
+given, parseMarko threads them through htmljs-parser's own new parse()
+base-position option (see the paired htmljs-parser patch) so every
+node's start/end/loc and every thrown SyntaxError's position come out
+relative to an enclosing document instead of the substring passed as
+code. Uses htmljs-parser's positionAt/locationAt/offsetAt as the single
+translation points; loc.js's getLoc/getLocRange/withLoc (used by the
+Babel sub-parse for expressions, params, etc.) apply the same base.
+Absent the option, behavior is unchanged (verified: same 142 passing /
+17 pre-existing failing compiler tests with and without this patch).
+---
+ packages/compiler/config.d.ts                |  15 ++++++++
+ packages/compiler/src/babel-plugin/parser.js |  38 +++++++++++--------
+ packages/compiler/src/babel-utils/loc.js     |  23 ++++++++---
+ packages/compiler/src/babel-utils/parse.js   |   8 ++--
+ pnpm-lock.yaml                               | Bin 216992 -> 217855 bytes
+ pnpm-workspace.yaml                          |   2 +
+ 6 files changed, 62 insertions(+), 24 deletions(-)
+
+diff --git a/packages/compiler/config.d.ts b/packages/compiler/config.d.ts
+index e49787700..3de5e89d6 100644
+--- a/packages/compiler/config.d.ts
++++ b/packages/compiler/config.d.ts
+@@ -13,6 +13,21 @@ declare const Config: {
+   runtimeId?: string | null;
+   ast?: boolean;
+   code?: boolean;
++  /**
++   * When compiling a substring of a larger document (e.g. an embedded
++   * template region), gives the parser a base position so every reported
++   * offset, line and column is relative to the enclosing document instead
++   * of the substring passed as `code`.
++   */
++  htmlParseOptions?: {
++    preserveWhitespace?: boolean;
++    /** Character offset of `code`'s first character in the enclosing document. */
++    startOffset?: number;
++    /** Zero-based line of `code`'s first character in the enclosing document. */
++    startLine?: number;
++    /** Column of `code`'s first character in the enclosing document (applied only to its first line). */
++    startColumn?: number;
++  };
+   /** Implemented by the Marko 5 (class API) translator only; currently inert under the Marko 6 translator. */
+   writeVersionComment?: boolean;
+   /** Implemented by the Marko 5 (class API) translator only; currently inert under the Marko 6 translator. */
+diff --git a/packages/compiler/src/babel-plugin/parser.js b/packages/compiler/src/babel-plugin/parser.js
+index f3a58ff70..4b4f783fe 100644
+--- a/packages/compiler/src/babel-plugin/parser.js
++++ b/packages/compiler/src/babel-plugin/parser.js
+@@ -59,6 +59,7 @@ export function parseMarko(file) {
+   let preservingWhitespaceUntil = preserveWhitespace;
+   let onNext = noop;
+   const positionAt = (index) => toBabelPosition(parser.positionAt(index));
++  const offsetAt = (index) => parser.offsetAt(index);
+   const locationAt = (range) => {
+     const { start, end } = parser.locationAt(range);
+     return {
+@@ -67,8 +68,8 @@ export function parseMarko(file) {
+     };
+   };
+   const withLoc = (node, range) => {
+-    node.start = range.start;
+-    node.end = range.end;
++    node.start = offsetAt(range.start);
++    node.end = offsetAt(range.end);
+     node.loc = locationAt(range);
+     return node;
+   };
+@@ -322,9 +323,10 @@ export function parseMarko(file) {
+       const tagName = parseTemplateString(part);
+       const node = t.markoTag(tagName, [], t.markoTagBody());
+       let parseType = TagType.html;
+-      node.start =
+-        part.start - (part.start && code[part.start - 1] === "<" ? 1 : 0); // Account for leading `<` in html mode.
+-      node.end = part.end;
++      node.start = offsetAt(
++        part.start - (part.start && code[part.start - 1] === "<" ? 1 : 0),
++      ); // Account for leading `<` in html mode.
++      node.end = offsetAt(part.end);
+ 
+       if (t.isStringLiteral(tagName)) {
+         const literalTagName = tagName.value || (tagName.value = "div");
+@@ -430,8 +432,8 @@ export function parseMarko(file) {
+         )),
+       );
+ 
+-      currentAttr.start = part.start;
+-      currentAttr.end = part.end;
++      currentAttr.start = offsetAt(part.start);
++      currentAttr.end = offsetAt(part.end);
+     },
+ 
+     onAttrArgs({ value, end }) {
+@@ -442,11 +444,11 @@ export function parseMarko(file) {
+         value.end,
+       );
+ 
+-      currentAttr.end = end;
++      currentAttr.end = offsetAt(end);
+     },
+ 
+     onAttrValue(part) {
+-      currentAttr.end = part.end;
++      currentAttr.end = offsetAt(part.end);
+       currentAttr.bound = part.bound;
+       const rawAttrValue = parser.read(part.value);
+       currentAttr.value = withWrappedAttrValueHint(
+@@ -458,7 +460,7 @@ export function parseMarko(file) {
+     },
+ 
+     onAttrMethod(part) {
+-      currentAttr.end = part.end;
++      currentAttr.end = offsetAt(part.end);
+       currentAttr.value = withLoc(
+         t.functionExpression(
+           undefined,
+@@ -608,7 +610,7 @@ export function parseMarko(file) {
+         preservingWhitespaceUntil = undefined;
+       }
+ 
+-      node.end = part.end;
++      node.end = offsetAt(part.end);
+       node.loc = locationAt(node);
+ 
+       if (parserPlugin) {
+@@ -700,7 +702,11 @@ export function parseMarko(file) {
+     },
+   });
+ 
+-  parser.parse(code);
++  parser.parse(code, {
++    startOffset: htmlParseOptions.startOffset,
++    startLine: htmlParseOptions.startLine,
++    startColumn: htmlParseOptions.startColumn,
++  });
+   onNext();
+ 
+   for (let i = 0; i < parseVisits.length;) {
+@@ -709,11 +715,11 @@ export function parseMarko(file) {
+ 
+   const { ast } = file;
+   const { program } = ast;
+-  ast.start = program.start = 0;
+-  ast.end = program.end = code.length - 1;
++  ast.start = program.start = offsetAt(0);
++  ast.end = program.end = offsetAt(code.length - 1);
+   ast.loc = program.loc = {
+-    start: { line: 1, column: 0 },
+-    end: positionAt(ast.end),
++    start: positionAt(0),
++    end: positionAt(code.length - 1),
+   };
+ }
+ 
+diff --git a/packages/compiler/src/babel-utils/loc.js b/packages/compiler/src/babel-utils/loc.js
+index c3846ba25..c6aa97539 100644
+--- a/packages/compiler/src/babel-utils/loc.js
++++ b/packages/compiler/src/babel-utils/loc.js
+@@ -1,7 +1,19 @@
+ const LINE_INDEX_KEY = Symbol();
+ 
++function getBase(file) {
++  return file.markoOpts?.htmlParseOptions ?? {};
++}
++
++function applyBase(base, loc) {
++  if (!base.startLine && !base.startColumn) return loc;
++  return {
++    line: loc.line + (base.startLine || 0),
++    column: loc.line === 1 ? loc.column + (base.startColumn || 0) : loc.column,
++  };
++}
++
+ export function getLoc(file, index) {
+-  return findLoc(getLineIndexes(file), 0, index);
++  return applyBase(getBase(file), findLoc(getLineIndexes(file), 0, index));
+ }
+ 
+ export function getLocRange(file, start, end) {
+@@ -11,18 +23,19 @@ export function getLocRange(file, start, end) {
+   if (startLoc) {
+     const endLoc =
+       start === end ? startLoc : findLoc(lineIndexes, startLoc.line - 1, end);
++    const base = getBase(file);
+ 
+     return {
+-      start: startLoc,
+-      end: endLoc,
++      start: applyBase(base, startLoc),
++      end: applyBase(base, endLoc),
+     };
+   }
+ }
+ 
+ export function withLoc(file, node, start, end) {
+   node.loc = getLocRange(file, start, end);
+-  node.start = start;
+-  node.end = end;
++  node.start = start + (getBase(file).startOffset || 0);
++  node.end = end + (getBase(file).startOffset || 0);
+   return node;
+ }
+ 
+diff --git a/packages/compiler/src/babel-utils/parse.js b/packages/compiler/src/babel-utils/parse.js
+index 71ce0864a..53f6c8a12 100644
+--- a/packages/compiler/src/babel-utils/parse.js
++++ b/packages/compiler/src/babel-utils/parse.js
+@@ -129,9 +129,10 @@ function tryParse(
+   const { parserOpts } = file.opts;
+ 
+   if (typeof sourceStart === "number") {
++    const baseOffset = file.markoOpts?.htmlParseOptions?.startOffset || 0;
+     const startLoc = getLoc(file, sourceStart);
+     const startLine = startLoc.line;
+-    let startIndex = sourceStart;
++    let startIndex = sourceStart + baseOffset;
+     let startColumn = startLoc.column;
+ 
+     if (sourceOffset) {
+@@ -196,14 +197,15 @@ function ensureParseError(file, node, sourceStart, sourceEnd) {
+ function createParseError(file, sourceStart, sourceEnd, label, errorLoc) {
+   file.___hasParseErrors = true;
+   const loc = getLocRange(file, sourceStart, sourceEnd);
++  const startOffset = file.markoOpts?.htmlParseOptions?.startOffset || 0;
+   return {
+     type: "MarkoParseError",
+     source: file.code.slice(sourceStart, sourceEnd),
+     label: label.replace(/ *\(\d+:\d+\)$/, ""),
+     errorLoc: errorLoc && getBoundedRange(loc, errorLoc),
+     loc,
+-    start: sourceStart,
+-    end: sourceEnd,
++    start: sourceStart + startOffset,
++    end: sourceEnd + startOffset,
+   };
+ }
+ 
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 7e39743d9aefc9a337282c3e910aae2322b22fa1..36ef07340e5ba8ea7f7184733f5b7efc4c4e081e 100644
+GIT binary patch
+delta 771
+zcmaKqOK%cU9K}<xq>?n6l!wHTjKqirxy%EwofW8+M=4NnLLtUvIt(x{FXj$IX<};Q
+zqTAY=$fjxCxN_C7z;EDpai#GC=ul|2jXKM7ZgPHe&i}*7;?IwZ2d_xg6m(sz3y^W*
+zc*~HbHVkW=4h5aTB~j@x07Ndyr!V(ix6d8Ryy_o1y@9EG)v*F5UmFULNAJ9z(LJ~8
+znj;Qq5F<x9->0`rGN*Uc2(QYTC<%HZ2BH)?J$}Hhq#6{rQ;R-p)<bG>E&bHoQIf0u
+zRKA-oNKZs|pm32=dgb|6ydpJ-$9$p4%9%l4goS*CHge7F$Og;^ZH28$)H+pJ&h$2n
+zKH3Xm0g4K~c3NP;#57y)DTXKuVS{VJ#2Fe&;z2eeny_V-L*31`!KRms)oyL8TF+^l
+z3Z10mdYjLfe65s^R67}RP&ewNn2O11lPbq+T3UV~ZLh8u3tBFcZM4|d8WrWZkSd|M
+z0%o@WM&FKhzwFNobK`lzcDL;QOA8=2+`DDFgC4oCU7P|0AZKMxx{^3iVQ><}FVste
+z{bR>J*I;lOkbsy;9ZBd}>qjjqHj^X{Le;tpzQdsd_kzz#`^_M8O_2{nLl>1My6*9#
+zlE;VMdjgK>t3%8+1jn`;D39Glx);BX6CegC^8dAy(;q(ZJ3{C85M=PlMO;Af5E=tb
+wn7~tjJ|i8z$<DbE;l~!N5Sp-3(Dx&JocL_}ksVqMFAcxi?e1~kZhx5j1@(sN>i_@%
+
+delta 206
+zcmeyrly|{=-U)FVC$@^P#+m9FnoKSf7h^Fr(KFZ_Cu+trxm;d=r6e)Ec=IgD)y<o?
+z&Z{`in^mk^kXTflTI2v!KYe2>qeeusyN7RCRcTsgxMOl)j-g?wuZ2f>MMZ&Ic35U|
+zdWn~5P+n%Gn@5OqPKZHxTDfm{aD`*Cd7!UjPGNy}YKeA5NO4h-d7!_4YH)_XtDlo^
+wnR7r`x~*-yN*d#Kl{6-;;K^I(Np0V~o9VNc2#WnchgvCA*KS|N#vJJb0Nl4o{r~^~
+
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index e51aaf02e..80efee828 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -20,3 +20,5 @@ patchedDependencies:
+ publicHoistPattern:
+   - marko
+   - "@marko/runtime-tags"
++overrides:
++  htmljs-parser: link:../htmljs-parser
+-- 
+2.55.0
+
+
+From 6df4a6226b02ae4cf9ddfd01e8aa62793ae11e46 Mon Sep 17 00:00:00 2001
+From: Saulo Vallory <me@saulo.engineer>
+Date: Sun, 13 Sep 2026 17:56:34 -0300
+Subject: [PATCH 2/2] fix: shift numeric start/end once after parsing, not
+ per-node during it
+
+The per-node offsetAt() calls added in the previous commit shifted a
+tag's start/end to absolute before onCloseTagEnd's locationAt(node)
+read them back as if they were still fragment-relative, double-shifting
+the resulting loc. Revert to fragment-relative start/end throughout
+parsing (as before this patch), and shift every start/end once, in a
+single walk, right after parsing finishes and before the top-level
+ast/program start/end are set. loc (line/column) already comes out
+correct at the source, via the patched positionAt/locationAt.
+
+Added packages/compiler/test/parser-locations.test.js coverage for the
+base-position option, including that MarkoTag/MarkoAttribute/the
+tag-name StringLiteral carry no numeric start/end at all in this
+compile mode (only loc) -- matching what mx's own fragment.ts already
+documents -- while a nested Babel expression's loc.start.index is
+where a numeric offset genuinely exists and must shift.
+
+142 -> 147 passing (5 new tests), same 17 pre-existing failures as
+before this patch and as unpatched main.
+---
+ packages/compiler/src/babel-plugin/parser.js  | 56 +++++++++---
+ .../compiler/test/parser-locations.test.js    | 87 ++++++++++++++++++-
+ 2 files changed, 130 insertions(+), 13 deletions(-)
+
+diff --git a/packages/compiler/src/babel-plugin/parser.js b/packages/compiler/src/babel-plugin/parser.js
+index 4b4f783fe..ad83bf40d 100644
+--- a/packages/compiler/src/babel-plugin/parser.js
++++ b/packages/compiler/src/babel-plugin/parser.js
+@@ -68,8 +68,8 @@ export function parseMarko(file) {
+     };
+   };
+   const withLoc = (node, range) => {
+-    node.start = offsetAt(range.start);
+-    node.end = offsetAt(range.end);
++    node.start = range.start;
++    node.end = range.end;
+     node.loc = locationAt(range);
+     return node;
+   };
+@@ -323,10 +323,9 @@ export function parseMarko(file) {
+       const tagName = parseTemplateString(part);
+       const node = t.markoTag(tagName, [], t.markoTagBody());
+       let parseType = TagType.html;
+-      node.start = offsetAt(
+-        part.start - (part.start && code[part.start - 1] === "<" ? 1 : 0),
+-      ); // Account for leading `<` in html mode.
+-      node.end = offsetAt(part.end);
++      node.start =
++        part.start - (part.start && code[part.start - 1] === "<" ? 1 : 0); // Account for leading `<` in html mode.
++      node.end = part.end;
+ 
+       if (t.isStringLiteral(tagName)) {
+         const literalTagName = tagName.value || (tagName.value = "div");
+@@ -432,8 +431,8 @@ export function parseMarko(file) {
+         )),
+       );
+ 
+-      currentAttr.start = offsetAt(part.start);
+-      currentAttr.end = offsetAt(part.end);
++      currentAttr.start = part.start;
++      currentAttr.end = part.end;
+     },
+ 
+     onAttrArgs({ value, end }) {
+@@ -444,11 +443,11 @@ export function parseMarko(file) {
+         value.end,
+       );
+ 
+-      currentAttr.end = offsetAt(end);
++      currentAttr.end = end;
+     },
+ 
+     onAttrValue(part) {
+-      currentAttr.end = offsetAt(part.end);
++      currentAttr.end = part.end;
+       currentAttr.bound = part.bound;
+       const rawAttrValue = parser.read(part.value);
+       currentAttr.value = withWrappedAttrValueHint(
+@@ -460,7 +459,7 @@ export function parseMarko(file) {
+     },
+ 
+     onAttrMethod(part) {
+-      currentAttr.end = offsetAt(part.end);
++      currentAttr.end = part.end;
+       currentAttr.value = withLoc(
+         t.functionExpression(
+           undefined,
+@@ -610,7 +609,7 @@ export function parseMarko(file) {
+         preservingWhitespaceUntil = undefined;
+       }
+ 
+-      node.end = offsetAt(part.end);
++      node.end = part.end;
+       node.loc = locationAt(node);
+ 
+       if (parserPlugin) {
+@@ -715,6 +714,17 @@ export function parseMarko(file) {
+ 
+   const { ast } = file;
+   const { program } = ast;
++
++  // htmlParseOptions.startOffset rebases every start/end offset htmljs-parser
++  // reported onto the enclosing document. loc (line/column) is already base-
++  // aware at the source (positionAt/locationAt, patched in htmljs-parser), so
++  // only the plain numeric offsets need shifting here, once, after parsing:
++  // shifting them as each node was built would have made every node's start
++  // absolute while its still-being-built ancestors and siblings expected it
++  // fragment relative (locationAt(node) reads node.start/node.end back).
++  const baseOffset = htmlParseOptions.startOffset;
++  if (baseOffset) shiftOffsets(ast, baseOffset, new Set());
++
+   ast.start = program.start = offsetAt(0);
+   ast.end = program.end = offsetAt(code.length - 1);
+   ast.loc = program.loc = {
+@@ -723,6 +733,28 @@ export function parseMarko(file) {
+   };
+ }
+ 
++/**
++ * Shifts every start/end numeric offset in a Marko/Babel tree by `delta`.
++ * loc (line/column) positions are not touched here — they are already
++ * base-aware from the source (see htmlParseOptions above).
++ */
++function shiftOffsets(node, delta, seen) {
++  if (!node || typeof node !== "object") return;
++  if (seen.has(node)) return;
++  seen.add(node);
++  if (Array.isArray(node)) {
++    for (const item of node) shiftOffsets(item, delta, seen);
++    return;
++  }
++  if (typeof node.start === "number") node.start += delta;
++  if (typeof node.end === "number") node.end += delta;
++  for (const key in node) {
++    if (key === "loc" || key === "extra" || key === "tagDef") continue;
++    const value = node[key];
++    if (value && typeof value === "object") shiftOffsets(value, delta, seen);
++  }
++}
++
+ function sortByStart(a, b) {
+   return a.start - b.start;
+ }
+diff --git a/packages/compiler/test/parser-locations.test.js b/packages/compiler/test/parser-locations.test.js
+index 37484f16d..2e91a6a73 100644
+--- a/packages/compiler/test/parser-locations.test.js
++++ b/packages/compiler/test/parser-locations.test.js
+@@ -32,13 +32,98 @@ describe("compiler/parser-locations", () => {
+       end: { line: 1, column: 10 },
+     });
+   });
++
++  describe("htmlParseOptions base position", () => {
++    it("rebases a tag's loc onto the enclosing document", () => {
++      // MarkoTag nodes carry no numeric start/end at all (only loc) -- see
++      // the doc comment on the paired fix in mx's own fragment.ts stopgap.
++      const { ast } = compileSync("<div>hi</div>", "fragment.marko", {
++        ast: true,
++        code: false,
++        output: "source",
++        htmlParseOptions: {
++          startOffset: 100,
++          startLine: 5,
++          startColumn: 8,
++        },
++      });
++      const tag = ast.program.body[0];
++      assert.deepEqual(JSON.parse(JSON.stringify(tag.loc)), {
++        start: { line: 6, column: 8 },
++        end: { line: 6, column: 21 },
++      });
++    });
++
++    it("rebases the offset index inside a nested expression's loc", () => {
++      // MarkoTag/MarkoAttribute/the tag-name StringLiteral carry no numeric
++      // start/end at all in this compile mode -- only loc. A nested Babel
++      // expression node is where a numeric offset exists, and it lives at
++      // loc.start.index (mx's own fragment.ts documents the same shape).
++      const { ast } = compileSync("<div a=1></div>", "fragment.marko", {
++        ast: true,
++        code: false,
++        output: "source",
++        htmlParseOptions: {
++          startOffset: 100,
++          startLine: 5,
++          startColumn: 8,
++        },
++      });
++      const tag = ast.program.body[0];
++      const value = tag.attributes[0].value;
++      // Raw index of "1" in "<div a=1></div>" is 7; +100 base offset = 107.
++      assert.equal(value.loc.start.index, 107);
++    });
++
++    it("rebases a later line's line only, leaving its column alone", () => {
++      const text = firstText("<div>\n  hi\n</div>", {
++        startOffset: 50,
++        startLine: 4,
++        startColumn: 3,
++      });
++      assert.deepEqual(JSON.parse(JSON.stringify(text.loc)), {
++        start: { line: 6, column: 2 },
++        end: { line: 6, column: 4 },
++      });
++    });
++
++    it("rebases a thrown parse error's position", () => {
++      assert.throws(
++        () => {
++          compileSync("<div", "fragment.marko", {
++            ast: true,
++            code: false,
++            output: "source",
++            htmlParseOptions: {
++              startOffset: 90,
++              startLine: 7,
++              startColumn: 4,
++            },
++          });
++        },
++        (err) => {
++          assert.equal(err.loc.start.line, 8);
++          return true;
++        },
++      );
++    });
++
++    it("behaves exactly as before when htmlParseOptions is absent", () => {
++      const text = firstText("<div>\n    hello\n</div>");
++      assert.deepEqual(JSON.parse(JSON.stringify(text.loc)), {
++        start: { line: 2, column: 4 },
++        end: { line: 2, column: 9 },
++      });
++    });
++  });
+ });
+ 
+-function firstText(src) {
++function firstText(src, htmlParseOptions) {
+   const { ast } = compileSync(src, "text-loc.marko", {
+     ast: true,
+     code: false,
+     output: "source",
++    ...(htmlParseOptions ? { htmlParseOptions } : {}),
+   });
+   return ast.program.body[0].body.body[0];
+ }
+-- 
+2.55.0
+
