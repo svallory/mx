@@ -502,4 +502,10 @@ describe("collectMxRegions", () => {
       { start: 44, end: 52 },
     ]);
   });
+
+  it("collects a region reached through a nested expression position (a call argument)", () => {
+    const source = `const c = f(<p>x</p>);`;
+    const regions = collectMxRegions(source, "test.solid.mx");
+    expect(regions).toEqual([{ start: 12, end: 20 }]);
+  });
 });

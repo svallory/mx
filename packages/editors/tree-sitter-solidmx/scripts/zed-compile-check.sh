@@ -103,6 +103,16 @@ else
   # e.g. "--docker" on a runner with no local emsdk (CI ships Docker, not a
   # local emscripten install). Unset/empty locally, where a working emsdk or
   # a running Docker/Podman daemon may already be on the machine.
+  #
+  # This bunx pin (0.24.7) is DELIBERATELY older than package.json's own
+  # tree-sitter-cli (0.26.9, used for `generate`/`test`/`parse` above and
+  # elsewhere in this package): 0.26.9 dropped `build --wasm`'s `--docker`
+  # flag, which CI's ZED_COMPILE_CHECK_WASM_BUILD_ARGS relies on (no local
+  # emsdk on CI runners). See UPSTREAM.md "tree-sitter-cli version split"
+  # for the full story and the sibling defect this pin was copied from
+  # (tree-sitter-amx's own zed-compile-check.sh, commit 11d1acaf). Do not
+  # "fix" this to match package.json's 0.26.9 without first confirming
+  # --docker is back or CI no longer needs it.
   set +e
   # shellcheck disable=SC2086 # deliberately unquoted: a flag list, not one value
   (cd "$CLONE_DIR/$PKG_REL" && bunx --package "tree-sitter-cli@0.24.7" tree-sitter build --wasm ${ZED_COMPILE_CHECK_WASM_BUILD_ARGS:-} -o "$WASM_OUT") \

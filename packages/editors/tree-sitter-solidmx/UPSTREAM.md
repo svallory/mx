@@ -36,6 +36,25 @@ regenerated during that task anyway to fix an unrelated grammar-patch defect,
 which is the deliberate CLI-version bump this file's own warning below asks
 for; corrected here rather than left to drift further.)
 
+### `tree-sitter-cli` version split: 0.26.9 for generate/test, 0.24.7 for the wasm build fallback
+
+(2026-09-13, round 3 of zed-solidmx-followups) `scripts/zed-compile-check.sh`'s
+`tree-sitter build --wasm` fallback path (used when Zed's own wasi-sdk clang
+isn't installed — always true on CI) runs `bunx --package
+"tree-sitter-cli@0.24.7"`, an **older** CLI than `package.json`'s own
+`tree-sitter-cli: 0.26.9` used everywhere else in this package (`generate`,
+`test`, `parse`, `highlight-smoke.sh`). This is deliberate, not drift:
+`tree-sitter-cli` 0.26.9 dropped `build --wasm`'s `--docker` flag, which
+`ZED_COMPILE_CHECK_WASM_BUILD_ARGS` needs on CI runners (Docker, not a local
+emscripten install). Verified against a sibling defect: `tree-sitter-amx`'s
+own `zed-compile-check.sh` was briefly bumped to 0.26.9 and broke CI's
+Docker-based wasm build for exactly this reason (commit `11d1acaf`,
+"tree-sitter-cli 0.26.9 dropped the --docker argument for build --wasm"),
+and was reverted back to 0.24.7 to match `tree-sitter-solidmx`'s own
+(already-correct) pin. Do not "fix" `zed-compile-check.sh`'s bunx pin to
+match `package.json` without first confirming `--docker` support is back in
+whatever CLI version you'd bump to, or that CI no longer needs `--docker`.
+
 **Regenerating with a different CLI produces a different `src/parser.c`.** That
 shows up as a large spurious diff, so bump the CLI deliberately and say so in
 the PR — never let it drift as a side effect.
