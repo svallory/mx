@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx",
+    "allowImportingTsExtensions": true,
+    "plugins": [
+      {
+        "name": "@mxlang/typescript-plugin"
+      }
+    ]
+  },
+  "include": ["src", "e2e"]
+}

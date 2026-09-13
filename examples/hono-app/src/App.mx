@@ -1,0 +1,26 @@
+import { Boom } from "./Boom.tsx"
+
+export interface Input {
+  items: string[];
+}
+
+<main>
+  <h1>MX on Hono</h1>
+  <ul data-testid="items">
+    <for|item, i| of=input.items>
+      <li data-testid="item">${i}: ${item}</li>
+    </for>
+  </ul>
+  <try>
+    <Boom fail=false/>
+    <@catch|error|>
+      <p data-testid="boom-caught">caught: ${(error as Error).message}</p>
+    </@catch>
+  </try>
+  <try>
+    <Boom fail=true/>
+    <@catch|error|>
+      <p data-testid="boom-caught-2">caught: ${(error as Error).message}</p>
+    </@catch>
+  </try>
+</main>

@@ -1,0 +1,26 @@
+{
+  "name": "@mxlang/example-hono-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "mxlang": {
+    "host": "hono"
+  },
+  "scripts": {
+    "dev": "bun run src/server.ts",
+    "e2e": "vitest run --config e2e/vitest.config.ts",
+    "typecheck": "node ../../packages/tooling/tsc/dist/bin.cjs --noEmit"
+  },
+  "dependencies": {
+    "@mxlang/hono": "workspace:*",
+    "hono": "4.6.20"
+  },
+  "devDependencies": {
+    "@mxlang/tsc": "workspace:*",
+    "@mxlang/typescript-plugin": "workspace:*",
+    "@types/node": "26.5.1",
+    "playwright": "1.63.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

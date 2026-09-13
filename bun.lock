@@ -82,6 +82,22 @@
         "vitest": "3.2.7",
       },
     },
+    "examples/hono-app": {
+      "name": "@mxlang/example-hono-app",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mxlang/hono": "workspace:*",
+        "hono": "4.6.20",
+      },
+      "devDependencies": {
+        "@mxlang/tsc": "workspace:*",
+        "@mxlang/typescript-plugin": "workspace:*",
+        "@types/node": "26.5.1",
+        "playwright": "1.63.0",
+        "typescript": "5.9.3",
+        "vitest": "3.2.7",
+      },
+    },
     "examples/mx-site": {
       "name": "@mxlang/example-mx-site",
       "version": "0.0.0",
@@ -227,6 +243,7 @@
         "@mxlang/preact": "workspace:*",
       },
       "devDependencies": {
+        "@types/bun": "1.4.2",
         "hono": "4.6.20",
       },
       "peerDependencies": {
@@ -769,6 +786,8 @@
     "@mxlang/example-astro-static": ["@mxlang/example-astro-static@workspace:examples/astro-static"],
 
     "@mxlang/example-counter-app": ["@mxlang/example-counter-app@workspace:examples/counter-app"],
+
+    "@mxlang/example-hono-app": ["@mxlang/example-hono-app@workspace:examples/hono-app"],
 
     "@mxlang/example-mx-site": ["@mxlang/example-mx-site@workspace:examples/mx-site"],
 
