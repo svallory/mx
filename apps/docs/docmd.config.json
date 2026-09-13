@@ -58,6 +58,7 @@
         { "title": "Astro host", "path": "/hosts/astro/" },
         { "title": "React host", "path": "/hosts/react/" },
         { "title": "Preact host", "path": "/hosts/preact/" },
+        { "title": "Hono host", "path": "/hosts/hono/" },
         { "title": "SolidMX", "path": "/hosts/solidmx/" }
       ]
     },

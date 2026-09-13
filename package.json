@@ -48,6 +48,7 @@
     "@volar/language-core": "2.4.28",
     "@volar/typescript": "2.4.28",
     "charcodes": "0.2.0",
+    "hono": "4.6.20",
     "htmljs-parser": "5.15.0",
     "playwright": "1.63.0",
     "preact": "10.29.8",
