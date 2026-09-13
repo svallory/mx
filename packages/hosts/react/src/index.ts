@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import {
-  type CompileResult,
   type CompilePreactResult,
+  type CompileResult,
   compilePreactMx,
   type RawSourceMap,
 } from "@mxlang/preact";

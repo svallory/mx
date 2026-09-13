@@ -468,11 +468,7 @@ export class SolidEmitter implements Emitter<string> {
 
     const body = blockExpression(contentNodes);
     const children = node.content.hasParams
-      ? concatMapped(
-          `{(${node.content.params.join(", ")}) => `,
-          body,
-          "}",
-        )
+      ? concatMapped(`{(${node.content.params.join(", ")}) => `, body, "}")
       : renderWithNewEmitter(contentNodes);
     this.#out.push(
       concatMapped(
@@ -500,9 +496,8 @@ export class SolidEmitter implements Emitter<string> {
         index + 1 < conditioned.length
           ? renderShow(index + 1, finalFallback)
           : finalFallback;
-      const fallbackAttr = next === null
-        ? concatMapped()
-        : concatMapped(" fallback={", next, "}");
+      const fallbackAttr =
+        next === null ? concatMapped() : concatMapped(" fallback={", next, "}");
       return concatMapped(
         `<Show when={${branch.condition.code}}`,
         fallbackAttr,
@@ -528,7 +523,9 @@ export class SolidEmitter implements Emitter<string> {
         ),
       ),
     );
-    this.#out.push(concatMapped("<Switch", fallbackAttr, ">", matches, "</Switch>"));
+    this.#out.push(
+      concatMapped("<Switch", fallbackAttr, ">", matches, "</Switch>"),
+    );
   }
 
   forLoop(node: Extract<IrNode, { kind: "For" }>): void {
@@ -645,7 +642,11 @@ export class SolidEmitter implements Emitter<string> {
       (tag) => tag.name === "placeholder",
     );
     const fallback = placeholder
-      ? concatMapped(" fallback={", blockExpression(placeholder.block.children), "}")
+      ? concatMapped(
+          " fallback={",
+          blockExpression(placeholder.block.children),
+          "}",
+        )
       : concatMapped();
     const loading = concatMapped(
       "<Loading",

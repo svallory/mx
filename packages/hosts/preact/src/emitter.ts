@@ -505,24 +505,20 @@ export class PreactEmitter implements Emitter<string> {
       ...[...byName].map(([name, values]) => {
         const nameCode = mapped(name, values[0]?.tag.nameSpan ?? null);
         if (values.length === 1) {
-          return concatMapped(
-            " ",
-            nameCode,
-            "={",
-            values[0]?.value ?? "",
-            "}",
-          );
+          return concatMapped(" ", nameCode, "={", values[0]?.value ?? "", "}");
         }
         const joined = values.flatMap(({ value }, index) =>
           index === 0 ? [value] : [", ", value],
         );
         const result = concatMapped(" ", nameCode, "={[", ...joined, "]}");
         result.mappings.push(
-          ...values.slice(1).map(({ tag }): GeneratedMapping => ({
-            ...tag.nameSpan,
-            generatedStart: 1,
-            generatedEnd: 1 + name.length,
-          })),
+          ...values.slice(1).map(
+            ({ tag }): GeneratedMapping => ({
+              ...tag.nameSpan,
+              generatedStart: 1,
+              generatedEnd: 1 + name.length,
+            }),
+          ),
         );
         return result;
       }),
@@ -599,7 +595,11 @@ export class PreactEmitter implements Emitter<string> {
           ? node.args.map((arg: Expr) => arg.code).join(", ")
           : this.#defineProps(node);
       this.#out.push(
-        concatMapped("{", mapped(node.target.name, node.nameSpan), `(${args})}`),
+        concatMapped(
+          "{",
+          mapped(node.target.name, node.nameSpan),
+          `(${args})}`,
+        ),
       );
       return;
     }
@@ -697,7 +697,12 @@ export class PreactEmitter implements Emitter<string> {
     const parts: Array<string | MappedCode> = [];
     for (const branch of node.branches) {
       if (branch.condition) {
-        parts.push(branch.condition.code, " ? ", this.#expression(branch.children), " : ");
+        parts.push(
+          branch.condition.code,
+          " ? ",
+          this.#expression(branch.children),
+          " : ",
+        );
       } else {
         parts.push(this.#expression(branch.children));
       }

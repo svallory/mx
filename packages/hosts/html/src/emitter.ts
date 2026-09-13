@@ -41,9 +41,9 @@ import {
   drive,
   type Emitter,
   type Expr,
-  type GeneratedMapping,
   // biome-ignore lint/suspicious/noShadowRestrictedNames: the compiler calls the same helper the emitted module imports, so a static value and a runtime one are escaped by one implementation
   escape,
+  type GeneratedMapping,
   type Ir,
   type IrNode,
   type MappedCode,
@@ -320,7 +320,10 @@ export function createEmitter(): StringEmitter {
 
     // A repeated attribute tag is an array, exactly as Marko does it — which
     // is what lets a component write `<for|it| of=input.item><${it}/></for>`.
-    const blocks = new Map<string, Array<{ tag: AttributeTag; fn: MappedCode }>>();
+    const blocks = new Map<
+      string,
+      Array<{ tag: AttributeTag; fn: MappedCode }>
+    >();
     for (const tag of attributeTags) {
       const fn = blockFunction(tag.block.children, tag.block.params.join(", "));
       const existing = blocks.get(tag.name);
@@ -433,9 +436,16 @@ export function createEmitter(): StringEmitter {
         concatMapped(
           "out += ",
           mapped(target.name, node.nameSpan),
-          "({ ",
-          joinedParts,
-          " });",
+          "(",
+          // No props at all: the call's empty object literal is where
+          // TypeScript anchors a missing-required-property error (`{}` is
+          // the diagnostic's own span). With no attribute to map, fall back
+          // to the tag name so that diagnostic still lands inside the `.mx`
+          // file instead of being dropped as unmapped generated text.
+          parts.length === 0
+            ? mapped("{  }", node.nameSpan)
+            : concatMapped("{ ", joinedParts, " }"),
+          ");",
         ),
       );
     },
@@ -517,7 +527,7 @@ export function createEmitter(): StringEmitter {
 
     define(node) {
       const fn = blockFunction(node.children, node.params.join(", "));
-      push(`const ${node.name} = ${fn};`);
+      push(concatMapped(`const ${node.name} = `, fn, ";"));
     },
 
     constant(node) {

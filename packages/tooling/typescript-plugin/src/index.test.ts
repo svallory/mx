@@ -360,7 +360,7 @@ describe("MX language plugin", () => {
   ])(
     "maps component tag, attribute, and attribute-tag names for the %s host",
     (_host, fileName, needsImport) => {
-      const markup = '<Card title=1><@footer>ok</@footer></Card>';
+      const markup = "<Card title=1><@footer>ok</@footer></Card>";
       const source = needsImport
         ? `import Card from "./Card.mx"\n${markup}`
         : markup;
@@ -372,7 +372,10 @@ describe("MX language plugin", () => {
         { getAssociatedScript: () => undefined },
       );
       if (!virtual) throw new Error("Expected MX virtual code");
-      const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+      const generated = virtual.snapshot.getText(
+        0,
+        virtual.snapshot.getLength(),
+      );
 
       for (const [name, sourceOffset] of [
         ["Card", source.indexOf("<Card") + 1],

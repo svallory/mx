@@ -17,9 +17,7 @@ export interface MappedCode {
 }
 
 /** Concatenates generated fragments while rebasing every fragment's mappings. */
-export function concatMapped(
-  ...parts: Array<string | MappedCode>
-): MappedCode {
+export function concatMapped(...parts: Array<string | MappedCode>): MappedCode {
   let code = "";
   const mappings: GeneratedMapping[] = [];
   for (const part of parts) {

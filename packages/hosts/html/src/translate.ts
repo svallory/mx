@@ -31,6 +31,7 @@ import {
   type Attr,
   attrByName,
   type Ctx,
+  concatMapped,
   type Disposition,
   DYNAMIC_TAG,
   type Expr,
@@ -40,9 +41,8 @@ import {
   type MappedCode,
   type Node,
   type Policy,
-  concatMapped,
-  replaceMapped,
   rejectUnsupportedFields,
+  replaceMapped,
   sliceLoc,
 } from "@mxlang/core";
 

@@ -1,8 +1,8 @@
 import generate from "@babel/generator";
 import { parse as parseBabel } from "@babel/parser";
 import {
-  type Node,
   type GeneratedMapping,
+  type Node,
   newCtx,
   parseFragment,
   resolve,

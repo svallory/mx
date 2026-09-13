@@ -77,19 +77,31 @@ export interface IrBase {
  * keys are only known at run time.
  */
 export type Attr =
-  | ({ kind: "static"; name: string; value: string; nameSpan: SourceSpan } &
-      IrBase)
+  | ({
+      kind: "static";
+      name: string;
+      value: string;
+      nameSpan: SourceSpan;
+    } & IrBase)
   /** A bare attribute (`disabled`), HTML's spelling of `true`. */
   | ({ kind: "boolean"; name: string; nameSpan: SourceSpan } & IrBase)
-  | ({ kind: "dynamic"; name: string; value: Expr; nameSpan: SourceSpan } &
-      IrBase)
+  | ({
+      kind: "dynamic";
+      name: string;
+      value: Expr;
+      nameSpan: SourceSpan;
+    } & IrBase)
   /**
    * `value:=expr`, Marko's two-way binding. Resolved rather than rejected: a
    * host with no update path emits the initial value, which is what Marko's
    * own server render does.
    */
-  | ({ kind: "bound"; name: string; value: Expr; nameSpan: SourceSpan } &
-      IrBase)
+  | ({
+      kind: "bound";
+      name: string;
+      value: Expr;
+      nameSpan: SourceSpan;
+    } & IrBase)
   | ({ kind: "spread"; value: Expr } & IrBase);
 
 /**
