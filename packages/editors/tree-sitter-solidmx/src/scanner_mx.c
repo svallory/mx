@@ -25,10 +25,10 @@
 //
 //   Rule (spec row)                        | Mirrors                  | Here
 //   ---------------------------------------|--------------------------|------
-//   End offset, region stop           §1,§2 | walkMxRegion/`finish`    | scan_mx_element
+//   End offset, region stop           §1,§2 | walkMxRegion/`finish`    | scan_mx_element_body
 //                                           | walk.ts:170              |
-//   Depth stack                         §5  | walk.ts:303 push / :334  | depth in scan_mx_element
-//                                           | pop                      |
+//   Depth stack                         §5  | walk.ts:303 push / :334  | depth in
+//                                           | pop                      | scan_mx_element_body
 //   Void set is depth-neutral, REPO-LOCAL   | VOID_TAGS/isVoidTag      | is_void_tag
 //                                       §5  | walk.ts:92,110           |
 //   Tag-name terminators, `.`/`#`, `${}`§4  | htmljs TAG_NAME.parse    | scan_tag_name
@@ -947,28 +947,11 @@ static bool scan_markup_decl(TSLexer *lexer, unsigned *budget) {
 // Assumes the root tag's leading `<` has ALREADY been consumed by the caller
 // and that the caller has already ruled out the four things that cannot
 // follow it here — `!`/`?` (markup declaration), `/` (a stray close tag) and
-// `>` (an empty fragment, not an element). Split out from scan_mx_element so
-// mx_scan_at_lt can consume `<` itself, decide fragment-vs-element on the very
-// next character, and continue straight into this body without a second,
+// `>` (an empty fragment, not an element). The only caller is mx_scan_at_lt,
+// which consumes `<` itself, decides fragment-vs-element on the very next
+// character, and continues straight into this body without a second,
 // redundant consumption of `<` (a TSLexer cannot unconsume — see
 // mx_scan_at_lt's own comment).
-static bool scan_mx_element_body(TSLexer *lexer);
-
-// Thin wrapper for a standalone `<` scan (no fragment tokens valid at this
-// position, so there is nothing to disambiguate against): consumes `<`,
-// declines on a markup declaration / stray close tag / empty fragment, then
-// runs the shared body.
-static bool scan_mx_element(TSLexer *lexer) {
-    if (lexer->lookahead != '<') {
-        return false;
-    }
-    advance_mx(lexer);
-    if (lexer->lookahead == '!' || lexer->lookahead == '?' || lexer->lookahead == '/' || lexer->lookahead == '>') {
-        return false;
-    }
-    return scan_mx_element_body(lexer);
-}
-
 static bool scan_mx_element_body(TSLexer *lexer) {
     unsigned budget = MX_MAX_SCAN;
 
@@ -1103,29 +1086,6 @@ static bool scan_mx_element_body(TSLexer *lexer) {
 }
 
 // ---------------------------------------------------------------------------
-// The MX half of the scanner, called by `src/scanner.c`.
-//
-// The tree-sitter entry points themselves live in `scanner.c`, which owns the
-// dispatch between this scanner and upstream's. Defining them here as well
-// would be a duplicate-symbol compile error, since `scanner.c` #includes this
-// file.
-//
-// The caller guards on `valid_symbols[MX_ELEMENT]`, which is what keeps this
-// out of every position where the grammar does not admit an MX element.
-static bool mx_scan_element_token(TSLexer *lexer) {
-    // Skip leading whitespace before the `<`. `skip` (advance with `true`)
-    // keeps it out of the token, so the emitted span starts at the `<`.
-    while (is_ws(lexer->lookahead)) {
-        lexer->advance(lexer, true);
-    }
-    if (lexer->lookahead != '<') {
-        return false;
-    }
-    lexer->result_symbol = MX_ELEMENT;
-    return scan_mx_element(lexer);
-}
-
-// ---------------------------------------------------------------------------
 // Fragment delimiters, `<>` and `</>` (mx_fragment_open / mx_fragment_close).
 //
 // Each is a fixed two- or three-character token, decided purely by lookahead
@@ -1180,11 +1140,12 @@ static bool mx_scan_at_lt(TSLexer *lexer, bool want_element, bool want_open, boo
         return true;
     }
 
-    // Not a fragment delimiter — scan_mx_element's own markup-decl check
-    // (its `!`/`?`/`/`/`>` guard) would otherwise re-run this exact
-    // discrimination a second time, redundantly and past a `<` already
-    // consumed here. Continue the element scan from right after `<` instead
-    // of re-entering scan_mx_element (which expects to consume `<` itself).
+    // Not a fragment delimiter — go straight into the element body from
+    // right after `<`, already consumed above. There is no separate
+    // "scan_mx_element" entry point left to re-enter here: an element scan
+    // always starts by consuming `<` and then running exactly this
+    // discrimination, so a second function repeating it would just consume
+    // `<` a second time, which a TSLexer cannot do.
     if (!want_element) {
         return false;
     }
