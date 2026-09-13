@@ -721,6 +721,50 @@ describe("binding scopes are per JS block", () => {
 
     expect(trailingInterpolation(ir.body).expr.code).toBe("count()");
   });
+
+  describe("type arguments survive the non-empty binding registry path", () => {
+    /**
+     * `expr()` slices source text only when `ctx.bindings.size === 0`
+     * (packages/core/src/core.ts). Any other name in an expression alongside a
+     * registered one puts the registry in scope for the whole expression, and
+     * `rewriteReferencesSource` (not the node-cloning `rewriteReferences`) does
+     * the splice — this is the path a `resolveHostTag` binding (e.g. `<signal>`)
+     * takes for every interpolation once any binding is registered, which is
+     * exactly what a real host like `@mxlang/preact` does for `<let>` state.
+     */
+    it("keeps a generic call's type arguments when rewriting a registered identifier", () => {
+      const ir = resolveSource(
+        [
+          "<signal/count=1/>",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+          "<p>${pick<string>(count)}</p>",
+          "",
+        ].join("\n"),
+        signalPolicy,
+      );
+
+      expect(trailingInterpolation(ir.body).expr.code).toBe(
+        "pick<string>(count())",
+      );
+    });
+
+    /** The identifier being rewritten is itself the one carrying type arguments as a callee. */
+    it("keeps type arguments when the registered identifier is not itself rewritten", () => {
+      const ir = resolveSource(
+        [
+          "<signal/count=1/>",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+          "<p>${pick<string>(other)}</p>",
+          "",
+        ].join("\n"),
+        signalPolicy,
+      );
+
+      expect(trailingInterpolation(ir.body).expr.code).toBe(
+        "pick<string>(other)",
+      );
+    });
+  });
 });
 
 describe("a claimed tag's children are resolved exactly once", () => {

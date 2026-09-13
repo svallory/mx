@@ -239,8 +239,21 @@ export function quote(text: string): string {
  *   stateful tags pays nothing.
  */
 export function expr(ctx: Ctx, node: Node): string {
-  if (ctx.bindings.size === 0) return ctx.generate(node);
-  return ctx.generate(rewriteReferences(ctx, node));
+  const start = node.start ?? node.loc?.start.index;
+  const end = node.end ?? node.loc?.end.index;
+
+  if (typeof start !== "number" || typeof end !== "number") {
+    // If we have no position, we must fall back to generation (e.g. synthetic nodes)
+    return ctx.generate(
+      ctx.bindings.size === 0 ? node : rewriteReferences(ctx, node),
+    );
+  }
+
+  if (ctx.bindings.size === 0) {
+    return ctx.source.slice(start, end);
+  }
+
+  return rewriteReferencesSource(ctx, node, start, end);
 }
 
 /**
@@ -302,31 +315,35 @@ export function shadowBindings(ctx: Ctx, names: string[]): () => void {
 }
 
 /**
- * Clones an expression, replacing registered identifier references.
+ * Returns the source text with registered identifier references replaced.
  *
- * The clone is a print-time concern only: the node reaching here belongs to
- * Marko's own AST, which the caller may emit again (an attribute read twice by
- * a policy, a condition re-printed by a diagnostic), so rewriting in place
- * would make the second print see the first one's output.
- *
- * The rewrite result is host-supplied *source text*, not a node, so it is
- * parsed back to an expression — that is what lets a host return anything
- * from `count()` to `untrack(() => count())` without building Babel nodes.
+ * Slicing the text (rather than returning a rewritten Babel node to be printed)
+ * is what preserves TypeScript type arguments: Marko's parser drops them from the
+ * AST, so a generated node would be missing them, while the original source text
+ * retains them exactly as authored.
  */
-function rewriteReferences(ctx: Ctx, node: Node): Node {
-  const { types, traverse, parseExpression } = markoBabel();
-  const clone = types.cloneNode(node, true);
+function rewriteReferencesSource(
+  ctx: Ctx,
+  node: Node,
+  exprStart: number,
+  exprEnd: number,
+): string {
   // A bare identifier is never "referenced" as a lone expression to traverse
   // (there is no parent to ask), so it is handled before the walk.
-  if (clone.type === "Identifier") {
-    const rewrite = ctx.bindings.get(clone.name);
-    return rewrite ? parseExpression(rewrite(clone.name)) : clone;
+  if (node.type === "Identifier") {
+    const rewrite = ctx.bindings.get(node.name);
+    return rewrite ? rewrite(node.name) : ctx.source.slice(exprStart, exprEnd);
   }
+
+  const { types, traverse } = markoBabel();
   // `traverse` needs a Program to walk, and these nodes came out of Marko's
   // own Babel instance, so its bundled traverse is the one that knows them.
   const file = types.file(
-    types.program([types.expressionStatement(clone as Node)]),
+    types.program([types.expressionStatement(node as Node)]),
   );
+
+  const rewrites: Array<{ start: number; end: number; text: string }> = [];
+
   traverse(file, {
     // biome-ignore lint/style/useNamingConvention: a Babel visitor key is a node type
     Identifier(path: Node) {
@@ -340,6 +357,55 @@ function rewriteReferences(ctx: Ctx, node: Node): Node {
       // which is exactly when it refers to the template-level binding the host
       // registered. Rewriting a shadow would emit `xs.map(count => count())`,
       // calling the parameter.
+      if (path.scope.getBinding(path.node.name)) return;
+
+      const pathStart = path.node.start ?? path.node.loc?.start.index;
+      const pathEnd = path.node.end ?? path.node.loc?.end.index;
+      if (typeof pathStart === "number" && typeof pathEnd === "number") {
+        rewrites.push({
+          start: pathStart,
+          end: pathEnd,
+          text: rewrite(path.node.name),
+        });
+      }
+    },
+  });
+
+  if (rewrites.length === 0) {
+    return ctx.source.slice(exprStart, exprEnd);
+  }
+
+  rewrites.sort((a, b) => a.start - b.start);
+  let result = "";
+  let lastEnd = exprStart;
+  for (const r of rewrites) {
+    result += ctx.source.slice(lastEnd, r.start);
+    result += r.text;
+    lastEnd = r.end;
+  }
+  result += ctx.source.slice(lastEnd, exprEnd);
+  return result;
+}
+
+/**
+ * Fallback node rewriter for synthetic nodes (which lack `start`/`end`).
+ */
+function rewriteReferences(ctx: Ctx, node: Node): Node {
+  const { types, traverse, parseExpression } = markoBabel();
+  const clone = types.cloneNode(node, true);
+  if (clone.type === "Identifier") {
+    const rewrite = ctx.bindings.get(clone.name);
+    return rewrite ? parseExpression(rewrite(clone.name)) : clone;
+  }
+  const file = types.file(
+    types.program([types.expressionStatement(clone as Node)]),
+  );
+  traverse(file, {
+    // biome-ignore lint/style/useNamingConvention: a Babel visitor key is a node type
+    Identifier(path: Node) {
+      if (!path.isReferencedIdentifier()) return;
+      const rewrite = ctx.bindings.get(path.node.name);
+      if (!rewrite) return;
       if (path.scope.getBinding(path.node.name)) return;
       path.replaceWith(parseExpression(rewrite(path.node.name)));
       path.skip();

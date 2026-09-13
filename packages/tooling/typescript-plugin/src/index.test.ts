@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { convertToTSX } from "@astrojs/compiler/sync";
@@ -204,6 +205,21 @@ describe("SolidMX language plugin", () => {
 
     expect(diagnostic?.start).toBe(source.indexOf(expression));
     expect(diagnostic?.length).toBe(expression.length);
+  });
+  it("keeps type arguments when rewriting bound identifiers", () => {
+    const plugin = createSolidMxLanguagePlugin(ts);
+    const source =
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
+      "export default function () { return <for|item| of=xs><p>${pick<string>(item)}</p></for>; }";
+    const virtual = plugin.createVirtualCode?.(
+      "/src/example.solid.mx",
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+    if (!virtual) throw new Error("Expected SolidMX virtual code");
+    const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+    expect(generated).toContain("pick<string>(item)");
   });
 });
 
@@ -541,14 +557,11 @@ describe("MX language plugin", () => {
     ).parseDiagnostics;
     expect(parseDiagnostics ?? []).toHaveLength(0);
     expect(generated).toContain("input.a < input.b");
-    // The generic call is emitted as a call. Its *type argument* does not
-    // survive the core's expression printer — `pick<string>("lo")` prints as
-    // `pick("lo")` — which is pre-existing and host-independent (the string
-    // host drops it identically), not something the TSX script kind
-    // introduced. Asserted as it behaves rather than as it ought to, so this
-    // test pins the parse and the mapping without silently encoding that
-    // erasure as correct.
-    expect(generated).toContain("pick(");
+    // The generic call is emitted as a call. Its *type argument* survives the
+    // core's expression printer — `pick<string>('lo')` prints as
+    // `pick<string>('lo')`.
+    expect(generated).toContain("pick<string>('lo')");
+    expect(generated).toContain("pick<string>('hi')");
 
     // A `<` comparison maps back to its own position in the `.mx` source, so
     // a diagnostic on it is reported against the line the author wrote. The
@@ -656,6 +669,123 @@ describe("MX language plugin", () => {
     // than being dropped for want of a mapping.
     expect(diagnostic?.start).toBe(source.indexOf("bogus"));
     expect(diagnostic?.length).toBe("bogus".length);
+  });
+
+  it("maps a type error inside a generic call and type assertion in an interpolation", () => {
+    const component = "/project/Generic.mx";
+    const consumer = "/project/index.ts";
+    const pickModule = "/project/pick.ts";
+    // `pick` arrives by import rather than being declared here: Marko's own
+    // parser reads the `<` that opens a type-parameter list as a tag, so
+    // *declaring* a generic in a `static` block is a parse error before any
+    // host sees it (see "parses `<` comparisons and generic calls in the
+    // virtual TSX" above). The generic **call site** in the template is what
+    // this test is about, and it is unaffected.
+    //
+    // Only the `${...}` interpolation site is asserted here. The brief asked
+    // for one test per expression site (interpolation, attribute value,
+    // `<if>` condition, `<for>` iterable, attribute method body); the other
+    // four sites are covered — as pre-existing gaps, not as passing cases —
+    // by the two tests below, plus this task's report.
+    const source = [
+      'import { pick } from "./pick.ts";',
+      "export interface Input { title: string }",
+      `<p>${"${"}pick<string>(1 as number)}</p>`,
+    ].join("\n");
+    const service = createPluginService(
+      {
+        [component]: source,
+        [consumer]: 'import "./Generic.mx";\n',
+        [pickModule]: "export function pick<T>(val: T): T { return val; }\n",
+      },
+      [consumer],
+    );
+    service.getSemanticDiagnostics(consumer);
+
+    const diagnostics = service.getSemanticDiagnostics(component);
+    // TypeScript diagnostic 2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+    const typeError = diagnostics.find((candidate) => candidate.code === 2345);
+
+    expect(typeError?.start).toBe(source.indexOf("1 as number"));
+  });
+
+  it("documents a pre-existing gap: a bare generic call outside an interpolation misparses as a comparison", () => {
+    // Not introduced by this task's change (reproduced identically against
+    // `main`, before this task's core.ts edit, via a direct `@marko/compiler`
+    // AST probe). Only a `${...}`-wrapped expression is parsed as an ordinary
+    // JS/TS expression; an attribute value, an `<if>` condition and a `<for>`
+    // iterable are parsed through a different path that does not enable the
+    // TypeScript plugin the same way, so `pick<string>(x)` there is read as
+    // `(pick < string) > x` — a `BinaryExpression`, never a `CallExpression`
+    // with `typeParameters`. There is no core seam to intercept this: the
+    // wrong tree is what Marko hands the resolver, before any host or the
+    // slice-based printer this task added ever sees the node. Fixing it would
+    // mean changing `@marko/compiler`'s own attribute-value/condition/iterable
+    // parsing, out of this task's scope (`packages/core/src/**`).
+    // biome-ignore lint/suspicious/noExplicitAny: probing Marko's internal AST shape, not this package's types
+    const compileSync: (source: string, filename: string, opts: any) => void =
+      createRequire(import.meta.url)("@marko/compiler").compileSync;
+    let valueType: string | undefined;
+    compileSync("<if=pick<string>(3 as number)>x</if>", "gap.mx", {
+      output: "html",
+      translator: {
+        taglibs: [],
+        tagDiscoveryDirs: [],
+        translate: {
+          Program: {
+            // biome-ignore lint/suspicious/noExplicitAny: Marko's internal Babel path type
+            exit(path: any) {
+              path.traverse({
+                // biome-ignore lint/suspicious/noExplicitAny: Marko's internal Babel path type
+                MarkoTag(tagPath: any) {
+                  if (tagPath.node.name?.value !== "if") return;
+                  valueType = tagPath.node.attributes[0]?.value?.type;
+                },
+              });
+            },
+          },
+        },
+      },
+    });
+
+    expect(valueType).toBe("BinaryExpression");
+  });
+
+  it("documents the one site that cannot keep type arguments: an attribute method's synthesized function wrapper", () => {
+    // Marko builds the attribute-method shorthand's `FunctionExpression` node
+    // itself (there is no literal `function (…) { … }` in the source), so it
+    // carries no `start`/`end`/`loc` at all — confirmed by walking the parsed
+    // tree directly. `expr()` in packages/core/src/core.ts therefore takes its
+    // synthetic-node fallback (`ctx.generate(node)`) rather than the slice,
+    // and the underlying AST's `typeParameters` is already `null` (Marko's own
+    // `stripTypes` pass erases it before any host sees the tree — see
+    // packages/core/README.md and this task's report). There is no source
+    // range to slice and no AST field left to print: a generic call written
+    // inside an attribute-method body cannot keep its type arguments through
+    // this printer.
+    //
+    // Preact accepts attribute methods (`resolveAttributeMethod: () => true`
+    // in packages/hosts/preact/src/emitter.ts); the default host does not, so
+    // this uses the `preact-policy` fixture directory the way the two tests
+    // above do, rather than `/project` (default host).
+    const preactFile = `${here}/fixtures/preact-policy/generic-method.mx`;
+    const source = [
+      'import { pick } from "./pick.ts";',
+      "export interface Input { title: string }",
+      "<div onClick() { pick<string>(5); } />",
+    ].join("\n");
+    const virtual = createMxLanguagePlugin(ts).createVirtualCode?.(
+      preactFile,
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+    if (!virtual) throw new Error("Expected MX virtual code");
+    const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+    // `pick(5)` still type-checks (`T` is inferred as `number`), so this test
+    // pins the printed output, not a diagnostic.
+    expect(generated).toContain("pick(5)");
+    expect(generated).not.toContain("pick<string>(5)");
   });
 });
 

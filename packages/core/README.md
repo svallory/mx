@@ -224,7 +224,7 @@ shape `TranslateError` reports, which is what an editor squiggle needs):
 | `DocumentType` | `<!doctype html>`, delimiters already stripped by Marko |
 | `Comment` | A comment; `html` distinguishes `<!-- -->` from `//`, which only the source can tell apart |
 
-An expression arrives as `Expr`: the printed `code` (already rewritten through
+An expression arrives as `Expr`: the printed `code` (sliced from source if untouched, or rewritten through
 the binding registry, so an emitter stays dumb) plus the original `node`, for a
 host that must inspect the shape — `class={a: true}` versus `class=someCall()`
 is an `ObjectExpression` test, not a string test.
