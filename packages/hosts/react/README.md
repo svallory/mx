@@ -15,6 +15,14 @@ forking it. The target owns only vocabulary: JSX import source, `className`,
 `htmlFor`, raw-HTML prop, Fragment module, and runtime-helper module. Structural
 changes remain one implementation and one test surface.
 
+When these private workspace packages are published, `@mxlang/preact` becomes
+a regular runtime dependency of `@mxlang/react`, published at the matching
+version; `workspace:*` is only the monorepo development spelling, and release
+packaging replaces it with that exact version. The emitter stays in
+`@mxlang/preact` rather than moving to a neutral package unless the two targets
+eventually gain a third consumer that justifies a separately published shared
+package.
+
 The React runtime is not shared with Preact and uses no compatibility layer.
 `src/runtime.ts` imports React directly and implements `<try>` as a native
 React class error boundary plus React's `Suspense`.
@@ -63,10 +71,28 @@ with exactly one `@mxlang/*` host dependency may omit it.
 | `<define/Row\|p\|>` | a local arrow returning JSX |
 | `<try>` | `MxErrorBoundary` and, with `<@placeholder>`, `MxPlaceholder` |
 
-Every loop row gets a key. `by="id"` reads a row field; a function-valued
-`by=` is called with the row and optional index. Without `by=`, the row's own
-identity is used: item for `of`, property name for `in`, value for a range.
-Lists of objects should normally use a stable field such as `by="id"`.
+Every `<for>` row gets a `key`, because a React list without one re-creates its
+rows on each render. MX's `by=` is that key when the author gives one:
+
+- `by="id"` — a **string** names a field of the row: `key={item.id}`.
+- `by=fn` — anything else is a **function of the row**:
+  `key={(fn)(item, i)}`.
+
+When `by=` is absent the key is the row's **own identity**: the item for `of`,
+the property name for `in`, and the loop value for a range. That default is
+correct for a list of **unique** primitives and for a stable range. Two cases
+need `by=`, and neither is detectable at compile time:
+
+- **Duplicates.** `["a", "b", "a"]` produces two rows keyed `"a"`. React
+  warns about the duplicate and may reconcile those rows wrongly—the second
+  `"a"` can take the first's DOM node and state. Key by position with
+  `by=(tag, index) => index` when the list is append-only or never reordered.
+- **Objects.** The default key is object identity, which changes whenever the
+  array is rebuilt, so every row remounts. Key by a stable field such as
+  `by="id"` instead.
+
+For a list that is sorted or filtered, do not key by index; use a stable field
+of the row.
 
 Marko calls ordinary component children `content`, while JSX calls them
 `children`. Emitted calls use `children` so hand-written React components work;

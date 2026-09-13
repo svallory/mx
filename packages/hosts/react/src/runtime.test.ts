@@ -7,6 +7,10 @@ function Ok(): ReactNode {
   return createElement("p", null, "fine");
 }
 
+function Boom(): ReactNode {
+  throw new Error("nope");
+}
+
 describe("React runtime", () => {
   it("renders a transparent boundary on the server", () => {
     expect(
@@ -18,6 +22,18 @@ describe("React runtime", () => {
         ),
       ),
     ).toBe("<p>fine</p>");
+  });
+
+  it("rethrows during server rendering, where error boundaries do not run", () => {
+    expect(() =>
+      renderToStaticMarkup(
+        createElement(
+          MxErrorBoundary,
+          { fallback: "caught" },
+          createElement(Boom),
+        ),
+      ),
+    ).toThrow("nope");
   });
 
   it("renders an unsuspended placeholder subtree", () => {
