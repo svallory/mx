@@ -56,6 +56,7 @@ Exception packages (no unit test wiring required; verified elsewhere):
 - `examples/mx-site` — e2e only
 - `examples/mx-vite` — e2e only
 - `examples/preact-app` — e2e only
+- `examples/react-app` — e2e only
 - `examples/todomvc` — e2e only
 - `packages/editors/zed` — grammar and Rust extension (registers
   `@mxlang/language-server`), both build-verified in CI
@@ -419,9 +420,10 @@ missing one of its three files, or too few fixtures were processed (decision
 55: a gate must assert it did work, not only that nothing failed). See the
 script's own footer for the current pass/skip/bug count.
 
-`bun run oracle:preact` is the same shape for the Preact host — see
-"`@mxlang/preact`" below for its numbers and the one comparison option it
-differs by.
+`bun run oracle:preact` and `bun run oracle:react` have the same shape for the
+JSX hosts — see their package sections below. Both ignore attribute order;
+the React runner also removes React 19's leading, renderer-generated image
+preload hints before comparing the authored markup.
 
 Neither is part of `bun run verify` or `moon run :verify`
 — the Marko toolchain is a real install/memory cost and this task's own load
@@ -691,6 +693,29 @@ this one: a Preact component's body is JSX, and parsed as plain TS its
 no exports ("File '…/Counter.mx' is not a module"). TSX is a superset for the
 other hosts' JSX-free output, whose one narrowing (`<T>x` as a type assertion)
 none of them emits.
+
+## `@mxlang/react`: the React target on the shared JSX emitter
+
+`packages/hosts/react` (`@mxlang/react`, decision 81) depends on
+`@mxlang/preact` and passes `reactTarget` to its exported emitter. This is a
+deliberate shared implementation, not a compatibility layer: the structural
+lowering is identical, while the target object changes the JSX import source,
+`className`, `htmlFor`, Fragment module and runtime-helper module.
+
+The runtime is native React. `src/runtime.ts` imports `Component` and
+`Suspense` from `react`; `MxErrorBoundary` is a class using
+`getDerivedStateFromError`/`componentDidCatch`, and `MxPlaceholder` wraps
+React's own Suspense. Stateful Marko tags remain compile errors with React
+hook guidance. Host selection is `"mxlang": { "host": "react" }` or a lone
+`@mxlang/react` dependency, through the same resolver used by Vite, the
+language server and the TypeScript plugin.
+
+`bun run oracle:react` renders the stock 43 fixtures through
+`react-dom/server`'s `renderToStaticMarkup`: **30 pass, 13 skipped(reason), 0
+bugs**. React 19 automatically prepends image preload links during static
+rendering; `react-render.ts` strips only those transport hints before the same
+semantic HTML comparison. The live error-boundary and hook behavior is covered
+by `examples/react-app`'s Chromium e2e.
 
 ## `@mxlang/html`: the vanilla HTML host on `@mxlang/core`
 

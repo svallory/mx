@@ -17,6 +17,7 @@ MX (Markup eXtended) is a template language born from Marko. It takes Marko's sy
 | `packages/hosts/html` | `@mxlang/html` | The vanilla MX host on `@mxlang/core`: `.mx` (official) and `.marko` (alias) files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`. MX 1.0 is a strict subset of Marko syntax (decision 72), so this is Marko syntax, unmodified — no fork. |
 | `packages/hosts/astro` | `@mxlang/astro` | The Astro host: an integration plus a renderer that renders `.mx` components to static markup at build time, with no islands and no client JS. Astro's slots (already-rendered HTML strings) map to MX's `content`/attribute-tag thunks; stateful tags are compile errors, since this host has no reactive target (decision 71). |
 | `packages/hosts/preact` | `@mxlang/preact` | The Preact host: a `.mx` template compiles to a Preact component module in JSX text. The first host whose target has no control-flow components at all — `<if>` becomes a ternary chain and `<for>` a `.map` with a `key`, exactly as a Preact author would write them. Ships `MxErrorBoundary`/`MxPlaceholder` for `<try>` (Preact has no built-in error boundary) and a `Target` object so a React host can reuse the emitter rather than fork it. |
+| `packages/hosts/react` | `@mxlang/react` | The React target on the shared Preact/React JSX emitter: `className`/`htmlFor`, native React Fragment and Suspense, and a React class error boundary for `<try>`—no Preact compat layer. |
 | `packages/tooling/language-server` | `@mxlang/language-server` | Diagnostics-only LSP server for MX hosts (decision 71/72): publishes one `Diagnostic` per host-policy `TranslateError` (e.g. `<let>` under a `strict` policy) that Marko's own language server cannot see. Runs alongside Marko's server, never in place of it — no completion, hover, or go-to-definition. |
 
 **Naming TODO**: the `@mxlang/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
@@ -56,6 +57,8 @@ All dependencies below are pinned to an exact version (no `^`/`~`) at the root `
 | `@marko/compiler` | 5.42.5 |
 | `@marko/runtime-tags` | 6.3.51 |
 | `parse5` | 7.3.0 |
+| `react` / `react-dom` | 19.3.0 |
+| `@vitejs/plugin-react` | 6.1.1 |
 
 `marko`/`@marko/compiler`/`@marko/runtime-tags`/`parse5` are pinned in `packages/oracle/package.json`, not the root — they are only a dev dependency of the `oracle:marko` parity check (decision 51), not of the language itself. `@marko/compiler`'s own version numbering is decoupled from the Marko language version; 5.42.5 is the compiler release that ships Marko 6's translator (`marko/translator`) and is what `marko@6.3.51` itself depends on. `parse5` is `oracle:marko`'s HTML parser for semantic (decoded-content) comparison rather than raw-string comparison, pinned to the version already resolved transitively through `@solidjs/babel-plugin`'s own dependency on it.
 
@@ -163,6 +166,17 @@ the oracle (rendered HTML) can make: that the result is a live component.
 cd examples/preact-app
 bun run build      # vite build -> dist/
 bun run e2e        # headless Chromium over the built app
+```
+
+`examples/react-app` is the corresponding native React target: `.mx`
+components use `useState` through `<const>`, React event handlers, structured
+classes, and `<try>` backed by a React class boundary. Its Chromium e2e clicks
+the live counter and verifies a thrown child error is caught.
+
+```
+cd examples/react-app
+bun run build
+bun run e2e
 ```
 
 ## Editors

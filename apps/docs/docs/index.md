@@ -5,7 +5,7 @@ description: "What MX is, what it is not, and how the subset rule works."
 
 # MX
 
-MX (Markup eXtended) is a template language born from Marko. It takes Marko's syntax — the syntax people already know from Marko — and brings it to wherever JSX lives today: Solid, Astro, and eventually React and server-side HTML. MX itself defines the markup and the structural tags; each **host** decides what state, reactivity, and output mean.
+MX (Markup eXtended) is a template language born from Marko. It takes Marko's syntax — the syntax people already know from Marko — and brings it to wherever JSX lives today: React, Preact, Solid, Astro, and server-side HTML. MX itself defines the markup and the structural tags; each **host** decides what state, reactivity, and output mean.
 
 `.mx` is the official file extension. `.marko` is accepted everywhere with identical treatment, so porting a Marko component to MX is a rename or nothing.
 
@@ -16,6 +16,8 @@ MX (Markup eXtended) is a template language born from Marko. It takes Marko's sy
 - **The hosts.** Each host is a policy over the core, plus the integration that makes it usable in that ecosystem:
   - **HTML** — a `.mx` file compiles to a pure `(input) => string` function. No runtime, no framework.
   - **Astro** — `.mx` components and pages render to static markup at build time, no islands, no client JavaScript.
+  - **React** — `.mx` templates compile to native React component modules with hooks through `<const>` and `<try>` through a class error boundary.
+  - **Preact** — the same structural JSX lowering targeted at Preact's runtime and native prop vocabulary.
   - **SolidMX** (`.solid.mx`) — MX in JSX's position inside a Solid component file, lowered to Solid's own JSX. Currently paused; see [SolidMX](/hosts/solidmx/).
 
 ## What MX is not
@@ -38,6 +40,6 @@ Every deliberate divergence from Marko syntax is recorded in a table — what ch
 
 - [Language](/language/structural-tags/) — the structural tags, attribute tags, interpolation, and what a host is free to define itself.
 - [Architecture](/architecture/core-and-hosts/) — how the core and hosts fit together.
-- [Hosts](/hosts/html/) — install and use the HTML host, the Astro host, or read about SolidMX's status.
+- [Hosts](/hosts/html/) — install and use the HTML, Astro, React, or Preact hosts, or read about SolidMX's status.
 - [Editors](/editors/zed/) — Zed, VS Code, and the diagnostics language server.
 - [Contributing](/contributing/) — repo layout, the verification chain, and how to add a host.
