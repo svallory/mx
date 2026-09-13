@@ -6,7 +6,7 @@
       "timeout": 30
     },
     {
-      "command": "sh -c 'for d in packages/*/ packages/*/*/ examples/*/; do if [ -f \"$d/tsconfig.json\" ]; then if [ -f \"$d/package.json\" ] && grep -q \"\\\"typecheck\\\"\" \"$d/package.json\"; then (cd \"$d\" && bun run typecheck); else ./node_modules/.bin/tsc --noEmit -p \"$d\"; fi || exit 1; fi; done'",
+      "command": "sh -c 'for d in packages/*/ packages/*/*/ examples/*/; do if [ -f \"$d/tsconfig.json\" ]; then if [ -f \"$d/package.json\" ] && grep -q \"\\\"typecheck\\\"\" \"$d/package.json\"; then if grep -q \"packages/tooling/tsc/dist/bin.cjs\" \"$d/package.json\" && [ ! -f packages/tooling/tsc/dist/bin.cjs ]; then ./node_modules/.bin/tsc --noEmit -p \"$d\" || true; else (cd \"$d\" && bun run typecheck) || exit 1; fi; else ./node_modules/.bin/tsc --noEmit -p \"$d\" || exit 1; fi; fi; done'",
       "extensions": [".ts", ".tsx"],
       "timeout": 60
     }

@@ -219,12 +219,14 @@ lowering path.
 
 ## Running tests in a fresh worktree
 
-`@mxlang/parser`'s `main` is `dist/index.js`, so a freshly created worktree
+`@mxlang/parser` and `@mxlang/core` resolve to `dist/`, so a freshly created worktree
 needs `bun install` **and** `bun run build` before any dependent package's
-tests will run — without `dist/` every consumer fails with "Failed to resolve
-entry for package @mxlang/parser" (the oracle fails the same way). `bun run
-verify` builds before it tests, so this only bites when running one package's
-tests directly.
+tests will run — without `dist/` consumers fail to resolve those packages
+(the oracle fails the same way). `bun run verify` builds before it tests,
+so this only bites when running one package's tests directly. The per-edit
+typecheck hook in `.claude/hyper.json` also expects a prior build for full
+coverage (it skips checking packages that rely on the built `mx-tsc` wrapper if
+it isn't built yet).
 
 `packages/editors/tree-sitter-solidmx/vendor/` is gitignored, so a fresh worktree has
 none — `scripts/test.sh` now runs `scripts/vendor.sh` itself when
