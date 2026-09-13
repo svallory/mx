@@ -40,7 +40,11 @@ describe("module shape", () => {
     const code = compile("<p>hi</p>");
     expect(code).toContain("/** @jsxImportSource preact */");
     expect(code).toContain("export interface Input {}");
-    expect(code).toContain("export default function (input: Input) {");
+    expect(code).toContain("export default function (props: Input) {");
+    // The template's own expressions read `input`; the JSX parameter is
+    // `props`, and the bridge between them also maps JSX's `children` onto
+    // Marko's `content`.
+    expect(code).toContain("const input: Input & { content?: unknown }");
   });
 
   it("keeps the author's own `export interface Input`", () => {
@@ -280,6 +284,17 @@ describe("components", () => {
     ).toContain("footer={<>f</>}");
   });
 
+  it("collapses a repeated attribute tag into an array prop", () => {
+    // Marko's own rule, and what lets the callee write
+    // `<for|it| of=input.item><${it}/></for>`. Emitting the prop twice let
+    // the last one win, so the callee's loop iterated a single node.
+    expect(
+      markup(
+        'import List from "./list.mx"\n<List><@item>a</@item><@item>b</@item></List>',
+      ),
+    ).toContain("item={[<>a</>, <>b</>]}");
+  });
+
   it("passes an attribute tag with params as a function prop", () => {
     expect(
       markup(
@@ -296,6 +311,20 @@ describe("components", () => {
     ).toBe("<List items={input.items}>{(item) => <span>{item}</span>}</List>");
   });
 
+  it("passes ordinary children the JSX way, so `input.content` still reads them", () => {
+    // The two halves of the same bridge: the caller emits children as JSX
+    // children, and the callee's `${input.content}` reads them back. Each was
+    // separately plausible and together they silently rendered an empty
+    // element — `<Card><p/></Card>` compiled clean and dropped the `<p>`.
+    const caller = compile(
+      'import Card from "./card.mx"\n<Card><p>body</p></Card>',
+    );
+    expect(caller).toContain("<Card><p>body</p></Card>");
+
+    const callee = compile('<div class="card">${input.content}</div>');
+    expect(callee).toContain("(props as { children?: unknown }).children");
+  });
+
   it("rejects a dynamic tag name that has a body", () => {
     expect(errorOf("<${input.tag}>hi</>")).toContain("dynamic tag name");
   });
@@ -305,6 +334,23 @@ describe("components", () => {
     // an expression-named tag with no attributes and no body *is* the
     // placeholder, so it lowers to an interpolation rather than a tag.
     expect(markup("<${input.tag}/>")).toBe("{input.tag}");
+  });
+});
+
+describe("component aliases", () => {
+  it("renames a lowercase component JSX would read as an element", () => {
+    // JSX decides element-vs-component by case: emitted verbatim, a
+    // `tags/`-discovered `<badge/>` rendered a literal `<badge>` element with
+    // the props as attributes — a silently wrong render, not an error.
+    const code = compile('import badge from "./badge.mx"\n<badge label="x"/>');
+    expect(code).toContain("<MxBadge");
+    expect(code).toContain("const MxBadge = badge;");
+  });
+
+  it("leaves a capitalized component name alone", () => {
+    const code = compile('import Badge from "./badge.mx"\n<Badge label="x"/>');
+    expect(code).toContain("<Badge");
+    expect(code).not.toContain("MxBadge");
   });
 });
 

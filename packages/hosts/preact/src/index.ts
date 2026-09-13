@@ -21,15 +21,21 @@
  *
  * export interface Input { … }
  *
- * export default function (input: Input) {
+ * export default function (props: Input) {
+ *   const input = { ...props, content: props.content ?? props.children };
  *   <const> and <define> bindings, in source order
  *   return (<jsx/>);
  * }
  * ```
  *
- * The parameter is named `input`, not `props`: that is the name MX templates
- * already read (`${input.title}`), and renaming it at the boundary would make
- * every template's own expressions wrong.
+ * The template's own expressions read `input`, because that is the name MX
+ * templates already use (`${input.title}`) and renaming it at the boundary
+ * would make every one of them wrong. The JSX parameter is `props`, and the
+ * first line bridges the two: Marko spells a component's ordinary children
+ * `content` while JSX spells the same slot `children`, and this host emits
+ * calls the JSX way so that a hand-written Preact component can be called
+ * from MX. Without the bridge, `<Card><p/></Card>` compiled cleanly and
+ * rendered an empty card.
  *
  * ## Hooks
  *
@@ -51,7 +57,11 @@ import {
   type IrNode,
   type RawSourceMap,
 } from "@mxlang/core";
-import { createEmitter, preactDeclarations } from "./emitter.ts";
+import {
+  componentAlias,
+  createEmitter,
+  preactDeclarations,
+} from "./emitter.ts";
 import { preactTarget, type Target } from "./target.ts";
 
 export { TranslateError } from "@mxlang/core";
@@ -151,9 +161,20 @@ export function emitModule(ir: Ir, target: Target = preactTarget): string {
   const imports = importLines(emitter.runtimeImports, target);
   if (imports.length > 0) lines.push(...imports);
 
+  const importedNames = new Set(ir.imports.flatMap((node) => node.bindings));
   const hoisted = [
     ...ir.imports.map((node) => node.code),
     ...ir.hoisted.map((node) => node.code),
+    // A component whose Marko name JSX would read as an element is called
+    // under a capitalized alias. Where the author imported the name, the
+    // alias is a local binding; where Marko *discovered* it from a `tags/`
+    // directory there is no import at all — that is the point of discovery —
+    // so one is synthesized against Marko's own convention.
+    ...[...emitter.aliases].map((name) =>
+      importedNames.has(name)
+        ? `const ${componentAlias(name)} = ${name};`
+        : `import ${componentAlias(name)} from "./tags/${name}.marko";`,
+    ),
   ];
   if (hoisted.length > 0) lines.push("", ...hoisted);
 
@@ -161,7 +182,23 @@ export function emitModule(ir: Ir, target: Target = preactTarget): string {
     "",
     ir.inputInterface?.code ?? "export interface Input {}",
     "",
-    "export default function (input: Input) {",
+    "export default function (props: Input) {",
+  );
+  // Marko names a component's ordinary children `content`, and a template
+  // reads them as `${input.content}`. JSX has its own name for the same slot —
+  // a caller writes `<Card><p/></Card>` and the callee receives
+  // `props.children` — and this host emits calls that way, because a
+  // hand-written Preact component called from MX must work too. So a template
+  // that reads `input.content` gets the alias, and one that does not is
+  // emitted unchanged: without it, `<Card><p/></Card>` compiled cleanly and
+  // rendered an empty card, which is the S8 silent-drop class.
+  lines.push(
+    "  const input: Input & { content?: unknown } = {",
+    "    ...props,",
+    "    content:",
+    "      (props as { content?: unknown }).content ??",
+    "      (props as { children?: unknown }).children,",
+    "  };",
   );
   // A statement lifted by the core's own hoist hook precedes the author's, so
   // a binding it introduces is in scope for everything that follows.

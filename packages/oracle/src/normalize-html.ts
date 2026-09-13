@@ -41,7 +41,29 @@ type P5Node = DefaultTreeAdapterMap["childNode"];
  * plumbing, not template content, and `@mxlang/html` has no equivalent
  * to compare against).
  */
-export function htmlEquals(a: string, b: string): boolean {
+export interface HtmlEqualsOptions {
+  /**
+   * Compare each element's attributes as a *set* rather than in source order.
+   *
+   * Off by default, because attribute order is real output for a host that
+   * builds its own HTML string: `oracle:marko` asserts that `@mxlang/html`
+   * reproduces Marko's own `value`-before-`type` hoist on an `<input>`, which
+   * a browser can observe.
+   *
+   * On for a host that does not control its serializer. `oracle:preact`
+   * renders through `preact-render-to-string`, which emits props in its own
+   * order — comparing positionally there would report a difference in
+   * Preact's serializer as a difference in MX's lowering, which is the one
+   * thing this comparison exists to tell apart.
+   */
+  attributeOrder?: "strict" | "ignore";
+}
+
+export function htmlEquals(
+  a: string,
+  b: string,
+  options: HtmlEqualsOptions = {},
+): boolean {
   const [doctypeA, restA] = splitDoctype(a);
   const [doctypeB, restB] = splitDoctype(b);
   if (doctypeA !== doctypeB) return false;
@@ -52,7 +74,11 @@ export function htmlEquals(a: string, b: string): boolean {
   const fragB = parse5.parseFragment(
     collapseInterTagWhitespace(stripMarkoResumeMarker(restB)),
   );
-  return nodesEqual(fragA.childNodes, fragB.childNodes);
+  return nodesEqual(
+    fragA.childNodes,
+    fragB.childNodes,
+    options.attributeOrder === "ignore",
+  );
 }
 
 /**
@@ -107,11 +133,17 @@ interface NodeSig {
   children?: P5Node[];
 }
 
-function nodesEqual(a: readonly P5Node[], b: readonly P5Node[]): boolean {
+function nodesEqual(
+  a: readonly P5Node[],
+  b: readonly P5Node[],
+  looseAttrOrder = false,
+): boolean {
   const sigA = a.map(nodeSignature).filter((s): s is NodeSig => s !== null);
   const sigB = b.map(nodeSignature).filter((s): s is NodeSig => s !== null);
   if (sigA.length !== sigB.length) return false;
-  return sigA.every((nodeA, i) => nodeEquals(nodeA, sigB[i] as NodeSig));
+  return sigA.every((nodeA, i) =>
+    nodeEquals(nodeA, sigB[i] as NodeSig, looseAttrOrder),
+  );
 }
 
 function nodeSignature(node: P5Node): NodeSig | null {
@@ -132,17 +164,23 @@ function nodeSignature(node: P5Node): NodeSig | null {
   };
 }
 
-function nodeEquals(a: NodeSig, b: NodeSig): boolean {
+function nodeEquals(a: NodeSig, b: NodeSig, looseAttrOrder = false): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "text" || a.kind === "comment") return a.value === b.value;
   if (a.name !== b.name) return false;
   const attrsA = a.attrs ?? [];
   const attrsB = b.attrs ?? [];
   if (attrsA.length !== attrsB.length) return false;
-  for (let i = 0; i < attrsA.length; i++) {
-    const [nameA, valueA] = attrsA[i] as [string, string];
-    const [nameB, valueB] = attrsB[i] as [string, string];
+  const ordered = (pairs: [string, string][]): [string, string][] =>
+    looseAttrOrder
+      ? [...pairs].sort(([left], [right]) => left.localeCompare(right))
+      : pairs;
+  const sortedA = ordered(attrsA);
+  const sortedB = ordered(attrsB);
+  for (let i = 0; i < sortedA.length; i++) {
+    const [nameA, valueA] = sortedA[i] as [string, string];
+    const [nameB, valueB] = sortedB[i] as [string, string];
     if (nameA !== nameB || valueA !== valueB) return false;
   }
-  return nodesEqual(a.children ?? [], b.children ?? []);
+  return nodesEqual(a.children ?? [], b.children ?? [], looseAttrOrder);
 }

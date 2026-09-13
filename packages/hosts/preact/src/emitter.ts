@@ -99,6 +99,31 @@ function rawFail(message: string, node: { loc?: { start?: Position } }): never {
   throw new TranslateError(message, line, column);
 }
 
+/**
+ * The taglibs Marko loads for real HTML, SVG and MathML elements.
+ *
+ * Anything they define is an element; anything else Marko's lookup resolves
+ * is a component. Same set, and same rule, as `@mxlang/html` uses.
+ */
+const ELEMENT_TAGLIBS = new Set(["marko-html", "marko-svg", "marko-math"]);
+
+/**
+ * A JSX-safe name for a component whose tag name JSX would read as an element.
+ *
+ * JSX decides element-vs-component by *case*: `<badge/>` is the DOM element
+ * "badge" no matter what `badge` is bound to in scope. Marko decides by
+ * binding, so a `tags/`-discovered `badge.marko` is a component called
+ * `<badge/>` — and emitted verbatim it rendered a literal `<badge>` element
+ * with the props as attributes, which is a silent wrong render rather than an
+ * error. The emitted module imports or aliases the component under this name
+ * instead.
+ */
+export function componentAlias(name: string): string {
+  return /^[a-z]/.test(name) || name.includes("-")
+    ? `Mx${name.replace(/(?:^|-)([a-z])/g, (_m, ch: string) => ch.toUpperCase())}`
+    : name;
+}
+
 function isComponentName(name: string): boolean {
   return /^[A-Z]/.test(name);
 }
@@ -106,8 +131,21 @@ function isComponentName(name: string): boolean {
 /** Resolve-time questions for a Preact/React JSX target. */
 export const preactDeclarations: HostDeclarations = {
   tags: STATEFUL_ERRORS,
-  isElement: (name) => !isComponentName(name),
-  isComponent: (name) => isComponentName(name),
+  // Element-vs-component follows Marko's own rule — what the taglib lookup
+  // and the template's own bindings resolve the name to — not JSX's casing
+  // rule, so a `tags/`-discovered `<badge/>` is the component it is in Marko.
+  // The casing difference is handled at emit time by `componentAlias`.
+  isElement: (name, ctx) => {
+    const taglibId = ctx.lookup?.getTag(name)?.taglibId;
+    if (taglibId !== undefined) return ELEMENT_TAGLIBS.has(taglibId);
+    return !isComponentName(name);
+  },
+  isComponent: (name, ctx) => {
+    if (ctx.defines?.has(name) || ctx.imports?.has(name)) return true;
+    const taglibId = ctx.lookup?.getTag(name)?.taglibId;
+    if (taglibId !== undefined) return !ELEMENT_TAGLIBS.has(taglibId);
+    return isComponentName(name);
+  },
   claimsTag: (name) => name === "try",
   resolveHostTag(name, node): HostTagData {
     if (name !== "try") rawFail(`unknown Preact host tag ${name}`, node);
@@ -272,10 +310,28 @@ export class PreactEmitter implements Emitter<string> {
    * dependency list is exactly what it uses.
    */
   readonly #runtimeImports: Set<string>;
+  /**
+   * Component names Marko resolved that JSX would read as DOM elements.
+   *
+   * Collected the same way and for the same reason as `#runtimeImports`: the
+   * module has to bind a capitalized alias for each, and only the emitter
+   * knows which names were actually called.
+   */
+  readonly #aliases: Set<string>;
 
-  constructor(target: Target = preactTarget, runtimeImports?: Set<string>) {
+  constructor(
+    target: Target = preactTarget,
+    runtimeImports?: Set<string>,
+    aliases?: Set<string>,
+  ) {
     this.#target = target;
     this.#runtimeImports = runtimeImports ?? new Set();
+    this.#aliases = aliases ?? new Set();
+  }
+
+  /** Component names that need a capitalized alias in the emitted module. */
+  get aliases(): Set<string> {
+    return this.#aliases;
   }
 
   /** The runtime helper names this emitter's output references. */
@@ -285,7 +341,7 @@ export class PreactEmitter implements Emitter<string> {
 
   /** A child emitter sharing this one's target and import collection. */
   #child(): PreactEmitter {
-    return new PreactEmitter(this.#target, this.#runtimeImports);
+    return new PreactEmitter(this.#target, this.#runtimeImports, this.#aliases);
   }
 
   #render(nodes: IrNode[]): string {
@@ -385,11 +441,36 @@ export class PreactEmitter implements Emitter<string> {
     return attrs.map((attr) => this.#attr(attr)).join("");
   }
 
-  /** An attribute tag as a prop: a value, or a function when it has params. */
-  #attributeTag(tag: AttributeTag): string {
+  /** One attribute tag's body, as the value its prop takes. */
+  #attributeTagValue(tag: AttributeTag): string {
     const value = this.#expression(tag.block.children);
-    if (!tag.block.hasParams) return ` ${tag.name}={${value}}`;
-    return ` ${tag.name}={(${tag.block.params.join(", ")}) => ${value}}`;
+    if (!tag.block.hasParams) return value;
+    return `(${tag.block.params.join(", ")}) => ${value}`;
+  }
+
+  /**
+   * A component's attribute tags, as props.
+   *
+   * A name given more than once becomes an **array**, exactly as Marko does
+   * it — which is what lets the callee write
+   * `<for|it| of=input.item><${it}/></for>` over `<@item>` repeated. Emitting
+   * the prop twice instead (the shape this replaced) let the last one win, so
+   * the callee's loop iterated a single node and threw on the spread.
+   */
+  #attributeTags(tags: AttributeTag[]): string {
+    const byName = new Map<string, string[]>();
+    for (const tag of tags) {
+      const values = byName.get(tag.name);
+      if (values) values.push(this.#attributeTagValue(tag));
+      else byName.set(tag.name, [this.#attributeTagValue(tag)]);
+    }
+    return [...byName]
+      .map(([name, values]) =>
+        values.length === 1
+          ? ` ${name}={${values[0]}}`
+          : ` ${name}={[${values.join(", ")}]}`,
+      )
+      .join("");
   }
 
   text(node: Extract<IrNode, { kind: "Text" }>): void {
@@ -459,7 +540,11 @@ export class PreactEmitter implements Emitter<string> {
       return;
     }
 
-    const name = node.target.name;
+    // JSX reads a lowercase or hyphenated tag name as a DOM element whatever
+    // it is bound to, so a component Marko resolved under such a name is
+    // emitted under a capitalized alias the module binds instead.
+    const name = componentAlias(node.target.name);
+    if (name !== node.target.name) this.#aliases.add(node.target.name);
     const contentNodes = node.content?.children ?? [];
     rejectMixedRaw(contentNodes);
     const raw = node.content ? rawChild(contentNodes) : null;
@@ -471,9 +556,7 @@ export class PreactEmitter implements Emitter<string> {
     }
 
     const attrs = this.#attrs(node.attrs);
-    const tags = node.attributeTags
-      .map((tag) => this.#attributeTag(tag))
-      .join("");
+    const tags = this.#attributeTags(node.attributeTags);
     const rawHtml = raw
       ? ` ${this.#target.rawHtmlProp}={${this.#target.rawHtmlValue(raw.expr.code)}}`
       : "";
