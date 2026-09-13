@@ -26,27 +26,37 @@ the structural core, no longer a contract in itself.
 | Attribute tags on native elements (`<div><@head>…</@head></div>`) | A uniform “attribute tags become props” rule for every tag. | Rejected: `Tag does not support nested attribute tags.` | `packages/core/src/resolve.test.ts` — `rejects an attribute tag outside a component` |
 | `<fragment>` wrapper | An explicit wrapper for multiple Solid JSX children (in `.solid.mx`, use a TSX fragment `<>…</>`). | Rejected: `Unable to find entry point for custom tag <fragment>. Marko templates and tag bodies may have multiple root nodes; no fragment wrapper is needed.` | `packages/parser/src/mx/control.test.ts` — `lowers <fragment> to a JSXFragment` |
 
-## Known bugs, not divergences
+## Fixed: former `@mxlang/html` bugs
 
-These are `@mxlang/html` implementation bugs against decision 67's
-rule ("the translator should follow Marko"), not intentional divergences.
-They are tracked as skipped fixtures under `packages/hosts/html/fixtures-marko/`
-with a `translator-bug` reason in each fixture's `meta.json`, not rows above.
+Two `@mxlang/html` implementation bugs against decision 67's rule ("the
+translator should follow Marko") were recorded here as open. Both are now
+fixed, and each fixture under `packages/hosts/html/fixtures-marko/` asserts
+Marko's own error instead of carrying a `translator-bug` reason. No fixture
+records a translator bug today, and `bun run oracle:marko` reports **0
+translator bug** over 43 stock fixtures.
 
 - **`unknown-element`**: real Marko treats an unresolved hyphenated tag as a
-  failed custom-element lookup and refuses to compile
-  ("Unable to find entry point for custom tag `<my-widget>`", verified
-  against `@marko/compiler` 5.42.5 / `marko@6.3.51`). `@mxlang/html`'s
-  `isElement` (`translate.ts`) instead treats any hyphenated name as literal
-  HTML unconditionally, so it compiles and renders the tag as-is. Fix:
-  `isElement` should attempt component resolution for a hyphenated name
-  before falling back to a literal element, matching Marko's own
-  custom-element lookup.
-- **`lowercase-component`**: real Marko rejects a lowercase local-variable
-  tag reference outright ("Local variables must be in a dynamic tag unless
-  they are PascalCase. Use `<${layout}/>` or rename to `Layout`.", verified
-  against the same versions). `@mxlang/html`'s `isComponent`
-  (`translate.ts`) is binding-based regardless of case, so it calls the
-  import successfully instead of erroring — strictly *more permissive* than
-  Marko. Fix: `isComponent` should reject a lowercase local-variable
-  reference the same way Marko does.
+  failed custom-element lookup and refuses to compile ("Unable to find entry
+  point for custom tag `<my-widget>`", verified against `@marko/compiler`
+  5.42.5 / `marko@6.3.51`). `@mxlang/html` used to render it as literal HTML
+  unconditionally. Fixed: `emitSpecial` now rejects an unresolved hyphenated
+  name with Marko's own wording.
+- **`lowercase-component`**: real Marko rejects a lowercase local-variable tag
+  reference outright ("Local variables must be in a dynamic tag unless they
+  are PascalCase. Use `<${layout}/>` or rename to `Layout`.", same versions).
+  `@mxlang/html` was binding-based regardless of case, so it called the import
+  instead of erroring — strictly *more permissive* than Marko. Fixed:
+  `emitComponent` now rejects the same reference with Marko's own wording. The
+  two forms that do work are covered by the `dynamic-tag-lowercase-import` and
+  `nested-layout` fixtures.
+
+## Candidates for MX 2
+
+Not divergences today, and not bugs — behaviour MX could deliberately choose
+to diverge on from MX 2 on, each still needing its own recorded row and the
+tooling that goes with it before it ships.
+
+- **Unknown custom elements in the vanilla host.** MX 1 follows Marko and
+  refuses to compile an unresolved hyphenated tag (above). A future MX could
+  instead let it through as a literal custom element, which is what a plain
+  HTML author would expect from `<my-widget>`.

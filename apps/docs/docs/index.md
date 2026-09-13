@@ -18,7 +18,7 @@ MX (Markup eXtended) is a template language born from Marko. It takes Marko's sy
   - **Astro** — `.mx` components and pages render to static markup at build time, no islands, no client JavaScript.
   - **React** — `.mx` templates compile to native React component modules with hooks through `<const>` and `<try>` through a class error boundary.
   - **Preact** — the same structural JSX lowering targeted at Preact's runtime and native prop vocabulary.
-  - **SolidMX** (`.solid.mx`) — MX in JSX's position inside a Solid component file, lowered to Solid's own JSX. Currently paused; see [SolidMX](/hosts/solidmx/).
+  - **SolidMX** (`.solid.mx`) — MX in JSX's position inside a Solid component file, lowered to Solid's own JSX. See [SolidMX](/hosts/solidmx/).
 
 ## What MX is not
 
@@ -34,7 +34,7 @@ The rule holds until MX 2. From MX 2 on, MX may diverge from Marko, but only del
 
 ## Divergence policy
 
-Every deliberate divergence from Marko syntax is recorded in a table — what changed, why, and what test guards it — before it ships, and it lands only together with the tooling it affects (grammar, formatter, language server). As of this writing there are no deliberate divergences: MX 1.0 is Marko syntax, unmodified. There are two known implementation bugs in the HTML host that are *not* divergences (the host is simply more permissive than Marko in two narrow cases); see the host's own documentation for the two cases.
+Every deliberate divergence from Marko syntax is recorded in a table — what changed, why, and what test guards it — before it ships, and it lands only together with the tooling it affects (grammar, formatter, language server). As of this writing there are no deliberate divergences: MX 1.0 is Marko syntax, unmodified. Two cases where the HTML host used to be more permissive than Marko were implementation bugs rather than divergences, and both are fixed — the Marko-parity oracle now reports no translator bugs.
 
 ## Where to go next
 
