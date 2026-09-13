@@ -131,6 +131,35 @@ describe("mx-tsc", () => {
   );
 
   it(
+    "reports a wrong prop passed to a component at the attribute, and a missing required prop at the tag name",
+    () => {
+      const result = run(mxTsc, [
+        "--noEmit",
+        "-p",
+        join(fixtures, "wrong-prop-failing"),
+      ]);
+
+      expect(result.status).not.toBe(0);
+      // `<Card title=1/>`: the excess-property/type error lands on `title`
+      // itself, not on the opening tag or the whole call.
+      expect(result.output).toContain("WrongType.mx(5,7): error TS2322");
+      expect(result.output).toContain(
+        "Type 'number' is not assignable to type 'string'",
+      );
+      // `<Card title="ok" nope="x"/>`: the unknown-prop error lands on `nope`.
+      expect(result.output).toContain("ExcessProp.mx(5,18): error TS2353");
+      expect(result.output).toContain("'nope' does not exist in type 'Input'");
+      // `<Card/>` with no attrs at all: with nothing to map to the missing
+      // property, the diagnostic falls back to the opening tag name.
+      expect(result.output).toContain("MissingProp.mx(5,2): error TS2345");
+      expect(result.output).toContain(
+        "Property 'title' is missing in type '{}' but required in type 'Input'",
+      );
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  it(
     "catches what plain tsc cannot even see",
     () => {
       const result = run(plainTsc, [
