@@ -16,6 +16,7 @@ MX (Markup eXtended) is a template language born from Marko. It takes Marko's sy
 | `packages/core` | `@mxlang/core` | The Marko-node consumer every MX host is built on: the structural tag lowerings, the `Policy` contract, three stateful-tag hooks (tag handler, hoist, binding registry), and two front doors (`compileSource` through `@marko/compiler`'s `config.translator` seam, `parseFragment` for a substring of a larger file). Depends on `@marko/compiler` alone. |
 | `packages/hosts/html` | `@mxlang/html` | The vanilla MX host on `@mxlang/core`: `.mx` (official) and `.marko` (alias) files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`. MX 1.0 is a strict subset of Marko syntax (decision 72), so this is Marko syntax, unmodified — no fork. |
 | `packages/hosts/astro` | `@mxlang/astro` | The Astro host: an integration plus a renderer that renders `.mx` components to static markup at build time, with no islands and no client JS. Astro's slots (already-rendered HTML strings) map to MX's `content`/attribute-tag thunks; stateful tags are compile errors, since this host has no reactive target (decision 71). |
+| `packages/hosts/preact` | `@mxlang/preact` | The Preact host: a `.mx` template compiles to a Preact component module in JSX text. The first host whose target has no control-flow components at all — `<if>` becomes a ternary chain and `<for>` a `.map` with a `key`, exactly as a Preact author would write them. Ships `MxErrorBoundary`/`MxPlaceholder` for `<try>` (Preact has no built-in error boundary) and a `Target` object so a React host can reuse the emitter rather than fork it. |
 | `packages/tooling/language-server` | `@mxlang/language-server` | Diagnostics-only LSP server for MX hosts (decision 71/72): publishes one `Diagnostic` per host-policy `TranslateError` (e.g. `<let>` under a `strict` policy) that Marko's own language server cannot see. Runs alongside Marko's server, never in place of it — no completion, hover, or go-to-definition. |
 
 **Naming TODO**: the `@mxlang/*` scope and these short names are placeholders. Final npm names are undecided (see `notes/index.md` in the space root, "Naming on npm").
@@ -147,6 +148,21 @@ props from the `---` fence, named slots, `class:list`, `<if>`/`<else if>`/
 cd examples/astro-static
 bun run build      # astro build -> dist/
 bun run e2e        # headless Chromium over dist/, plus the two error builds
+```
+
+`examples/preact-app` is the Preact host's example: a Vite app whose
+components are `.mx`, with hook state through `<const>`, event handlers, a
+structured `class`, and a `<for>` loop, mounted by a small `.tsx` entry
+point. The host is selected by `package.json`'s `"mxlang": { "host":
+"preact" }` alone — the same field the language server and `mx-tsc` read.
+Its e2e drives a real Chromium against the production build and clicks the
+counter, which is the one claim neither the unit tests (emitted JSX text) nor
+the oracle (rendered HTML) can make: that the result is a live component.
+
+```
+cd examples/preact-app
+bun run build      # vite build -> dist/
+bun run e2e        # headless Chromium over the built app
 ```
 
 ## Editors

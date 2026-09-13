@@ -55,6 +55,7 @@ Exception packages (no unit test wiring required; verified elsewhere):
 - `examples/counter-app` — e2e only
 - `examples/mx-site` — e2e only
 - `examples/mx-vite` — e2e only
+- `examples/preact-app` — e2e only
 - `examples/todomvc` — e2e only
 - `packages/editors/zed` — grammar and Rust extension (registers
   `@mxlang/language-server`), both build-verified in CI
@@ -418,7 +419,11 @@ missing one of its three files, or too few fixtures were processed (decision
 55: a gate must assert it did work, not only that nothing failed). See the
 script's own footer for the current pass/skip/bug count.
 
-This is a separate script, not part of `bun run verify` or `moon run :verify`
+`bun run oracle:preact` is the same shape for the Preact host — see
+"`@mxlang/preact`" below for its numbers and the one comparison option it
+differs by.
+
+Neither is part of `bun run verify` or `moon run :verify`
 — the Marko toolchain is a real install/memory cost and this task's own load
 rule is one heavy process at a time. Run it in CI as its own job if
 `.github/workflows/` grows a verify workflow; none exists yet in this repo, so
@@ -441,9 +446,14 @@ order is their order in the `plugins` array — `mx()` must come first.
 `mx()`'s default `extensions` is `[".solid.mx", ".mx", ".marko"]`: `.mx` (the
 official extension, decision 72) and its `.marko` alias both compile through
 `@mxlang/html`'s `compile()` instead of `print()`, to a plain
-`(input) => string` module (no JSX, no Solid) — `suffixFor(ext)` picks `.ts`
-for that path and `.tsx` for `.solid.mx`, so rolldown never runs a JSX
-transform over code that has none. `.solid.mx` is otherwise byte-for-byte
+`(input) => string` module (no JSX, no Solid) — `suffixFor` returns `.tsx` for
+every handled extension (it used to pick `.ts` for the `.mx` path): the suffix
+has to be decided identically by `resolveId`, which holds the real path, and
+`isMxModule`, which holds only the suffixed one — and the host is a property
+of the file's nearest `package.json`, so deriving it in both places would mean
+resolving a policy from a path that does not exist on disk. A `.tsx` file
+containing no JSX is ordinary TypeScript and rolldown's transform over it is a
+no-op. `.solid.mx` is otherwise byte-for-byte
 unchanged by this: same suffix, same `print()` call, same source map, and it
 keeps precedence over `.mx` regardless of `extensions` order (`.mx` is a
 literal string suffix of `.solid.mx`, so the longest-first sort at
@@ -616,6 +626,71 @@ Decision 72's subset rule removed four SolidMX constructs real Marko itself
 rejects (tag params on `<if>`, tag params and attribute tags on native
 elements, `<fragment>`) — see `divergences.md`'s "Deferred to MX 2" table for
 each construct, Marko's exact error, and the test that used to cover it.
+
+## `@mxlang/preact`: the Preact host on `@mxlang/core`
+
+`packages/hosts/preact` (`@mxlang/preact`, decisions 71, 79, 81, 82) is the
+fourth emitter over the core IR, and the first whose target has **no
+control-flow components at all**: every structural kind lowers to a plain JSX
+*expression*. `packages/hosts/preact/README.md` carries the full lowering
+table, the `key` rule, the error list and the `<try>` helper; this is the
+package-map entry.
+
+Selected by `package.json`'s `"mxlang": { "host": "preact" }` (or a lone
+`@mxlang/preact` dependency) through `@mxlang/core`'s `resolveHostPolicy` —
+the same resolver the Vite plugin, the language server and `mx-tsc` share, so
+an editor, a `tsc` run and a build cannot disagree about a `.mx` file.
+
+Six facts worth knowing before editing it:
+
+- **Marko's `content` and JSX's `children` are the same slot under two
+  names.** The emitter passes a component's ordinary children the JSX way (so
+  a hand-written Preact component is callable from MX) and the emitted
+  component bridges the names in its first line, so a template's own
+  `${input.content}` still reads them. Without the bridge
+  `<Card><p/></Card>` compiled cleanly and rendered an empty card — the S8
+  silent-drop class, found by `oracle:preact` rather than by a unit test.
+- **Element-vs-component follows Marko's rule, not JSX's.** JSX decides by
+  case, so a `tags/`-discovered `<badge/>` emitted verbatim became a literal
+  `<badge>` element with the props as attributes. The declarations use the
+  taglib lookup and in-scope bindings (the same rule as `@mxlang/html`), and
+  `componentAlias` renames such a component in the emitted JSX, binding
+  `MxBadge` beside it.
+- **A repeated attribute tag is an array**, as Marko does it — which is what
+  lets the callee write `<for|it| of=input.item>`. Emitting the prop twice
+  let the last one win.
+- **Every `<for>` row carries a `key`**, defaulting to the row's own identity
+  when `by=` is absent (the item for `of`, the property name for `in`, the
+  loop value for a range). Documented as this host's rule rather than left
+  implicit; for a list of objects an author wants `by="id"`.
+- **`<try>` needs a shipped runtime**, because Preact has no built-in error
+  boundary component — only the `componentDidCatch` hook, and
+  `preact/compat`'s `Suspense` catches thrown *promises* rather than errors.
+  `src/runtime.ts` exports `MxErrorBoundary` (a class, the only form Preact
+  gives that hook), `MxPlaceholder` (`Suspense` under one name) and
+  `mxClass`. This does not contradict decision 82: it is Preact code an author
+  would otherwise write by hand, not an MX runtime, and a template that uses
+  none of it imports none of it.
+- **Preact-only vocabulary lives in `src/target.ts`.** The JSX import source,
+  `class` versus `className`, the raw-HTML prop and the boundary module are a
+  `Target` object so a React package can reuse this emitter. A knob that would
+  need an `if (target.kind === "react")` in the emitter does not belong there.
+
+`bun run oracle:preact` (`packages/oracle/src/report-preact.ts` +
+`preact-render.ts`) compiles every fixture in the stock `.marko` set — the
+same 43 `oracle:marko` uses — renders it with `preact-render-to-string`, and
+compares against `expected.html`: **30 pass, 13 skipped(reason), 0 bugs**. It
+passes `htmlEquals`'s new `attributeOrder: "ignore"` option, since Preact owns
+its serializer and emits props in its own order; `oracle:marko` keeps the
+strict default, where attribute order is real output. Like `oracle:marko` it
+is a CI job rather than part of `verify` — one heavy process at a time.
+
+**The virtual script kind is TSX for every host** (`mx-language.ts`), not just
+this one: a Preact component's body is JSX, and parsed as plain TS its
+`return (<>…)` is a syntax error that surfaced as the module appearing to have
+no exports ("File '…/Counter.mx' is not a module"). TSX is a superset for the
+other hosts' JSX-free output, whose one narrowing (`<T>x` as a type assertion)
+none of them emits.
 
 ## `@mxlang/html`: the vanilla HTML host on `@mxlang/core`
 
