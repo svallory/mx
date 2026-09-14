@@ -205,7 +205,7 @@ export function mxPages(srcDir: URL): Plugin {
     transform(code: string, id: string) {
       const path = id.split("?")[0] ?? id;
       if (!isUnderPagesDir(path, pagesRoot)) return null;
-      if (!/\.(?:mx|marko)\.ts$/.test(path)) return null;
+      if (!/\.(?:mx|marko)\.tsx?$/.test(path)) return null;
 
       const wrapped = wrapAsPage(code);
       if (wrapped === null) {

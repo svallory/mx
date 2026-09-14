@@ -155,3 +155,26 @@ describe("wrapAsPage", () => {
     expect(wrapped).toContain("const frontmatter = {};");
   });
 });
+
+import { mxPages } from "./vite-pages.ts";
+
+describe("mxPages plugin", () => {
+  it("matches .mx files with a .tsx virtual suffix", () => {
+    const plugin = mxPages(new URL("file:///proj/src/"));
+    // biome-ignore lint/suspicious/noExplicitAny: testing untyped plugin return
+    const transform = plugin.transform as (code: string, id: string) => any;
+
+    // An id matching the bug condition: under pages root, ending in .mx.tsx
+    const id = "/proj/src/pages/posts/slug.mx.tsx";
+
+    const validCode = `function render(input) {}
+Object.defineProperty(render, Symbol.for("mx.component"), { value: true });
+export default render;
+`;
+    // If the regex fix is working, it doesn't return null early.
+    // Instead it wraps the code and returns { code: ... }.
+    const result = transform.call({}, validCode, id);
+    expect(result).not.toBeNull();
+    expect(result.code).toContain("__mxRenderPage");
+  });
+});
