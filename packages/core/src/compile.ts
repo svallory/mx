@@ -18,6 +18,7 @@
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { type Ctx, type Node, newCtx } from "./core.ts";
+import type { CustomTagDefinition } from "./custom-tags.ts";
 import type { Policy } from "./declarations.ts";
 import type { Ir } from "./ir.ts";
 import { resolve } from "./resolve.ts";
@@ -63,6 +64,14 @@ export interface HostOptions extends TranslatorOptions {
   postEmit?: (code: string) => string;
   /** Emits the module from the resolved IR (decision 79). */
   emitIr: (ir: Ir, ctx: Ctx) => string;
+  /**
+   * Custom tags available to this compile, by tag name (decision 85).
+   *
+   * The caller resolved and loaded the modules; the core does no loading of
+   * its own — see `custom-tags.ts` for why. Omitted by every caller today,
+   * and with it omitted the resolver behaves exactly as before.
+   */
+  customTags?: Record<string, CustomTagDefinition>;
 }
 
 /**
@@ -82,6 +91,7 @@ let current: {
   lookup?: Lookup;
   postEmit?: (code: string) => string;
   emitIr: (ir: Ir, ctx: Ctx) => string;
+  customTags?: Record<string, CustomTagDefinition>;
 } | null = null;
 
 /**
@@ -121,6 +131,7 @@ export function createTranslator(host: TranslatorOptions = {}) {
             state.policy,
             state.lookup,
           );
+          ctx.customTags = state.customTags;
           const code = state.emitIr(resolve(ctx, path.node.body), ctx);
           state.code = state.postEmit ? state.postEmit(code) : code;
           path.node.body = [];
@@ -155,6 +166,7 @@ export function compileSource(
     policy,
     postEmit: host.postEmit,
     emitIr: host.emitIr,
+    customTags: host.customTags,
     // The lookup is keyed on the translator object, so asking for it here gets
     // exactly the taglibs this host registers plus Marko's own element
     // taglibs — and the tag-discovery directories beside this particular file.

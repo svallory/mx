@@ -34,6 +34,7 @@
  */
 
 import { createRequire } from "node:module";
+import type { CustomTagDefinition } from "./custom-tags.ts";
 import type { HostDeclarations } from "./declarations.ts";
 
 const require = createRequire(import.meta.url);
@@ -199,6 +200,18 @@ export interface Ctx {
   declarations: HostDeclarations;
   /** Set by a dialect that resolves tags through Marko's taglib lookup. */
   lookup?: { getTag(name: string): { taglibId?: string } | undefined };
+  /**
+   * Custom tags (decision 85) registered for this compile, by tag name.
+   *
+   * Supplied by the caller of `compileSource`, which resolved and loaded the
+   * modules ahead of time — see `custom-tags.ts` for why the core does no
+   * loading of its own. Absent for every compile that registers none, which is
+   * every compile today: with no entry here, `resolveTag` takes exactly the
+   * branches it took before, so no behaviour changes without a custom tag.
+   */
+  customTags?: Record<string, CustomTagDefinition>;
+  /** Nested-expansion counter, for the depth cap. Internal to the expander. */
+  customTagDepth?: number;
 }
 
 export function fail(message: string, node: Node): never {

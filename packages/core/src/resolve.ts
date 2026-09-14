@@ -41,6 +41,11 @@ import {
   sliceLoc,
   VOID_TAGS,
 } from "./core.ts";
+import {
+  type CustomTagCall,
+  type CustomTagDefinition,
+  expandCustomTag,
+} from "./custom-tags.ts";
 import type { HostDeclarations } from "./declarations.ts";
 import type {
   Attr,
@@ -600,6 +605,41 @@ function resolveHostTag(ctx: Ctx, node: Node, name: string): IrNode {
   };
 }
 
+/**
+ * A custom tag call: resolve its parts, run its expansion, splice the result.
+ *
+ * Everything before the `expandCustomTag` line is the same work
+ * `resolveComponent` does, and deliberately so — a custom tag's inputs are a
+ * component call's inputs, resolved by the same code, which is what makes the
+ * author-written half of the output keep its real positions for free.
+ *
+ * Returns `IrNode[]`: an expansion has multiple roots in the general case
+ * (`resolveChildren` splices them), and there is no wrapper node to put them
+ * in — `<fragment>` was rejected for MX, so inventing one here would
+ * reintroduce it under another name.
+ */
+function resolveCustomTag(
+  ctx: Ctx,
+  node: Node,
+  name: string,
+  definition: CustomTagDefinition,
+): IrNode[] {
+  const loc = posOf(node);
+  const children = node.body?.body ?? [];
+
+  const call: CustomTagCall = {
+    name,
+    loc,
+    attrs: resolveAttrs(ctx, node, name, "component"),
+    content: hasContent(children) ? resolveBlock(ctx, node) : null,
+    attributeTags: resolveAttributeTags(ctx, node),
+    params: paramsOf(ctx, node),
+    var: node.var ? declName(ctx, node.var) : null,
+  };
+
+  return expandCustomTag(ctx, definition, call, node);
+}
+
 /** A component call, with its props, children and attribute tags. */
 function resolveComponent(
   ctx: Ctx,
@@ -672,7 +712,13 @@ function targetName(target: ComponentTarget): string {
   return target.kind === "dynamic" ? "dynamic tag" : target.name;
 }
 
-function resolveTag(ctx: Ctx, node: Node): IrNode {
+/**
+ * One tag.
+ *
+ * Returns an array only for a custom tag, whose expansion has multiple roots
+ * in the general case; `resolveChildren` splices it in place.
+ */
+function resolveTag(ctx: Ctx, node: Node): IrNode | IrNode[] {
   // A bare `${expr}` on its own line parses as a tag whose *name* is the
   // expression, with no attributes and no body — Marko's concise mode has no
   // other shape for it. Treated as the escaped placeholder the author wrote.
@@ -729,6 +775,17 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
       `attribute tag \`<${name}>\` is only valid directly inside a component call`,
       node,
     );
+  }
+
+  // Custom tags (decision 85). Checked *after* the host's own `claimsTag` and
+  // before component routing: a host tag is the host's, and a custom tag is
+  // otherwise a component call in Marko's grammar (the import is what binds
+  // the name), so this is the one place the two can be told apart. The branch
+  // is taken only for a name the caller registered, so a compile with no
+  // custom tags resolves exactly as before.
+  const customTag = ctx.customTags?.[name];
+  if (customTag) {
+    return resolveCustomTag(ctx, node, name, customTag);
   }
 
   if (ctx.declarations.isComponent(name, ctx)) {
@@ -811,15 +868,18 @@ export function resolveChildren(ctx: Ctx, children: Node[]): IrNode[] {
           loc: posOf(child),
         });
         break;
-      case "MarkoTag":
+      case "MarkoTag": {
         // A statement the host hoisted stays on `ctx.prelude` and is drained
         // by the enclosing *function* — `resolveDefine`, or `resolve` for the
         // render function — never here. Draining it at every child list would
         // trap a hoist from inside an `<if>` in that branch, which is the one
         // thing decision 70's hoist hook exists to prevent: the declaration
         // has to outlive the block it was written in.
-        out.push(resolveTag(ctx, child));
+        const resolved = resolveTag(ctx, child);
+        if (Array.isArray(resolved)) out.push(...resolved);
+        else out.push(resolved);
         break;
+      }
       case "MarkoDocumentType":
         out.push({
           kind: "DocumentType",
