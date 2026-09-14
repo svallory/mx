@@ -84,6 +84,21 @@ describe("resolveHostPolicy", () => {
     expect(resolveHostPolicy(filePath)).toEqual({ host: "react" });
   });
 
+  it("resolves the Hono host from an explicit mxlang.host field", () => {
+    const filePath = join(FIXTURES, "hono-explicit/App.mx");
+
+    expect(resolveHostPolicy(filePath)).toEqual({
+      host: "hono",
+      strict: undefined,
+    });
+  });
+
+  it("resolves the Hono host from a lone @mxlang/hono dependency", () => {
+    const filePath = join(FIXTURES, "hono-dependency/App.mx");
+
+    expect(resolveHostPolicy(filePath)).toEqual({ host: "hono" });
+  });
+
   it("falls back to the default policy when two host dependencies are present", () => {
     // Ambiguous on purpose: a project depending on both hosts has not said
     // which one owns this file, so the dependency signal cannot answer and the

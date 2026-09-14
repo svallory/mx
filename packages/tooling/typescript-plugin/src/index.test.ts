@@ -513,6 +513,31 @@ describe("MX language plugin", () => {
     expect(plugin.getSyntaxError(reactFile)).toBeUndefined();
   });
 
+  it("compiles a whole-file .mx through the Hono host", () => {
+    const honoFile = `${here}/fixtures/hono-policy/card.mx`;
+    const plugin = createMxLanguagePlugin(ts);
+    const source = [
+      "export interface Input { title: string }",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
+      '<label class="title" for="title">${input.title}</label>',
+    ].join("\n");
+    const virtual = plugin.createVirtualCode?.(
+      honoFile,
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+
+    if (!virtual) throw new Error("Expected MX virtual code");
+    const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+    expect(generated).toContain("/** @jsxImportSource hono/jsx */");
+    expect(generated).toContain(
+      '<label class="title" for="title">{input.title}</label>',
+    );
+    expect(virtual.mappings.length).toBeGreaterThan(0);
+    expect(plugin.getSyntaxError(honoFile)).toBeUndefined();
+  });
+
   it("parses `<` comparisons and generic calls in the virtual TSX", () => {
     // The regression the TSX script kind could plausibly have introduced: in
     // TSX, `<T>x` is JSX rather than a type assertion. It does not reach a

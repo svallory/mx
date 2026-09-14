@@ -1,0 +1,6 @@
+{
+  "name": "hono-dependency-fixture",
+  "dependencies": {
+    "@mxlang/hono": "0.1.0"
+  }
+}

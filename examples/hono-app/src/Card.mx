@@ -1,0 +1,7 @@
+export interface Input {
+  label: string;
+}
+
+<section.card>
+  <h2>${input.label}</h2>
+</section>
