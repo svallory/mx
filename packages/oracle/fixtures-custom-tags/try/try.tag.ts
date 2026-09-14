@@ -120,12 +120,11 @@ export const asHoist: CustomTagDefinition = {
  * host that does not (`@mxlang/astro`, which has no boundary) — which is
  * correct behaviour, not a gap.
  *
- * **It is deliberately not offered by `ctx.build`.** A `HostTag`'s `data`
- * slot holds whatever that host's own `resolveHostTag` decided, and a custom
- * tag has no way to produce it: forging `{kind:"try"}` means knowing the
- * private shape of six hosts' internal data types, which is host-awareness
- * wearing a different hat. Making this work needs a core change — see the
- * report's `<try>` section.
+ * Forging the node by hand (below) cannot work: `HostTag.data` holds whatever
+ * that host's own `resolveHostTag` decided, and a custom tag has no way to
+ * produce it — writing `{kind:"try"}` means knowing the private shape of six
+ * hosts' internal data types, which is host-awareness wearing a different hat.
+ * `asBuiltHostTag` is the core-side answer measured alongside it.
  */
 export const asHostTag: CustomTagDefinition = {
   expand(call: CustomTagCall, _ctx: CustomTagContext): IrNode[] {
@@ -148,6 +147,27 @@ export const asHostTag: CustomTagDefinition = {
         },
         loc: call.loc,
       },
+    ];
+  },
+};
+
+/**
+ * Attempt 5 — `ctx.build.hostTag(name, …)`, the core filling `data` itself.
+ *
+ * The only version that could work without host-awareness: the core calls the
+ * *host's own* `resolveHostTag` on the custom tag's behalf, so each host's
+ * real validation runs and the tag never sees a `data` shape. Added to
+ * `IrBuilders` to measure whether it does, and kept because the answer is the
+ * sharpest finding in this file.
+ */
+export const asBuiltHostTag: CustomTagDefinition = {
+  expand(call: CustomTagCall, ctx: CustomTagContext): IrNode[] {
+    return [
+      ctx.build.hostTag(
+        "try",
+        call.content?.children ?? [],
+        call.attributeTags,
+      ),
     ];
   },
 };

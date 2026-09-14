@@ -5,7 +5,7 @@ import { newCtx, TranslateError } from "./core.ts";
 import type { CustomTagCall, CustomTagDefinition } from "./custom-tags.ts";
 import { MAX_EXPANSION_DEPTH, MAX_EXPANSION_NODES } from "./custom-tags.ts";
 import type { Policy } from "./declarations.ts";
-import type { Ir, IrNode } from "./ir.ts";
+import type { Attr, Ir, IrNode } from "./ir.ts";
 import { resolve } from "./resolve.ts";
 
 /**
@@ -73,12 +73,22 @@ function resolveWithTags(
   return ir;
 }
 
+/** `Attr`'s spread variant carries no `name`, so narrow before reading one. */
+function named(attrs: Attr[], name: string): Attr | undefined {
+  return attrs.find((attr) => attr.kind !== "spread" && attr.name === name);
+}
+
 /** A tag returning one `<svg>` with the attributes it was handed. */
 const svgTag: CustomTagDefinition = {
   expand(call, ctx) {
-    const name = call.attrs.find((a) => a.name === "name");
-    if (!name || name.kind !== "static") {
-      ctx.fail("`name` must be a static string", name?.loc);
+    const name = named(call.attrs, "name");
+    // `throw ctx.fail(...)`, not a bare call: `fail`'s `never` return narrows
+    // only when the call is in a `throw` (or the reference is a const). A
+    // real feature would ship this idiom in its docs — see
+    // `CustomTagContext.fail`.
+    if (!name) throw ctx.fail("requires a `name` attribute");
+    if (name.kind !== "static") {
+      throw ctx.fail("`name` must be a static string", name.loc);
     }
     return [
       ctx.build.element(
@@ -195,7 +205,9 @@ describe("custom tags", () => {
     const call = seen as unknown as CustomTagCall;
     expect(call.name).toBe("t");
     expect(call.params).toEqual(["row"]);
-    expect(call.attrs.map((a) => a.name)).toEqual(["rows", "count"]);
+    expect(
+      call.attrs.map((a) => (a.kind === "spread" ? "<spread>" : a.name)),
+    ).toEqual(["rows", "count"]);
     expect(call.attrs[0]).toMatchObject({ kind: "dynamic" });
     // Repeated attribute-tag names stay repeated entries, as Marko does it.
     expect(call.attributeTags.map((t) => t.name)).toEqual(["column", "column"]);
@@ -301,6 +313,48 @@ describe("custom tags", () => {
     expect(
       ir.body.filter((n) => n.kind === "Element").map((n) => n.name),
     ).toEqual(["i", "b"]);
+  });
+
+  it("builds a HostTag by asking the host, never by forging `data`", () => {
+    // The escape hatch (investigation §6 case 2): the tag says *what*, the
+    // host says *how*. The core calls the host's own `resolveHostTag`, so the
+    // tag never sees a `data` shape and the host's real validation runs.
+    const boundary: CustomTagDefinition = {
+      expand: (call, ctx) => [
+        ctx.build.hostTag(
+          "try",
+          call.content?.children ?? [],
+          call.attributeTags,
+        ),
+      ],
+    };
+    const policy = fakeDeclarations({
+      claimsTag: (name) => name === "try",
+      resolveHostTag: (name) => ({ kind: name }),
+    });
+    const ir = resolveWithTags(
+      `import b from "./b.tag.ts"\n<b><p>x</p></b>\n`,
+      { b: boundary },
+      policy,
+    );
+    const hostTag = find(ir.body, "HostTag");
+    expect(hostTag.tag.name).toBe("try");
+    expect(hostTag.tag.data).toEqual({ kind: "try" });
+    expect(hostTag.tag.children[0]).toMatchObject({
+      kind: "Element",
+      name: "p",
+    });
+  });
+
+  it("refuses a HostTag name the host does not claim", () => {
+    const boundary: CustomTagDefinition = {
+      expand: (_call, ctx) => [ctx.build.hostTag("suspense", [], [])],
+    };
+    expect(() =>
+      resolveWithTags(`import b from "./b.tag.ts"\n<b/>\n`, { b: boundary }),
+    ).toThrowError(
+      "`<b>`: this host does not claim `<suspense>`, so a custom tag cannot emit one",
+    );
   });
 
   it("changes nothing when no custom tag is registered", () => {

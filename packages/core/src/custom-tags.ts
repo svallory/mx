@@ -96,8 +96,19 @@ export interface CustomTagCall {
 export interface CustomTagContext {
   /** Lifts a statement to the head of the enclosing function. */
   hoist(code: string): void;
-  /** Fails at the call site, or at a narrower position the tag supplies. */
-  fail(message: string, at?: Position): never;
+  /**
+   * Fails at the call site, or at a narrower position the tag supplies.
+   *
+   * **Write it as `throw ctx.fail(…)`.** Measured while writing the `<icon>`
+   * tag, and TypeScript's rule rather than MX's: a bare `ctx.fail(…)` does
+   * not narrow the branch, because narrowing on a `never`-returning call
+   * needs the callee to be a const reference, and `ctx` is a parameter. So
+   * `if (!attr) ctx.fail(…)` leaves `attr` possibly undefined on the next
+   * line, while `if (!attr) throw ctx.fail(…)` narrows correctly. The real
+   * feature must say this in its authoring docs — it is the first thing every
+   * tag author hits, and getting it wrong is a type error, not a silent bug.
+   */
+  fail: (message: string, at?: Position) => never;
   /** Builders that stamp the call site's position on synthetic nodes. */
   build: IrBuilders;
   /** A name no template can see: `$mx_<tag>_<n>`. */
@@ -120,10 +131,12 @@ export const CUSTOM_TAG = Symbol.for("mx.customTag");
 /**
  * Builders stamping the call site's `loc` on every node they make.
  *
- * Only the kinds a pure-IR expansion can produce are offered. Notably absent:
- * `HostTag` (a custom tag may not forge a host's own decision — see the
- * `<try>` finding), and the module-level kinds, which `resolve()` lifts out of
- * the body and a nested expansion has no business adding.
+ * The markup and structural kinds, plus one escape hatch: `hostTag`, which
+ * asks the *host* for a target primitive rather than letting a tag forge one.
+ * Absent: the module-level kinds (`Import`, `Static`, `Export`,
+ * `InputInterface`), which `resolve()` lifts out of the body and a nested
+ * expansion has no business adding — a tag that wants a module-scope import
+ * is §5.3's rejected case.
  */
 export interface IrBuilders {
   text(value: string): IrNode;
@@ -149,6 +162,30 @@ export interface IrBuilders {
     children: IrNode[];
   }): IrNode;
   block(children: IrNode[], params?: string[]): Block;
+  /**
+   * A `HostTag` the host already claims — the one escape hatch to a target
+   * primitive (investigation §6 case 2: the tag says *what*, the host *how*).
+   *
+   * The core fills `data` by calling the host's own `resolveHostTag` with the
+   * custom tag's original Marko node, so each host's real validation runs and
+   * no tag has to know a host's private `data` shape. A host that does not
+   * claim the name fails with its own diagnostic, which is correct: `<try>`
+   * on `@mxlang/astro` is an error there today too.
+   *
+   * Measured on all six hosts (`fixtures-custom-tags/try/probe.ts`): a
+   * `<boundary>` custom tag emitting `hostTag("try", …)` produces output
+   * **byte-identical** to a hand-written `<try>` on every one of them — which
+   * overturns the investigation's own §8.4 prediction that `<try>` could not
+   * be a custom tag. What made it work is that the host validates the
+   * *author's* node, which for this shape (a body plus `<@catch>`/
+   * `<@placeholder>`) is the one `<try>` expects; a tag wanting a different
+   * call shape from the one the host validates is the remaining open case.
+   */
+  hostTag(
+    name: string,
+    children: IrNode[],
+    attributeTags: AttributeTag[],
+  ): IrNode;
 }
 
 /** Limits. A tag calling its own `expand` can diverge; a growing array can too. */
@@ -168,7 +205,12 @@ function syntheticExpr(code: string): Expr {
   return { code, shape: "other", node: null as unknown as Node };
 }
 
-function buildersFor(loc: Position): IrBuilders {
+function buildersFor(
+  loc: Position,
+  ctx: Ctx,
+  node: Node,
+  tagName: string,
+): IrBuilders {
   return {
     text: (value) => ({ kind: "Text", value, loc }),
     interpolation: (expr, escaped = true) => ({
@@ -227,6 +269,29 @@ function buildersFor(loc: Position): IrBuilders {
       children: options.children,
       loc,
     }),
+    hostTag: (name, children, attributeTags) => {
+      if (ctx.declarations.claimsTag?.(name, ctx) !== true) {
+        throw new TranslateError(
+          `\`<${tagName}>\`: this host does not claim \`<${name}>\`, so a custom tag cannot emit one`,
+          loc.line,
+          loc.column,
+        );
+      }
+      return {
+        kind: "HostTag",
+        tag: {
+          name,
+          attrs: [],
+          children,
+          attributeTags,
+          params: [],
+          var: null,
+          data: ctx.declarations.resolveHostTag?.(name, node, ctx),
+          loc,
+        },
+        loc,
+      };
+    },
     block: (children, params = []) => ({
       hasParams: params.length > 0,
       params,
@@ -291,7 +356,7 @@ export function expandCustomTag(
         where.column,
       );
     },
-    build: buildersFor(call.loc),
+    build: buildersFor(call.loc, ctx, node, call.name),
     gensym: (hint) =>
       `$mx_${call.name.replace(/[^A-Za-z0-9_]/g, "_")}_${hint ?? "t"}${++counter}`,
   };
