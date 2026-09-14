@@ -28,8 +28,11 @@ describe("Hono target", () => {
     const code = compile(
       "<div class={active: input.on} style={color: input.color}>x</div>",
     );
-    expect(code).toContain("class={mxClass({ active: input.on })}");
-    expect(code).toContain("style={{ color: input.color }}");
+    // Sliced verbatim from source (no space after `{`), the same seam that
+    // keeps TypeScript type arguments (see packages/core's core.ts and the
+    // identical assertions in the Preact/React/Solid host tests).
+    expect(code).toContain("class={mxClass({active: input.on})}");
+    expect(code).toContain("style={{color: input.color}}");
     expect(code).toContain('import { mxClass } from "@mxlang/hono/runtime";');
   });
 
