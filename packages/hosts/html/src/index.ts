@@ -11,6 +11,7 @@
 import { readFileSync } from "node:fs";
 import {
   type CompileResult,
+  type CustomTagDefinition,
   compileSource,
   createTranslator,
   type GeneratedMapping,
@@ -60,6 +61,17 @@ export const translator = createTranslator(host);
 
 export interface CompileOptions {
   /**
+   * Custom tags available to this compile, by tag name (decision 85,
+   * experiment `custom-tags-check`).
+   *
+   * A passthrough, exactly as `strict` is: the *integration* (the Vite
+   * plugin, the Bun loader, `mx-tsc`, the language server) resolves and loads
+   * the tag modules and hands the map down, because `compileSource` runs
+   * inside a synchronous `compileSync` and cannot load a module itself. This
+   * host supplies no policy of its own about them.
+   */
+  customTags?: Record<string, CustomTagDefinition>;
+  /**
    * Rejects reactive constructs (`<let>`, `<effect>`, `<lifecycle>`,
    * `<script>`, `client` blocks, `<id>`) by name instead of rendering their
    * initial value or treating them as inert. Folded from `.mx`'s dialect
@@ -98,6 +110,7 @@ export function compile(
     options.strict ? strictPolicy : policy,
     {
       ...host,
+      customTags: options.customTags,
       // Decision 79: this host emits from the core's IR. `postEmit` still
       // appends the helpers a template actually calls and brands the default
       // export, both of which are properties of this target rather than of

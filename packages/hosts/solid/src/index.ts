@@ -1,6 +1,7 @@
 import generate from "@babel/generator";
 import { parse as parseBabel } from "@babel/parser";
 import {
+  type CustomTagDefinition,
   type GeneratedMapping,
   type Node,
   newCtx,
@@ -31,6 +32,13 @@ export interface CompileSolidMxOptions {
   baseOffset?: number;
   baseLine?: number;
   baseColumn?: number;
+  /**
+   * Custom tags available to this compile, by tag name (decision 85,
+   * experiment `custom-tags-check`). A passthrough to the core's resolver;
+   * the integration resolves and loads the modules. See `@mxlang/core`'s
+   * `custom-tags.ts`.
+   */
+  customTags?: Record<string, CustomTagDefinition>;
 }
 
 export interface RawSourceMap {
@@ -137,6 +145,7 @@ export function compileSolidMx(
   const baseColumn = options.baseColumn ?? 0;
   const positionedSource = `${"\n".repeat(baseLine)}${" ".repeat(Math.max(baseOffset - baseLine, baseColumn))}${source}`;
   const ctx = newCtx(positionedSource, generateExpression, solidDeclarations);
+  ctx.customTags = options.customTags;
   const ir = resolve(ctx, body);
   if (
     ir.imports.length > 0 ||

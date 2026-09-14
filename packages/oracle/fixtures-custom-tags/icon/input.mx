@@ -1,0 +1,16 @@
+import icon from "./icon.tag.ts"
+<ul>
+  <for|item| of=input.items>
+    <li>
+      <icon name="check" size=16 class="row-icon"/>
+      ${item}
+    </li>
+  </for>
+</ul>
+<if=input.showClose>
+  <button type="button">
+    <icon name="x"/>
+    Close
+  </button>
+</if>
+<icon name="plus" size=32/>

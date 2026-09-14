@@ -50,6 +50,7 @@
 import { readFileSync } from "node:fs";
 import {
   type CompileResult,
+  type CustomTagDefinition,
   compileSource,
   concatMapped,
   createTranslator,
@@ -93,6 +94,13 @@ const host = {
 export const translator = createTranslator(host);
 
 export interface CompilePreactOptions {
+  /**
+   * Custom tags available to this compile, by tag name (decision 85,
+   * experiment `custom-tags-check`). A passthrough to the core; the
+   * integration resolves and loads the modules. See `@mxlang/core`'s
+   * `custom-tags.ts`.
+   */
+  customTags?: Record<string, CustomTagDefinition>;
   /**
    * The JSX target to emit for. Defaults to Preact; a React package passes its
    * own so it can reuse this emitter rather than fork it.
@@ -261,6 +269,7 @@ export function compilePreactMx(
     options.declarations ?? preactDeclarations,
     {
       ...host,
+      customTags: options.customTags,
       emitIr: (ir) => {
         const emitted = emitModuleWithMappings(ir, target);
         mappings = emitted.mappings;

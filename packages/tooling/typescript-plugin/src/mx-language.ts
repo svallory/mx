@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import {
+  type CustomTagDefinition,
   type Expr,
   type GeneratedMapping,
   type HostDeclarations,
@@ -211,6 +212,7 @@ export function createHtmlMappings(
   strict: boolean,
   declarations?: HostDeclarations,
   emittedMappings: GeneratedMapping[] = [],
+  customTags?: Record<string, CustomTagDefinition>,
 ): CodeMapping[] {
   const require = createRequire(import.meta.url);
   const compiler = require("@marko/compiler") as {
@@ -228,6 +230,12 @@ export function createHtmlMappings(
     declarations ?? (strict ? strictPolicy : policy),
     compiler.taglib.buildLookup(dirname(fileName), translator),
   );
+  // Custom tags (decision 85). This stage resolves the source a *second*
+  // time, so a template calling a custom tag must be given the same map the
+  // compile was given — measured: without it the resolve throws on the tag's
+  // own import binding ("Local variables must be in a dynamic tag …") and the
+  // file gets **no mappings at all**, not merely none inside the expansion.
+  ctx.customTags = customTags;
   const ir = resolve(ctx, body);
   const mappedCode = collectMappedCode(ir);
   const sourceLines = lineOffsets(source);
