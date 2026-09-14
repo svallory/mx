@@ -16,8 +16,9 @@ tracked here) — deliverables live at `docs/upstream/` instead, as the brief's
 ## Tags patched
 
 - `marko-js/marko` at tag `@marko/compiler@5.42.5` (the pinned
-  `packages/core/package.json` dependency), branch `mx/fragment-offset`, two
-  commits on top of the tag.
+  `packages/core/package.json` dependency), branch `mx/fragment-offset`, one
+  commit on top of the tag (see "Round 2" below for why this is one commit,
+  not two).
 - `marko-js/htmljs-parser` at tag `v5.15.0` (the pinned root `package.json`
   dependency, resolved transitively through `@marko/compiler`), branch
   `mx/fragment-offset`, one commit on top of the tag.
@@ -61,18 +62,18 @@ own routing through `packages/compiler/src/index.js`, for no behavior a
 {}`), so default behavior is provably unchanged — verified by the upstream
 test suites below and by mx's own full suite on the unpatched path.
 
-**Two commits in the `@marko/compiler` patch, not one**: the first threads
-`offsetAt` calls into every place `parser.js` builds a node during parsing;
-the second reverts that and instead shifts every numeric `start`/`end` once,
-in a single tree walk, immediately after `parser.parse()` returns. The
-per-node approach was wrong: `onCloseTagEnd`'s `locationAt(node)` reads
-`node.start`/`node.end` back as if they were still fragment-relative to
-compute the tag's own `loc`, so shifting them to absolute mid-parse
-double-shifted the result. This is the same class of bug mx's own
-`fragment.ts` `seen` set exists to prevent (shared position objects, shift
-applied twice) — recorded here because it is exactly the kind of thing that
-makes "thread it through everywhere it's needed" the wrong first instinct for
-this shape of patch.
+**The offset-shift mechanism** (folded into one commit as shipped, see
+"Round 2" below): shifting `offsetAt` calls into every place `parser.js`
+builds a node during parsing is the wrong first instinct — `onCloseTagEnd`'s
+`locationAt(node)` reads `node.start`/`node.end` back as if they were still
+fragment-relative to compute the tag's own `loc`, so shifting them to
+absolute mid-parse double-shifts the result. The shipped patch instead shifts
+every numeric `start`/`end` once, in a single tree walk (`shiftOffsets`),
+immediately after `parser.parse()` returns. This is the same class of bug
+mx's own `fragment.ts` `seen` set exists to prevent (shared position
+objects, shift applied twice) — recorded here because it is exactly the kind
+of thing that makes "thread it through everywhere it's needed" the wrong
+first instinct for this shape of patch.
 
 ## Per-patch LOC and files
 
@@ -90,18 +91,21 @@ Non-test source: 2 files, 87 lines changed (64 in `Parser.ts`, 23 in
 `parse`'s optional second parameter, `offsetAt` (new method on the object
 `createParser` returns).
 
-**`marko-compiler-offset.patch`** (2 commits):
+**`marko-compiler-offset.patch`** (1 commit):
 ```
- packages/compiler/config.d.ts                |  15 ++
- packages/compiler/src/babel-plugin/parser.js |  75 ++++---- (both commits combined)
- packages/compiler/src/babel-utils/loc.js     |  23 ++--
- packages/compiler/src/babel-utils/parse.js   |   8 +-
- packages/compiler/test/parser-locations.test.js | 87 ++
- pnpm-lock.yaml / pnpm-workspace.yaml          | dev-only link, not part of the real patch
- 6 files changed (source, excluding lockfile/workspace-link and tests): 4 files, ~121 lines changed
+ packages/compiler/config.d.ts                   |  15 +++
+ packages/compiler/src/babel-plugin/parser.js    |  48 ++++++++++--
+ packages/compiler/src/babel-utils/loc.js        |  23 +++--
+ packages/compiler/src/babel-utils/parse.js      |   8 +-
+ packages/compiler/test/parser-locations.test.js |  87 +++++++++++++++++++++-
+ 5 files changed, 167 insertions(+), 14 deletions(-)
 ```
-Public API surface added: `Config.htmlParseOptions` (new optional field, three
-optional sub-fields — additive, no existing field touched).
+Non-test source: 4 files, ~80 lines changed. Public API surface added:
+`Config.htmlParseOptions` (new optional field, three optional sub-fields —
+additive, no existing field touched). **No `pnpm-lock.yaml`/
+`pnpm-workspace.yaml` changes are in this patch** — see "Round 2" below for
+why an earlier version of this patch touched those files and why that was
+wrong.
 
 ## Behavior risk when the option is absent
 
@@ -133,21 +137,79 @@ optional sub-fields — additive, no existing field touched).
 (rebasing with a base position, `offsetAt`, and the absent-option
 no-op case).
 
-**`@marko/compiler`** (`mocha --config .mocharc.json --no-bail --spec
-"packages/compiler/@(src|test)/**/*.test.@(js|ts)"`, with the sibling
-htmljs-parser clone linked via `pnpm-workspace.yaml`'s `overrides`):
-```
-147 passing (4s)
-17 failing
-```
-Same 17 pre-existing failures as unpatched `main` (unrelated: taglib-loader
-package-name resolution and a `compileFile`/no-config edge case, both
-pre-existing on stock 5.42.5 source checked out fresh — not introduced by
-this patch). 142 → 147 passing: the 5 new tests in
+**`@marko/compiler`** (`mocha --config .mocharc.json --spec
+"packages/compiler/test/**/*.test.js"`, htmljs-parser's patched `dist/`
+copied directly over the resolved `htmljs-parser@5.14.0` package in the
+`pnpm` store — **not** a `pnpm-workspace.yaml`/`pnpm-lock.yaml` override; see
+"Round 2" immediately below for why):
+
+| | passing | failing | failing test names |
+|---|---|---|---|
+| Unpatched (tag, fresh `pnpm install`) | 148 | 1 | `compiler/taglib-loader > imports > gives a taglib imported from within the package the package's name` |
+| Patched (this commit, fresh `pnpm install`) | 153 | 1 | same single test, same name |
+
+Identical failing set, both runs. 148 → 153: the 5 new tests in
 `packages/compiler/test/parser-locations.test.js` (base-position rebasing of
 a tag's `loc`, a nested expression's `loc.start.index`, a later line's
 line-only shift, a thrown parse error's rebased position, and the
-absent-option no-op case).
+absent-option no-op case) — all 5 pass. The one remaining failure is
+genuinely pre-existing and unrelated to this patch (a taglib package-name
+resolution assertion), confirmed identical in both a patched and unpatched
+tree from independent, from-scratch `pnpm install`s.
+
+## Round 2: a regression found by independent review, and its real cause
+
+An independent code review of the first version of this PR
+(`/Users/svallory/work/mx/scratch/reports/upstream-offset-api.code-review.md`)
+could not reproduce this document's original "147 passing / same 17
+pre-existing failures" claim for `@marko/compiler`, and instead found, from a
+genuinely clean `pnpm install` (not a long-lived dev sandbox): **135
+passing / 29 failing**, on a test (`compileFile > reads with the default
+file system when given no config`) that never sets `htmlParseOptions` at
+all. That is disqualifying on its face — a patch cannot claim
+absent-option-unchanged behavior while a test that never touches the option
+regresses.
+
+**Root cause, confirmed by isolating the failing test alone (`mocha --spec
+"packages/compiler/test/compile.test.js" --grep "reads with the default
+file system when given no config"`) and reading which package each install
+actually resolved**: the first version of this patch's commit 1 added a
+`pnpm-workspace.yaml` `overrides: { htmljs-parser: link:../htmljs-parser }`
+entry to make the sibling htmljs-parser clone easy to link for local
+verification. Adding that override forces pnpm to recompute the whole
+lockfile (`--no-frozen-lockfile`), and doing so changed how `@marko/compiler`
+own devDependency-free workspace resolves `@marko/runtime-tags` — **from
+this monorepo's own live workspace package (`packages/runtime-tags`, what
+every unpatched, untouched checkout resolves) to the published npm registry
+version 6.3.51**. That published build throws `Unable to access Marko
+Program outside of a compilation` inside one of its own migrators when
+`getMarkoFile`'s uncached parse path runs `traverseAll` for a nested/child
+template — a real incompatibility, but between the *published npm build of
+a workspace's own sibling package* and this dev monorepo's expectations, not
+between this patch's parser code and anything at all. The failure then
+cascades: because that first failing test throws from inside
+`getMarkoFile`'s migrate-stage `traverseAll` (not inside `pre()`'s own
+try/finally), the module-level `currentFile` global that `getFile()`/
+`getProgram()` read is left pointing at the wrong file, which is what
+poisons every subsequent test in the same process and produces the
+appearance of 28 additional failures.
+
+**Fix**: the `pnpm-workspace.yaml`/`pnpm-lock.yaml` changes were removed
+from the patch entirely (the patch is now one commit, not two, with no
+lockfile or workspace-config diff at all — confirmed by `git diff --cached
+--stat` before committing). Local verification against a linked htmljs-parser
+now copies the patched build's `dist/` directly over the resolved
+`htmljs-parser` package inside the pnpm store, which changes nothing about
+dependency *resolution* (still the exact same installed package identity and
+version), only its file contents — the correct way to test "does this
+patched code behave the same" without also changing what other packages
+resolve to. Re-run from a fresh `pnpm install` with this fix: **153 passing
+/ 1 failing**, identical failing test to the true unpatched baseline (see the
+table above). The `@marko/compiler` patch is a single, clean, additive
+commit with no dev-tooling artifacts inside it.
+
+This is also why the patch commit's message ends with an explicit "Local
+dev note" warning against recreating this mistake.
 
 ## mx-side proof
 
@@ -159,22 +221,75 @@ by any consumer** in this commit; it exists so the two patches above have a
 concrete, testable consumer without touching `packages/parser/src/mx/bridge.ts`
 or `packages/hosts/solid/src/index.ts` (both untouched, per the brief).
 
-**Proof method**: with the mx worktree's `@marko/compiler`/`htmljs-parser`
-copies swapped for builds of the two patched clones above (`bun link`-style
-copy substitution in the local bun package-cache, not a committed
-override — reverted before this commit), `packages/core/src/fragment.ts`'s
-`parseFragment` was temporarily made to delegate to `parseFragmentNative`
-(a local, uncommitted one-line change) and the following ran:
+**On "behind a flag"**: there is no environment variable or config option
+gating `parseFragmentNative` — it is an alternate exported function nothing
+calls yet, which is a safe shape (dead code, zero runtime risk on the default
+path) but is not literally a flag. What *is* a real, committed, and tested
+mechanism is the **feature-detection gate** in
+`packages/core/src/fragment-native.test.ts`: `hasNativeOffsetSupport()`
+probes the installed `@marko/compiler` at test-collection time (does
+`htmlParseOptions.startLine` actually rebase a position, or is it silently
+ignored by a stock compiler) and uses `describe.skipIf` to skip the
+position-shift-correctness assertions when the patched packages are not
+linked, running only the "doesn't throw against a stock compiler" tests
+instead. This is not a flag `parseFragmentNative` itself reads — it is a test
+harness gate — call it what it is: a reference implementation with
+committed, reproducible test coverage, not a runtime feature flag.
+
+**Test coverage** (`packages/core/src/fragment-native.test.ts`, committed in
+this PR, not narrated): two tests always run, against whatever
+`@marko/compiler` is actually installed —
+
+- `does not throw and returns the expected FragmentResult shape` — runs
+  `parseFragmentNative` with no base at all.
+- `with a base given but ignored by a stock compiler, still parses` — runs it
+  *with* a base against a stock (unpatched) compiler, asserting only that it
+  doesn't throw (a stock compiler's untyped `htmlParseOptions` is
+  accepted-and-ignored, so positions come back unshifted — that's expected
+  and is not asserted here).
+
+Six more tests — the same fixtures as `fragment.test.ts`'s shifting-shim
+assertions, so both implementations are checked against identical inputs —
+are gated behind `describe.skipIf(!NATIVE_OFFSET_SUPPORT)` and only run once
+the patched packages are linked (see "Linking the patched packages locally"
+below).
+
+**Linking the patched packages locally**: build both scratch clones
+(`cd .../marko/packages/compiler && node scripts/bundle.mts`;
+`cd .../htmljs-parser && pnpm run build`), then copy each patched build's
+`dist/` directly over the resolved package inside the mx worktree's package
+store — for bun, `node_modules/.bun/@marko+compiler@5.42.5/node_modules/@marko/compiler/dist`
+and `node_modules/.bun/htmljs-parser@5.15.0/node_modules/htmljs-parser`
+(back up the originals first; this is a file-content swap, not a lockfile or
+`package.json` change, so `git status` stays clean and no `bun install` is
+needed afterward — see "Round 2" above for why editing lockfiles/workspace
+config to link packages caused a real, unrelated regression in the
+`@marko/compiler` clone's *own* test suite and must not be repeated). Then:
 
 ```
-bunx vitest run --root . --project @mxlang/core --project @mxlang/solid --project @mxlang/parser
+bunx vitest run --project @mxlang/core
+```
+With the patched packages linked, all 8 tests in
+`fragment-native.test.ts` run (0 skipped) and pass. Restoring the original
+package contents afterward makes the 6 gated tests skip again — verified
+both ways in this session.
+
+**Proof method for the wider suite**: with the same swap in place,
+`packages/core/src/fragment.ts`'s `parseFragment` was temporarily made to
+delegate to `parseFragmentNative` (a local, uncommitted one-line change, not
+part of this commit) and the following ran:
+
+```
+bunx vitest run --project @mxlang/core --project @mxlang/solid --project @mxlang/parser
 ```
 ```
-Test Files  15 passed (15)
-     Tests  314 passed (314)
+Test Files  16 passed (16)
+     Tests  322 passed (322)
 ```
 This covers `packages/core/src/fragment.test.ts` (7 tests, the exact
 position-shift assertions from `next-items-facts.md` §A),
+`packages/core/src/fragment-native.test.ts` (8 tests, 0 skipped with the
+packages linked),
 `packages/hosts/solid/src/index.test.ts` (43 tests, including the two
 past-the-base error-position tests), and every `packages/parser/src/mx/*`
 test (mx.test.ts, fragment.test.ts, attrs.test.ts, control.test.ts,
@@ -325,10 +440,11 @@ if) the patches are accepted upstream, per the doc comment on
 >
 > ### Compatibility
 > Fully additive — `htmlParseOptions` is optional and every internal read of
-> it defaults to `{}`. Verified: same 142 pre-existing passing / 17
-> pre-existing failing tests with and without this patch, plus 5 new tests
-> in `packages/compiler/test/parser-locations.test.js` covering: a tag's
-> `loc` rebased onto an enclosing document, a nested expression's
+> it defaults to `{}`. Verified from a clean, independent `pnpm install`:
+> same 148 pre-existing passing / 1 pre-existing failing test with and
+> without this patch (identical failing test name in both), plus 5 new
+> tests in `packages/compiler/test/parser-locations.test.js` covering: a
+> tag's `loc` rebased onto an enclosing document, a nested expression's
 > `loc.start.index` rebased, a later line's line-only shift (column staying
 > put), a thrown parse error's position rebased, and the absent-option
 > no-op case (byte-identical to stock behavior).
