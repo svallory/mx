@@ -126,6 +126,10 @@ whose whole claim is shipping no client JS.
 So `renderToStaticMarkup` throws when Astro's `metadata.hydrate` is set.
 `examples/astro-static/e2e/build-errors.spec.ts` asserts the failing build.
 
+## Astro hooks dependency
+
+This integration relies on Astro's undocumented and non-semver `addPageExtension` hook (passed to `astro:config:setup`) to register `.mx` and `.amx` as routable page extensions. Astro notes this hook is intended for internal integrations and may change outside of major versions. If an Astro update removes or changes this hook, pages under `src/pages` will stop routing, and the build will fail immediately with a clear error until the integration is updated.
+
 ## Pages
 
 Decision 76b: an `.mx` file directly under `src/pages` is a **page**, not a

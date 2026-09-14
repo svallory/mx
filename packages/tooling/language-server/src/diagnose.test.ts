@@ -30,7 +30,6 @@ describe("diagnoseDocument", () => {
     // `${count}` here is MX's own placeholder syntax inside the source
     // string being compiled, not a JS template literal — biome's
     // noTemplateCurlyInString can't tell the two apart.
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax, not a JS template literal
     const source = "<let/count=1/>\n<p>${count}</p>\n";
     const diagnostics = diagnoseDocument(source, "file:///project/App.mx", {
       host: "html",
@@ -84,7 +83,6 @@ export const view = () => (
   });
 
   it("reports an expression parse error inside a .solid.mx region", () => {
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax, not a JS template literal
     const source = "export const view = () => (\n  <p>${a b}</p>\n);\n";
     const diagnostics = diagnoseDocument(
       source,
@@ -180,7 +178,6 @@ describe("the Preact host", () => {
 describe("the React host", () => {
   it("diagnoses a stateful tag through @mxlang/react", () => {
     const diagnostics = diagnoseDocument(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
       "<let/count=0/>\n<p>${count}</p>\n",
       "file:///app/greeting.mx",
       { host: "react" },
@@ -192,7 +189,6 @@ describe("the React host", () => {
 
   it("reports nothing for a valid React-host document", () => {
     const diagnostics = diagnoseDocument(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
       "export interface Input { name: string }\n<h1>${input.name}</h1>\n",
       "file:///app/greeting.mx",
       { host: "react" },
@@ -205,7 +201,6 @@ describe("the React host", () => {
 describe("the Hono host", () => {
   it("diagnoses a stateful tag through @mxlang/hono", () => {
     const diagnostics = diagnoseDocument(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
       "<let/count=0/>\n<p>${count}</p>\n",
       "file:///app/greeting.mx",
       { host: "hono" },
@@ -217,7 +212,6 @@ describe("the Hono host", () => {
 
   it("reports nothing for a valid Hono-host document", () => {
     const diagnostics = diagnoseDocument(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
       "export interface Input { name: string }\n<h1>${input.name}</h1>\n",
       "file:///app/greeting.mx",
       { host: "hono" },

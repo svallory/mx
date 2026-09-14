@@ -15,6 +15,7 @@
  * into a plain module.
  */
 
+import { createRequire } from "node:module";
 import mx from "@mxlang/vite-plugin";
 import { mxPages } from "./vite-pages.ts";
 import { mxTemplates } from "./vite-templates.ts";
@@ -39,7 +40,8 @@ interface AstroIntegration {
     "astro:config:setup"?: (options: {
       config: { srcDir: URL };
       addRenderer: (renderer: AstroRenderer) => void;
-      addPageExtension: (ext: string) => void;
+      // Astro documents it as not subject to semver, installs it non-enumerably, and it is variadic.
+      addPageExtension?: (...ext: (string | string[])[]) => void;
       updateConfig: (config: Record<string, unknown>) => void;
     }) => void;
   };
@@ -115,6 +117,17 @@ export default function mxAstro(
           name: "@mxlang/astro",
           serverEntrypoint: "@mxlang/astro/server",
         });
+
+        if (typeof addPageExtension !== "function") {
+          let astroVersion = "unknown";
+          try {
+            const require = createRequire(import.meta.url);
+            astroVersion = require("astro/package.json").version;
+          } catch (_e) {}
+          throw new Error(
+            `Astro ${astroVersion} does not provide the 'addPageExtension' hook on the integration setup params. MX needs this non-semver hook to register the '.mx' and '.amx' page extensions.`,
+          );
+        }
 
         // `.mx` files under `src/pages` are pages (decision 76b), not
         // components: `.marko` stays a component-only alias and is
