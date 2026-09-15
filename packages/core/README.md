@@ -175,7 +175,7 @@ for the bridge's own side of that hand-off. Documented limits:
 
 **`resolveHostPolicy(filePath)`** (`src/host-policy.ts`) answers which host a
 file compiles through, and whether strictly: walk up to the nearest
-`package.json`, take its `"mxlang"` field if present (`{ host, strict? }`, with
+`package.json`, take its `"mx"` field if present (`{ host, strict? }`, with
 `"translator"` accepted as a deprecated alias for `"html"`); failing that, use
 its sole `@mxlang/*` host dependency if there is exactly one; otherwise fall
 back to the default non-strict HTML policy.

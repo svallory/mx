@@ -34,7 +34,7 @@ whether a file compiles.
 templates. It resolves the host with `@mxlang/core`'s
 `resolveHostPolicy` — the same resolver `@mxlang/language-server` uses, so an
 editor, this plugin and a `tsc` run cannot disagree about which host owns a
-file — applying the nearest `package.json`'s `mxlang.host` (`html`, `astro`, or
+file — applying the nearest `package.json`'s `mx.host` (`html`, `astro`, or
 `solid`; default `html`) and strictness, then serves the compiled module as
 TypeScript. Astro always uses strict HTML lowering and projects MX's runtime
 `content` slot as JSX `children` at the type boundary.

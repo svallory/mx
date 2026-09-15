@@ -158,7 +158,7 @@ bun run e2e        # headless Chromium over dist/, plus the two error builds
 `examples/preact-app` is the Preact host's example: a Vite app whose
 components are `.mx`, with hook state through `<const>`, event handlers, a
 structured `class`, and a `<for>` loop, mounted by a small `.tsx` entry
-point. The host is selected by `package.json`'s `"mxlang": { "host":
+point. The host is selected by `package.json`'s `"mx": { "host":
 "preact" }` alone — the same field the language server and `mx-tsc` read.
 Its e2e drives a real Chromium against the production build and clicks the
 counter, which is the one claim neither the unit tests (emitted JSX text) nor

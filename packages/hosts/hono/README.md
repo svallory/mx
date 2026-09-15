@@ -37,7 +37,7 @@ equivalent for.
     "@mxlang/hono": "workspace:*",
     "hono": "4.6.20"
   },
-  "mxlang": { "host": "hono" }
+  "mx": { "host": "hono" }
 }
 ```
 

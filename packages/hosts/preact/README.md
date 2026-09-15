@@ -20,11 +20,11 @@ to an *expression*, exactly as a Preact author would write it by hand.
     "@mxlang/preact": "workspace:*",
     "preact": "10.29.8"
   },
-  "mxlang": { "host": "preact" }
+  "mx": { "host": "preact" }
 }
 ```
 
-The `mxlang.host` field is what routes `.mx` files here. It is read by
+The `mx.host` field is what routes `.mx` files here. It is read by
 `@mxlang/core`'s `resolveHostPolicy`, which the Vite plugin, the language
 server and `mx-tsc` all share — so an editor, a `tsc` run and a build cannot
 disagree about what a `.mx` file is. A project depending on exactly one

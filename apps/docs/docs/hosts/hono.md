@@ -18,7 +18,7 @@ children, and attribute tags become props.
     "@mxlang/hono": "*",
     "hono": "4.6.20"
   },
-  "mxlang": { "host": "hono" }
+  "mx": { "host": "hono" }
 }
 ```
 

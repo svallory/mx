@@ -19,7 +19,7 @@ and attribute tags become props.
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
-  "mxlang": { "host": "react" }
+  "mx": { "host": "react" }
 }
 ```
 

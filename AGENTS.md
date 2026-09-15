@@ -668,7 +668,7 @@ control-flow components at all**: every structural kind lowers to a plain JSX
 table, the `key` rule, the error list and the `<try>` helper; this is the
 package-map entry.
 
-Selected by `package.json`'s `"mxlang": { "host": "preact" }` (or a lone
+Selected by `package.json`'s `"mx": { "host": "preact" }` (or a lone
 `@mxlang/preact` dependency) through `@mxlang/core`'s `resolveHostPolicy` —
 the same resolver the Vite plugin, the language server and `mx-tsc` share, so
 an editor, a `tsc` run and a build cannot disagree about a `.mx` file.
@@ -736,7 +736,7 @@ The runtime is native React. `src/runtime.ts` imports `Component` and
 `Suspense` from `react`; `MxErrorBoundary` is a class using
 `getDerivedStateFromError`/`componentDidCatch`, and `MxPlaceholder` wraps
 React's own Suspense. Stateful Marko tags remain compile errors with React
-hook guidance. Host selection is `"mxlang": { "host": "react" }` or a lone
+hook guidance. Host selection is `"mx": { "host": "react" }` or a lone
 `@mxlang/react` dependency, through the same resolver used by Vite, the
 language server and the TypeScript plugin.
 
@@ -764,7 +764,7 @@ host: `errorBoundaryFallbackProp` (Hono's `ErrorBoundary` takes
 third knob, `mxClassModule`, lets `mxClass` import from this package's own
 `runtime.ts` (`hono/jsx` has no `mxClass` equivalent) while `ErrorBoundary`/
 `Suspense` still import from `hono/jsx` itself. `src/runtime.ts` exports only
-`mxClass`. Host selection is `"mxlang": { "host": "hono" }` or a lone
+`mxClass`. Host selection is `"mx": { "host": "hono" }` or a lone
 `@mxlang/hono` dependency, through the same resolver used by Vite, the
 language server and the TypeScript plugin.
 
@@ -1073,7 +1073,7 @@ superseded run's timer is cleared, never raced) on `didOpen`/`didChange`/
 `@mxlang/typescript-plugin`) answers the question an
 editor's `didOpen` cannot: which host, and whether `strict`, applies to this
 file. Three branches, in order, walking upward from the file for the nearest
-`package.json`: (1) a `"mxlang": { "host": ..., "strict"?: ... }` field, the
+`package.json`: (1) a `"mx": { "host": ..., "strict"?: ... }` field, the
 authoritative source, which doubles as the routing config decision 71's
 "mixed projects" case already needs for the Vite plugin/Bun loader; (2)
 failing that, if the `package.json` depends on **exactly one** `@mxlang/*`
@@ -1118,7 +1118,7 @@ Code still ships no dedicated extension.)*
 **Tests**: `src/diagnose.test.ts` (direct, no server: `<let>` under strict,
 a valid file, `<let>`'s initial value under the non-strict policy, the
 unexpected-exception path), `@mxlang/core`'s `src/host-policy.test.ts` (all six
-resolution branches — explicit `mxlang`, the deprecated `translator` alias,
+resolution branches — explicit `mx`, the deprecated `translator` alias,
 one host dependency, two host dependencies, no `package.json`, and the
 walk-up stop at the filesystem root — against fixture directories under
 `packages/core/src/fixtures/host-policy/`; this package keeps its own
