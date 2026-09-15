@@ -775,6 +775,80 @@ Five facts worth knowing before editing it:
   `file://` URI, because `resolve("file:///a/page.mx")` yields
   `<cwd>/file:/a/page.mx` — passing a raw URI discovered zero tags for every
   real document while a unit test using a plain path stayed green.
+- **A template custom tag is inlined, and `input` is substituted rather than
+  bound** (`packages/core/src/template-tag.ts`). A `tags/x.mx` template is
+  lowered to IR once per (path, mtime, source) and spliced at the call site, so
+  a host sees ordinary IR and never learns which layer authored it. The spec
+  and the P1 report both sketched binding the call's attributes to one
+  synthetic `Const` and leaving the template's `input.x` reads alone; that is
+  **not** what ships, and the reason is measured: a `Const` is a *statement*,
+  and the four JSX hosts (Preact, React, Hono, Solid) emit a template body as a
+  single expression and reject a `<const>` nested in markup outright — which a
+  call site inside a `<for>` or an `<if>` is. Binding would have made one
+  definition work on two hosts and fail on four, against decision 80.
+  Substituting each `input.x` with the attribute's own expression (parenthesized,
+  so precedence survives; `undefined` when the call omits it) produces no node
+  a host must be able to emit. A **spread attribute is a compile error** on a
+  template tag for the same reason: its keys are not known until run time, so
+  no read can be resolved, and silently resolving them to `undefined` would
+  drop the author's values. A surviving bare `input` (`typeof input`,
+  `input?.size`, a destructure) is likewise a positioned error, and `content`
+  is reserved as an attribute name since it names the body slot.
+  **The one inherent limit: N reads are N evaluations** — a template reading
+  `input.size` twice evaluates the caller's `size=` expression twice, so a
+  template must not read a side-effecting attribute more than once. Pinned by
+  a test so a future change is deliberate.
+- **Both rewrites are AST-based, never textual** (`rewriteExpressionCode`).
+  Each `Expr.code` is parsed with the vendored Babel expression parser,
+  rewritten on the AST through `isReferencedIdentifier()` and
+  `path.scope.getBinding()`, and reprinted. A regex over printed JavaScript was
+  tried first and was silently wrong on ordinary MX expressions: `x?x:x`
+  renamed only the test, leaving the consequent pointing at the *caller's*
+  binding — the exact leak hygiene exists to prevent — while string and
+  template literals, class methods and `case`/label colons all misfired. A
+  substituted *compound* expression is parenthesized, because it is grafted
+  into whatever operator surrounded the read and Babel does not re-derive
+  precedence for a node it did not parse there (`size=a ?? b` into
+  `input.size ?? 24` printed `a ?? b ?? 24`, which is a syntax error). Names
+  the IR binds rather than any one expression — `<for>` and `<define>` params —
+  are carried down the walk separately, since no single expression's parse can
+  see them.
+- **Hygiene is two rules.** A template's render-scope declarations (`<const>`,
+  `<define>`) are renamed to `gensym` names with their references rewritten, so
+  a caller using the same name cannot pick up the template's binding; its
+  module-level statements (`import`, `static`, `export`) hoist to the caller's
+  *module*, where the template's helpers have to live for its body to reach
+  them. Its `export interface Input` is deliberately not carried over — it
+  would collide with the caller's own.
+- **Positions get a third rule** (spec §2): material from a tag template keeps
+  that file's line and column, tagged through the optional `Position.file` (and
+  `Expr.file`, since an `Expr` carries no `loc` of its own). `TranslateError`
+  gained a matching optional `file`. Absent means the file being compiled, so
+  every position that existed before templates is unchanged. The language
+  server publishes such a diagnostic against the template's **own URI** at its
+  real position and leaves a pointer at the head of the open document (it
+  clears the template's diagnostics when the caller stops reporting them, since
+  the template is not itself open); the TypeScript plugin **drops** a
+  foreign-file span, because a Volar `CodeMapping` addresses one source and a
+  plausible-but-wrong column is worse than none.
+- **Silent-drop reports go through `ctx.warnings`, not `console.warn`.**
+  `warn(ctx, …)` records a positioned `MxWarning` when a sink is collecting and
+  falls back to printing when none is, so a plain build is as loud as before
+  while the language server turns them into Warning diagnostics in the file
+  being edited — which is the one place a dropped-content report is worth
+  anything. Both P1's unread-`attributeTags` warning and P3's unplaced-content
+  warnings use it.
+- **A template's `import`s are deduped into the caller's module**, and the same
+  local name from a different module is a positioned error naming both files.
+  Import bindings are deliberately *not* `gensym`-renamed the way `<const>` and
+  `<define>` are: an import binding also names a module the author wrote, so
+  renaming means rewriting the statement's own syntax in all four forms.
+- **The template cache is bounded** (256 entries, oldest-inserted evicted), not
+  an unbounded process-wide map — a language server compiling an edited file
+  over and over is long-lived, the same discipline P2's scan cache owes.
+- **A cycle between tag templates is an error naming the path**
+  (`a.mx -> b.mx -> a.mx`), reported on the call that closes it, separately
+  from the depth cap.
 
 ## `@mxlang/solid`: the Solid host on `@mxlang/core`
 
