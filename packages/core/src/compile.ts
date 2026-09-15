@@ -18,7 +18,7 @@
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { rejectShadowedRegistration } from "./builtin-tags.ts";
-import { type Ctx, type Node, newCtx } from "./core.ts";
+import { type Ctx, type MxWarning, type Node, newCtx } from "./core.ts";
 import { type CustomTag, customTagTaglib } from "./custom-tags.ts";
 import type { Policy } from "./declarations.ts";
 import type { Ir } from "./ir.ts";
@@ -57,6 +57,12 @@ export interface TranslatorOptions {
   tagDiscoveryDirs?: string[];
   /** Custom tags already loaded by the calling integration, by call name. */
   customTags?: Record<string, CustomTag>;
+  /**
+   * Collects positioned warnings — constructs that compile while dropping
+   * something the author wrote. Unset, they print to `console.warn` as
+   * before; a language server passes an array and publishes them instead.
+   */
+  warnings?: MxWarning[];
 }
 
 export interface HostOptions extends TranslatorOptions {
@@ -87,6 +93,7 @@ let current: {
   postEmit?: (code: string) => string;
   emitIr: (ir: Ir, ctx: Ctx) => string;
   customTags?: Readonly<Record<string, CustomTag>>;
+  warnings?: MxWarning[];
 } | null = null;
 
 /**
@@ -129,6 +136,7 @@ export function createTranslator(host: TranslatorOptions = {}) {
             state.lookup,
           );
           ctx.customTags = state.customTags;
+          ctx.warnings = state.warnings;
           const code = state.emitIr(lower(ctx, path.node.body), ctx);
           state.code = state.postEmit ? state.postEmit(code) : code;
           path.node.body = [];
@@ -164,6 +172,7 @@ export function compileSource(
     postEmit: host.postEmit,
     emitIr: host.emitIr,
     customTags: host.customTags,
+    warnings: host.warnings,
     // The lookup is keyed on the translator object, so asking for it here gets
     // exactly the taglibs this host registers plus Marko's own element
     // taglibs — and the tag-discovery directories beside this particular file.

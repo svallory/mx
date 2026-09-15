@@ -28,6 +28,7 @@ export {
   fail,
   hasContent,
   importBindings,
+  type MxWarning,
   type Node,
   newCtx,
   propKey,
@@ -36,6 +37,7 @@ export {
   sliceLoc,
   TranslateError,
   VOID_TAGS,
+  warn,
 } from "./core.ts";
 export type {
   AnalyzeContext,
@@ -105,3 +107,11 @@ export {
   liveTagMapCount,
   scanCached,
 } from "./scan-cache.ts";
+export {
+  expandTemplate,
+  hasTemplate,
+  resetTemplateCache,
+  type TemplateBackedTag,
+  type TemplateTag,
+  templateCompileCount,
+} from "./template-tag.ts";

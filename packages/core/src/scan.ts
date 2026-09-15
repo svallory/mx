@@ -43,6 +43,7 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { BUILTIN_CUSTOM_TAGS } from "./builtin-tags.ts";
 import { TranslateError } from "./core.ts";
 import type { CustomTag, CustomTagParseOptions } from "./custom-tags.ts";
+import type { TemplateTag } from "./template-tag.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -511,12 +512,31 @@ function lazyTag(tag: DiscoveredTag): CustomTag {
   const definition: CustomTag = {};
   if (tag.parseOptions) definition.parseOptions = tag.parseOptions;
 
-  const sidecar = tag.sidecar;
-  if (!sidecar) {
-    // An L1-only tag: discovered, with no hooks. P1 gates template expansion
-    // to P3, so calling one reports that gate rather than "unknown tag".
-    return definition;
+  // The `x.mx` template, when one exists, read on first use. A tag with a
+  // template and no sidecar (L1-only) is complete as it stands: the core
+  // expands the template at the call site. A tag with both is composed — the
+  // sidecar's `transform` wins and may expand this template through
+  // `ctx.build.template(call)` — so the template is attached either way.
+  //
+  // Read lazily, and re-read per scan rather than cached here, for the same
+  // reason the sidecar hooks are lazy: a project with fifty tags should touch
+  // only the files a compilation actually calls. The expansion's own cache
+  // (keyed by path, mtime and source) is what keeps repeated calls cheap.
+  if (tag.template) {
+    const path = tag.template;
+    Object.defineProperty(definition, "template", {
+      enumerable: true,
+      configurable: true,
+      get: (): TemplateTag => ({
+        filename: path,
+        source: readFileSync(path, "utf8"),
+        mtimeMs: statSync(path).mtimeMs,
+      }),
+    });
   }
+
+  const sidecar = tag.sidecar;
+  if (!sidecar) return definition;
 
   let loaded: CustomTag | undefined;
   const load = (): CustomTag => {

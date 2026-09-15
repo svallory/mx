@@ -1,6 +1,7 @@
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -9,8 +10,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { compileSource } from "./compile.ts";
 import { TranslateError } from "./core.ts";
 import { customTagTaglib } from "./custom-tags.ts";
+import type { Policy } from "./declarations.ts";
+import type { Ir, IrNode } from "./ir.ts";
 import { normalizeMxTags, readParseOptions, scanCustomTags } from "./scan.ts";
 import {
   clearScanCache,
@@ -133,10 +137,21 @@ describe("scanCustomTags", () => {
     const note = result.tags.get("note");
     expect(note?.template).toBe(fixture("template-only", "tags", "note.mx"));
     expect(note?.sidecar).toBeUndefined();
-    // Registered, so a call reports P1's template-expansion gate rather than
-    // "unknown tag" — discovery is this phase's job, expansion is P3's.
+    // Registered as a real template tag: no sidecar, so no `transform`, but a
+    // `template` the core expands at the call site (P3). Reading it is what
+    // loads the file, so a project with fifty tags touches only the ones a
+    // compilation calls.
     expect(result.customTags.note).toBeDefined();
     expect(result.customTags.note?.transform).toBeUndefined();
+    const template = (
+      result.customTags.note as {
+        template?: { filename: string; source: string };
+      }
+    ).template;
+    expect(template?.filename).toBe(
+      fixture("template-only", "tags", "note.mx"),
+    );
+    expect(template?.source).toContain("an L1 tag");
   });
 
   it("extends the walk with package.json#mx.tags, prefix included", () => {
@@ -561,3 +576,110 @@ describe("the scan cache", () => {
     expect(after).not.toBe(before);
   });
 });
+
+describe("a discovered template tag expands end to end", () => {
+  afterEach(() => {
+    clearScanCache();
+  });
+
+  /**
+   * The P2/P3 seam: a `tags/icon.mx` beside a caller, with **no import, no
+   * sidecar and no `customTags` argument**, has to reach the caller as a real
+   * template tag and be inlined. Until P3 the scan registered such a tag with
+   * no hooks, so calling it reported the "nothing to expand to" gate instead
+   * of expanding; this asserts the whole path rather than either half.
+   */
+  it("resolves `tags/icon.mx` with no import and inlines it", () => {
+    const file = fixture("template-render", "page.mx");
+    const customTags = getCustomTags(file);
+
+    // Discovered by filename alone.
+    expect(Object.keys(customTags)).toContain("icon");
+
+    let ir: Ir | null = null;
+    compileSource(readFileSync(file, "utf8"), file, declarations(), {
+      customTags,
+      tagDiscoveryDirs: [],
+      emitIr(lowered) {
+        ir = lowered;
+        return "";
+      },
+    });
+    if (!ir) throw new Error("lowerer produced no IR");
+
+    // The template's own markup is spliced at the call site: an `<svg>` inside
+    // the caller's `<p>`, with no component call and nothing to import.
+    const names = flattenElements((ir as Ir).body);
+    expect(names).toEqual(["p", "svg", "title"]);
+
+    // And the call's attributes reached the template's `input` reads.
+    const svg = findElement((ir as Ir).body, "svg");
+    // The template wrote `input.size ?? 24`; the call supplied 16, so the
+    // substituted expression keeps the template's own fallback around it.
+    expect(attrText(svg, "width")).toBe("16 ?? 24");
+    expect(attrText(svg, "class")).toBe('"row"');
+    expect(interpolationCodes((ir as Ir).body)).toEqual(['"check"']);
+  });
+});
+
+/** A permissive host: this file is testing discovery, not any host's policy. */
+function declarations(): Policy {
+  return {
+    tags: {},
+    isElement: () => true,
+    isComponent: (name, ctx) => ctx.defines.has(name),
+  };
+}
+
+function walk(nodes: IrNode[], visit: (node: IrNode) => void): void {
+  for (const node of nodes) {
+    visit(node);
+    if ("children" in node && Array.isArray(node.children)) {
+      walk(node.children as IrNode[], visit);
+    }
+    if (node.kind === "IfChain") {
+      for (const branch of node.branches) walk(branch.children, visit);
+    }
+  }
+}
+
+function flattenElements(nodes: IrNode[]): string[] {
+  const names: string[] = [];
+  walk(nodes, (node) => {
+    if (node.kind === "Element") names.push(node.name);
+  });
+  return names;
+}
+
+function findElement(
+  nodes: IrNode[],
+  name: string,
+): Extract<IrNode, { kind: "Element" }> {
+  let found: Extract<IrNode, { kind: "Element" }> | null = null;
+  walk(nodes, (node) => {
+    if (!found && node.kind === "Element" && node.name === name) found = node;
+  });
+  if (!found) throw new Error(`no <${name}> in the IR`);
+  return found;
+}
+
+function attrText(
+  element: Extract<IrNode, { kind: "Element" }>,
+  name: string,
+): string | undefined {
+  const attr = element.attrs.find(
+    (candidate) => candidate.kind !== "spread" && candidate.name === name,
+  );
+  if (!attr) return undefined;
+  if (attr.kind === "static") return attr.value;
+  if (attr.kind === "dynamic" || attr.kind === "bound") return attr.value.code;
+  return undefined;
+}
+
+function interpolationCodes(nodes: IrNode[]): string[] {
+  const codes: string[] = [];
+  walk(nodes, (node) => {
+    if (node.kind === "Interpolation") codes.push(node.expr.code);
+  });
+  return codes;
+}

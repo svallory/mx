@@ -44,6 +44,22 @@ export interface Position {
   line: number;
   /** 0-based, as Marko and `TranslateError` both count columns. */
   column: number;
+  /**
+   * The file this position is measured in, when that is **not** the file being
+   * compiled.
+   *
+   * The third position rule (spec §2): material inlined from a tag template
+   * (`tags/icon.mx`) keeps its own file's line and column, so a diagnostic
+   * raised inside the template points into the template rather than at the
+   * call that expanded it. Absent — the overwhelmingly common case — means the
+   * position belongs to the file under compilation, so every position that
+   * existed before templates is unchanged and no consumer has to ask.
+   *
+   * A consumer that can only report against one file (the TypeScript plugin's
+   * virtual code, whose source *is* the caller) drops a foreign-file position
+   * rather than reporting the caller's line numbers for someone else's text.
+   */
+  file?: string;
 }
 
 /**
@@ -59,6 +75,17 @@ export interface Expr {
   code: string;
   shape: ExprShape;
   node: Node;
+  /**
+   * The file this expression's source text lives in, when it is not the file
+   * being compiled — an expression inlined from a tag template.
+   *
+   * `Expr` carries no `loc`: its position is read off `node`, whose position
+   * objects Marko shares between sibling nodes, so the file is recorded here
+   * instead of written onto the parser's tree. Absent for every expression
+   * authored in the file under compilation, which is why nothing that existed
+   * before templates has to read it.
+   */
+  file?: string;
 }
 
 /** The syntax-level value shape known while resolving an expression. */

@@ -73,7 +73,9 @@
         "packages/hosts/preact/src/emitter.ts",
         "packages/hosts/preact/src/index.test.ts",
         "packages/hosts/html/scripts/consumer-check.ts",
-        "packages/tooling/language-server/src/diagnose.test.ts"
+        "packages/tooling/language-server/src/diagnose.test.ts",
+        "packages/core/src/template-tag.ts",
+        "packages/core/src/template-tag.test.ts"
       ],
       "linter": {
         "rules": {

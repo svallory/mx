@@ -16,6 +16,7 @@ import {
   createTranslator,
   type GeneratedMapping,
   type MappedCode,
+  type MxWarning,
   type RawSourceMap,
 } from "@mxlang/core";
 import markoTaglib from "../taglib/marko.json" with { type: "json" };
@@ -74,6 +75,16 @@ export interface CompileOptions {
    * constructs to be a compile error rather than silently accepted.
    */
   strict?: boolean;
+  /**
+   * Collects positioned warnings — constructs that compile while dropping
+   * something the author wrote (content a tag template never placed, an
+   * attribute tag a transform never read).
+   *
+   * Unset, they print to `console.warn` exactly as before. The language server
+   * passes an array so they reach the editor as diagnostics, which is the one
+   * place a silent-drop report is worth anything.
+   */
+  warnings?: MxWarning[];
 }
 
 export interface CompileHtmlResult extends CompileResult {
@@ -106,6 +117,7 @@ export function compile(
     {
       ...host,
       customTags: options.customTags,
+      warnings: options.warnings,
       // Decision 79: this host emits from the core's IR. `postEmit` still
       // appends the helpers a template actually calls and brands the default
       // export, both of which are properties of this target rather than of

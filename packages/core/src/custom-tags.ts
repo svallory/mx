@@ -8,7 +8,7 @@
  */
 
 import type { Ctx, Node } from "./core.ts";
-import { TranslateError } from "./core.ts";
+import { TranslateError, warn } from "./core.ts";
 import type {
   Attr,
   AttributeTag,
@@ -19,6 +19,11 @@ import type {
   IrNode,
   Position,
 } from "./ir.ts";
+import {
+  expandTemplate,
+  hasTemplate,
+  type TemplateBackedTag,
+} from "./template-tag.ts";
 
 export interface CustomTagParseOptions {
   /** Body arrives as one unparsed text node. */
@@ -125,6 +130,20 @@ export interface IrBuilders {
     children: IrNode[],
     attributeTags: AttributeTag[],
   ): IrNode;
+  /**
+   * Expands this tag's own template (`tags/x.mx`) with a call's inputs.
+   *
+   * Available only to a tag that has a template beside it. It is what makes
+   * L1 and L2 compose rather than compete: a sidecar's `transform` wins over
+   * the template, and this is how that transform uses the template as raw
+   * material — validate or compute first, then `return ctx.build.template(call)`
+   * — instead of having to rebuild the markup with the other builders.
+   *
+   * A sidecar with no `transform` at all (a *declaration-only* sidecar, one
+   * that adds `attributes` or `parseOptions`) needs no call: the template
+   * still expands, now validated.
+   */
+  template(call: TagCall): IrNode[];
 }
 
 export const MAX_EXPANSION_DEPTH = 64;
@@ -206,6 +225,7 @@ function buildersFor(
   ctx: Ctx,
   node: Node,
   tagName: string,
+  definition: CustomTag,
 ): IrBuilders {
   return {
     text: (value) => ({ kind: "Text", value, loc }),
@@ -287,6 +307,16 @@ function buildersFor(
         },
         loc,
       };
+    },
+    template: (call) => {
+      if (!hasTemplate(definition)) {
+        return failAt(
+          tagName,
+          "this tag has no template file, so `ctx.build.template(call)` has nothing to expand",
+          loc,
+        );
+      }
+      return expandTemplate(ctx, definition, call);
     },
   };
 }
@@ -590,10 +620,10 @@ export function transformCustomTag(
       call.loc,
     );
   }
-  if (!definition.transform) {
+  if (!definition.transform && !hasTemplate(definition)) {
     failAt(
       call.name,
-      "custom tag has no transform; template expansion is not implemented until P3",
+      "custom tag has neither a `transform` nor a template file, so a call has nothing to expand to",
       call.loc,
     );
   }
@@ -604,7 +634,7 @@ export function transformCustomTag(
     attrs: applyCustomTagDefaults(definition, call),
   };
   const observed = observedCall(withDefaults);
-  const builders = buildersFor(call.loc, ctx, node, call.name);
+  const builders = buildersFor(call.loc, ctx, node, call.name, definition);
   const tagContext: TransformContext = {
     build: builders,
     hoist: (code) => ctx.hoist(code, node),
@@ -627,7 +657,15 @@ export function transformCustomTag(
 
   let nodes: IrNode[];
   try {
-    nodes = definition.transform(observed.call, tagContext);
+    // The sidecar wins when it has a `transform`: it may call
+    // `ctx.build.template(call)` to expand the template with the call's
+    // inputs, or ignore the template entirely and build its own IR. A
+    // declaration-only sidecar — `attributes`/`parseOptions` and no
+    // `transform` — expands the template as an L1-only tag does, now
+    // validated by the declarations it added.
+    nodes = definition.transform
+      ? definition.transform(observed.call, tagContext)
+      : expandTemplate(ctx, definition as TemplateBackedTag, observed.call);
   } catch (error) {
     if (error instanceof TranslateError) throw error;
     throw new TranslateError(
@@ -648,10 +686,21 @@ export function transformCustomTag(
       call.loc,
     );
   }
-  if (call.attributeTags.length > 0 && !observed.attributeTagsRead()) {
-    console.warn(
-      `\`<${call.name}>\` at ${call.loc.line}:${call.loc.column}: custom tag transform did not read its attributeTags; authored attribute tags were dropped`,
-    );
+  // A template expansion reports its own, more precise version of this
+  // warning (it knows which placeholder was missing), and reads
+  // `attributeTags` through a path this proxy does not see, so the generic
+  // check applies only to a real `transform`.
+  if (
+    definition.transform &&
+    call.attributeTags.length > 0 &&
+    !observed.attributeTagsRead()
+  ) {
+    warn(ctx, {
+      message: `\`<${call.name}>\`: custom tag transform did not read its attributeTags; authored attribute tags were dropped`,
+      line: call.loc.line,
+      column: call.loc.column,
+      file: call.loc.file,
+    });
   }
   return nodes;
 }

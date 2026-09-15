@@ -1,0 +1,3 @@
+<svg width=input.size ?? 24 class=input.class>
+  <title>${input.name}</title>
+</svg>

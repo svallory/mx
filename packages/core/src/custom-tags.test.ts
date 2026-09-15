@@ -583,9 +583,9 @@ describe("custom tag phase boundaries", () => {
     );
   });
 
-  it("rejects template-only registration clearly until P3", () => {
+  it("rejects a tag with neither a transform nor a template", () => {
     expect(() => lowerWithTags("<tag/>\n", { tag: {} })).toThrowError(
-      "`<tag>`: custom tag has no transform; template expansion is not implemented until P3",
+      "`<tag>`: custom tag has neither a `transform` nor a template file, so a call has nothing to expand to",
     );
   });
 });
