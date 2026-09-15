@@ -578,10 +578,10 @@ kinds, what a host implements in order, the hooks and the front doors — read i
 before adding either.
 
 The three pieces: `src/ir.ts` (the node kinds, a position on every one),
-`src/resolve.ts` (Marko AST in, `Ir` out, carrying every validation and every
+`src/lower.ts` (Marko AST in, `Ir` out, carrying every validation and every
 error message the emitting walk had), and `src/emit.ts` (`Emitter<Out>`, one
 method per kind, plus the `drive`/`emit` driver). `src/declarations.ts` holds
-`HostDeclarations` — the questions the resolver asks — and `Policy` remains a
+`HostDeclarations` — the questions the lowerer asks — and `Policy` remains a
 compatibility alias of `HostDeclarations` only. `HostOptions.emitIr` is
 required: there is no pre-IR string-walk fallback.
 
@@ -592,7 +592,7 @@ expression-shaped Astro syntax. Neither emitter reads a Marko node; a
 host-specific resolve-time decision goes in `HostTag.data` through
 `claimsTag`/`resolveHostTag`.
 
-Four facts worth knowing before editing it:
+Five facts worth knowing before editing it:
 
 - **It depends on `@marko/compiler` and nothing else.** `core.ts` used to parse
   an `import` line with `@mxlang/parser` — the *SolidMX parser* package — for a
@@ -603,7 +603,7 @@ Four facts worth knowing before editing it:
   core's `drive`/`emit` owns the walk. A host that cannot express a kind throws;
   no optional callback may silently drop it.
 - **Three stateful-tag hooks** (decision 70), unit-tested through
-  `src/resolve.test.ts`: `claimsTag`/`resolveHostTag` (the resolve-time tag
+  `src/lower.test.ts`: `claimsTag`/`resolveHostTag` (the lower-time tag
   handler), `ctx.hoist(code)` (lift a statement to the enclosing function's
   head — the render function, or the nearest `Define`), and
   `ctx.bindings.register(name, rewrite)` (rewrite identifier *references*, so a
@@ -623,6 +623,30 @@ Four facts worth knowing before editing it:
   (`packages/parser/src/mx/bridge.ts`) now calls `parseFragment` for every MX
   region it finds; see "`@mxlang/solid`: the Solid host on `@mxlang/core`"
   below.
+- **Programmatic custom tags lower to ordinary IR before a host emits.** Every
+  host compiler accepts `customTags: Record<string, CustomTag>`; the core
+  validates declared attributes and attribute tags, then calls `transform`.
+  Only `parseOptions.text`/`preserveWhitespace`/`openTagOnly` cross into an
+  injected Marko taglib. Marko caches injected taglibs by id, so the id must
+  remain keyed by the parser-facing definitions or later compilations can
+  reuse the first map. **That cache is never evicted, so the id must not be
+  minted per compile.** Marko's `lookupCache` is keyed on the sorted taglib
+  ids and `loadedTranslatorsTaglibs` on the translator object, and neither
+  drops an entry except through `clearCaches()`; measured, 200 compiles with
+  200 distinct tag sets leave 200 live ids. In a one-shot build that is
+  bounded, but a long-lived language server compiling an edited file over and
+  over grows without limit. **P2 requirement:** the scan must reuse one
+  translator and one taglib per distinct tag set, and call `clearCaches()` (or
+  an equivalent eviction) when the tag set changes, rather than letting each
+  compilation add an id. No P1 code change — the signature-derived id is
+  correct, this is about its lifetime. `analyze`, `finalize`, and `ctx.store`
+  are typed but deliberately fail until P5; template-only expansion fails
+  until P3. The TypeScript plugin passes the same map to compilation and its
+  second lower. `.solid.mx` carries the map across the parser boundary on the
+  `mxCustomTags` parser option (`print(source, file, { customTags })`), the
+  only channel the in-tokenizer bridge has to the caller.
+  `bun run oracle:custom-tags` is the six-host `<icon>` gate; every row,
+  Solid included, renders and compares against `expected.html`.
 
 ## `@mxlang/solid`: the Solid host on `@mxlang/core`
 
@@ -994,7 +1018,7 @@ Four facts worth knowing before editing `src/astro-template.ts` or
   so `isPage()` accepts what route collection rejects: two code paths in one
   version disagree. `.amx` sidesteps all of it.
 - **This is `Emitter<string>` over core's IR.** `.amx` uses `parseFragment` for
-  fence-relative positions, then `resolve()` and the shared `drive`/`emit`
+  fence-relative positions, then `lower()` and the shared `drive`/`emit`
   traversal. Astro-specific decisions happen in `HostDeclarations`; the
   emitter consumes IR and opaque `HostTag.data`, never Marko nodes. `static`
   statements resolve into `Ir.hoisted` and are inserted into the fence.
