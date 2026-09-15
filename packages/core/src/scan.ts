@@ -485,6 +485,8 @@ function sidecarHint(message: string): string {
 export function loadSidecar(file: string): CustomTag {
   let module: { default?: unknown } | undefined;
   try {
+    const resolved = require.resolve(file);
+    delete require.cache[resolved];
     module = require(file) as { default?: unknown };
   } catch (cause) {
     const message = (cause as Error).message;

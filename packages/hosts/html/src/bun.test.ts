@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import markoPlugin from "./bun.ts";
@@ -82,5 +88,37 @@ describe("@mxlang/html/bun", () => {
     // caller's side.
     const mod = await import(path);
     expect(mod.default).toEndWith("Counter.solid.mx");
+  });
+
+  test("compiles a tag discovered beside the file, with no import", async () => {
+    Bun.plugin(markoPlugin);
+
+    // Through the real plugin, so the loader's own `getCustomTags` call is
+    // what is under test: deleting it from `bun.ts` must fail this. A test
+    // that called `compile()` with a tag map it fetched itself would stay
+    // green with the loader gutted.
+    //
+    // Inside the package tree, like the test above and for the same reason:
+    // the emitted module imports `escape` from "@mxlang/html" by bare
+    // specifier, which Bun resolves from the file's own directory.
+    const base = join(import.meta.dirname, "..", "fixtures-marko");
+    const tagsDir = join(base, "tags");
+    const tagFile = join(tagsDir, "bunstamp.tag.ts");
+    const page = join(base, "bun-discovery.mx");
+
+    mkdirSync(tagsDir, { recursive: true });
+    writeFileSync(
+      tagFile,
+      "export default { transform: (_c, ctx) => [ctx.build.element('b', [], [ctx.build.text('discovered')])] };\n",
+    );
+    writeFileSync(page, "<bunstamp/>\n");
+    try {
+      const mod = await import(page);
+      const render = mod.default as (input: unknown) => string;
+      expect(render({})).toContain("discovered");
+    } finally {
+      rmSync(page, { force: true });
+      rmSync(tagsDir, { recursive: true, force: true });
+    }
   });
 });

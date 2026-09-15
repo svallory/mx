@@ -1,8 +1,14 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
-import type { CustomTag } from "@mxlang/core";
-import { describe, expect, it } from "vitest";
+import { type CustomTag, clearScanCache } from "@mxlang/core";
+import { afterEach, describe, expect, it } from "vitest";
 import mx, { MX_SUFFIX } from "./index";
 
 const COUNTER = `import { createSignal } from "solid-js";
@@ -621,5 +627,222 @@ describe("mx()", () => {
         expect(resolvedMx).toBe(`/root/src/greeting.mx${MX_SUFFIX}`);
       },
     );
+  });
+
+  describe("custom tag discovery", () => {
+    const scratches: string[] = [];
+
+    afterEach(() => {
+      clearScanCache();
+      for (const dir of scratches.splice(0)) {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    /** A project with one discovered tag, and the paths to drive it with. */
+    function project(body: string) {
+      const dir = mkdtempSync(join(tmpdir(), "mx-vite-tags-"));
+      scratches.push(dir);
+      writeFileSync(
+        join(dir, "package.json"),
+        '{"name":"v","mx":{"host":"html"}}',
+      );
+      mkdirSync(join(dir, "tags"), { recursive: true });
+      const tagFile = join(dir, "tags", "marker.tag.ts");
+      writeFileSync(tagFile, body);
+      const caller = join(dir, "caller.mx");
+      writeFileSync(caller, "<marker/>\n");
+      return { dir, tagFile, caller };
+    }
+
+    const transformOf = (plugin: ReturnType<typeof mx>) =>
+      plugin.transform as unknown as (
+        this: unknown,
+        code: string,
+        id: string,
+      ) => Promise<{ code: string } | null>;
+
+    it("compiles a tag found in a sibling tags/ directory, with no import", async () => {
+      const { caller } = project(
+        "export default { transform: (_c, ctx) => [ctx.build.text('found')] };\n",
+      );
+
+      const result = await transformOf(mx()).call(
+        {},
+        "<marker/>\n",
+        `${caller}${MX_SUFFIX}`,
+      );
+
+      expect(result?.code).toContain("found");
+    });
+
+    it("rescans a caller after its tag file is edited", async () => {
+      const { tagFile, caller } = project(
+        "export default { transform: (_c, ctx) => [ctx.build.text('first')] };\n",
+      );
+      const transform = transformOf(mx());
+      const id = `${caller}${MX_SUFFIX}`;
+
+      expect((await transform.call({}, "<marker/>\n", id))?.code).toContain(
+        "first",
+      );
+
+      // The caller's own text does not change; only the tag does. Adding a
+      // second tag makes the edit observable *here*: whether the rebuilt
+      // sidecar's hooks are the new ones cannot be asserted under Vitest,
+      // whose module runner keeps its own registry behind `require.cache`, so
+      // a deleted key does not make `require` re-evaluate the file (measured;
+      // both Bun and Node do re-evaluate, which is what ships). What this
+      // asserts is the part that is this plugin's own: an edited tag
+      // directory is rescanned rather than served from the scan cache.
+      writeFileSync(
+        join(dirname(tagFile), "extra.mx"),
+        "<em>a second tag</em>\n",
+      );
+      const when = new Date(Date.now() + 10_000);
+      utimesSync(tagFile, when, when);
+
+      // The new tag is discovered, and reports P1's template-expansion gate
+      // rather than "unknown tag" — which is exactly what a rescan produces
+      // in P2, since L1 inlining is P3's job.
+      await expect(
+        transform.call({}, "<marker/><extra/>\n", id),
+      ).rejects.toThrow(/`<extra>`: custom tag has no transform/);
+    });
+
+    it("warns once about a misconfigured mx.tags", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "mx-vite-badtags-"));
+      scratches.push(dir);
+      writeFileSync(
+        join(dir, "package.json"),
+        '{"name":"b","mx":{"host":"html","tags":"does-not-exist"}}',
+      );
+      mkdirSync(join(dir, "tags"), { recursive: true });
+      writeFileSync(
+        join(dir, "tags", "marker.tag.ts"),
+        "export default { transform: (_c, ctx) => [ctx.build.text('still works')] };\n",
+      );
+      const caller = join(dir, "caller.mx");
+      writeFileSync(caller, "<marker/>\n");
+
+      const warnings: string[] = [];
+      const plugin = mx();
+      const transform = plugin.transform as unknown as (
+        this: unknown,
+        code: string,
+        id: string,
+      ) => Promise<{ code: string } | null>;
+      const context = { warn: (message: string) => warnings.push(message) };
+
+      const first = await transform.call(
+        context,
+        "<marker/>\n",
+        `${caller}${MX_SUFFIX}`,
+      );
+
+      // The typo is reported...
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("package.json");
+      expect(warnings[0]).toContain("does-not-exist");
+      // ...and the local `tags/` directory still resolves, which is why this
+      // is a warning rather than a build failure.
+      expect(first?.code).toContain("still works");
+
+      // Once per problem, not once per compiled file: every file in the
+      // package re-reads the same `package.json`.
+      await transform.call(context, "<marker/>\n", `${caller}${MX_SUFFIX}`);
+      expect(warnings).toHaveLength(1);
+    });
+
+    it("invalidates callers when a tag file is newly created", async () => {
+      const { dir, caller } = project(
+        "export default { transform: (_c, ctx) => [ctx.build.text('x')] };\n",
+      );
+      const plugin = mx();
+      await transformOf(plugin).call(
+        {},
+        "<marker/>\n",
+        `${caller}${MX_SUFFIX}`,
+      );
+
+      // A file that did not exist when the scan ran is in no scan's file
+      // list, so keying only by file matched nothing here — and the hook then
+      // fell through to `matchExt`, which is undefined for `.tag.ts`, leaving
+      // callers serving stale output until a restart. The directory entry is
+      // what connects a *creation* to the callers that scanned there.
+      const created = join(dir, "tags", "brandnew.tag.ts");
+      writeFileSync(
+        created,
+        "export default { transform: (_c, ctx) => [ctx.build.text('new')] };\n",
+      );
+
+      const mod = { id: `${caller}${MX_SUFFIX}`, url: caller };
+      const invalidated: unknown[] = [];
+      const handle = plugin.handleHotUpdate as unknown as (
+        this: unknown,
+        ctx: unknown,
+      ) => unknown[] | undefined;
+
+      const updated = handle.call(
+        {},
+        {
+          file: created,
+          modules: [],
+          server: {
+            moduleGraph: {
+              getModuleById: (id: string) =>
+                id === `${caller}${MX_SUFFIX}` ? mod : undefined,
+              invalidateModule: (target: unknown) => invalidated.push(target),
+            },
+          },
+        },
+      );
+
+      expect(invalidated).toContain(mod);
+      expect(updated).toContain(mod);
+    });
+
+    it("invalidates the callers of an edited tag file", async () => {
+      const { tagFile, caller } = project(
+        "export default { transform: (_c, ctx) => [ctx.build.text('x')] };\n",
+      );
+      const plugin = mx();
+      // Transform once so the plugin records which tag files this caller read.
+      await transformOf(plugin).call(
+        {},
+        "<marker/>\n",
+        `${caller}${MX_SUFFIX}`,
+      );
+
+      // A stand-in module graph: the hook reads only these two methods, and a
+      // real dev server would have to be started to provide more.
+      const mod = { id: `${caller}${MX_SUFFIX}`, url: caller };
+      const invalidated: unknown[] = [];
+      const handle = plugin.handleHotUpdate as unknown as (
+        this: unknown,
+        ctx: unknown,
+      ) => unknown[] | undefined;
+
+      const updated = handle.call(
+        {},
+        {
+          file: tagFile,
+          modules: [],
+          server: {
+            moduleGraph: {
+              getModuleById: (id: string) =>
+                id === `${caller}${MX_SUFFIX}` ? mod : undefined,
+              invalidateModule: (target: unknown) => invalidated.push(target),
+            },
+          },
+        },
+      );
+
+      // The edited file is not itself a module, so nothing in Vite's own graph
+      // points at the caller: without this edge the page would serve stale
+      // output until a manual restart.
+      expect(invalidated).toContain(mod);
+      expect(updated).toContain(mod);
+    });
   });
 });

@@ -155,10 +155,34 @@ describe("scanCustomTags", () => {
     });
   });
 
-  it("reports an mx.tags entry naming a directory that does not exist", () => {
-    expect(() =>
-      scanCustomTags(fixture("mx-tags-missing", "caller.mx")),
-    ).toThrow(/mx\.tags` names a directory that does not exist/);
+  it("reports a missing mx.tags directory without failing the scan", () => {
+    const result = scanCustomTags(fixture("mx-tags-missing", "caller.mx"));
+
+    // A diagnostic, not a throw: one typo in `package.json` must not break
+    // compilation of every file in the package, including the files that
+    // never used that entry.
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.file).toBe(
+      fixture("mx-tags-missing", "package.json"),
+    );
+    expect(result.diagnostics[0]?.message).toContain(
+      "names a directory that does not exist",
+    );
+  });
+
+  it("keeps discovering local tags when an mx.tags entry is missing", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(
+      join(dir, "package.json"),
+      '{"name":"partial","mx":{"tags":"nope"}}',
+    );
+    writeFileSync(join(dir, "tags", "local.mx"), "<div/>\n");
+
+    const result = scanCustomTags(join(dir, "caller.mx"));
+
+    expect(Object.keys(result.customTags)).toEqual(["local"]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("reports a sidecar whose parseOptions is not a literal", () => {
@@ -204,6 +228,93 @@ describe("scanCustomTags", () => {
 
     const result = scanCustomTags(join(dir, "caller.mx"));
     expect([...result.tags.keys()]).toEqual(["card"]);
+  });
+
+  it("skips dotfiles rather than minting a broken tag name", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"dotfiles"}');
+    // `.mx` has an empty basename, and an empty tag name makes
+    // `@marko/compiler` throw `"tag.name" is required` — which fails every
+    // file in the package, not just a file that calls it. `.DS_Store.mx` is
+    // the same class from the other side: a `tags/` directory collects the
+    // junk any directory collects.
+    writeFileSync(join(dir, "tags", ".mx"), "<div/>\n");
+    writeFileSync(join(dir, "tags", ".DS_Store.mx"), "<div/>\n");
+    writeFileSync(join(dir, "tags", ".hidden.tag.ts"), "export default {};\n");
+    writeFileSync(join(dir, "tags", "real.mx"), "<div/>\n");
+
+    expect(
+      Object.keys(scanCustomTags(join(dir, "caller.mx")).customTags),
+    ).toEqual(["real"]);
+  });
+
+  it("rejects a tag file whose name cannot be a tag name", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"badname"}');
+    writeFileSync(join(dir, "tags", "-leading.mx"), "<div/>\n");
+
+    let error: unknown;
+    try {
+      scanCustomTags(join(dir, "caller.mx"));
+    } catch (cause) {
+      error = cause;
+    }
+
+    expect(error).toBeInstanceOf(TranslateError);
+    expect((error as Error).message).toContain("-leading.mx");
+    expect((error as Error).message).toContain("is not a usable tag name");
+  });
+
+  it("preserves a tag file's case in its call name", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"cased"}');
+    writeFileSync(join(dir, "tags", "Icon.tag.ts"), "export default {};\n");
+
+    // `tags/Icon.tag.ts` is `<Icon>`: a tag name is the filename, and the
+    // filename is the author's.
+    expect(
+      Object.keys(scanCustomTags(join(dir, "caller.mx")).customTags),
+    ).toEqual(["Icon"]);
+  });
+
+  it("reports a .solid.mx in a tags/ directory instead of ignoring it", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"solidtag"}');
+    writeFileSync(
+      join(dir, "tags", "widget.solid.mx"),
+      "export const x = 1;\n",
+    );
+
+    // A different file kind, not a tag template. Silence would leave an
+    // author wondering why their file is invisible.
+    expect(() => scanCustomTags(join(dir, "caller.mx"))).toThrow(
+      /tag templates are `\.mx`; `\.solid\.mx` is not supported as a tag/,
+    );
+  });
+
+  it("refuses to register a tag file shadowing a core-owned built-in", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"shadow"}');
+    // `<try>` is core-owned (spec §5 P4). `rejectShadowedRegistration`
+    // refuses the *whole* map when a shadowing name is in it, so passing this
+    // one onward would break every file in the package — including files that
+    // never call `<try>` — over one misnamed file.
+    writeFileSync(join(dir, "tags", "try.tag.ts"), "export default {};\n");
+    writeFileSync(join(dir, "tags", "fine.mx"), "<div/>\n");
+
+    const result = scanCustomTags(join(dir, "caller.mx"));
+
+    // Excluded from the map, so the rest of the package still compiles...
+    expect(Object.keys(result.customTags)).toEqual(["fine"]);
+    // ...and the author is told which file to rename.
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.file).toContain("try.tag.ts");
+    expect(result.diagnostics[0]?.message).toContain("core-owned custom tag");
   });
 
   it("stops the upward walk at the package root", () => {

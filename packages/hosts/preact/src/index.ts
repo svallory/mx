@@ -69,12 +69,11 @@ import {
 } from "./emitter.ts";
 import { preactTarget, type Target } from "./target.ts";
 
-export { TranslateError } from "@mxlang/core";
 // Re-exported for the hosts built on this emitter (`@mxlang/react`,
 // `@mxlang/hono`), which depend on this package rather than on the core
 // directly. Their Bun loaders need tag discovery, and a second dependency
 // edge only to reach one function would contradict that arrangement.
-export { getCustomTags } from "@mxlang/core";
+export { getCustomTags, TranslateError } from "@mxlang/core";
 export {
   createEmitter,
   createJsxDeclarations,
