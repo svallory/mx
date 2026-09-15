@@ -1,6 +1,8 @@
 # MX
 
-MX (Markup eXtended) is a template language born from Marko. It takes Marko's syntax and brings it to wherever JSX lives today, letting each **host** decide what state, reactivity, and output mean. MX 1.0 is a strict subset of Marko: every MX file is a valid Marko file, which is what lets MX borrow Marko's whole toolchain (language server, `prettier-plugin-marko`, tree-sitter grammar, `@marko/compiler`) on day one, by aliasing alone. `.mx` is the official extension; `.marko` is accepted everywhere with identical treatment, so porting a Marko component is a rename or nothing. SolidMX (codename "Fluid", `.solid.mx`) is the Solid host: MX in JSX's position inside Solid component files.
+MX (Markup eXtended) is a template language born from Marko. It takes Marko's syntax and brings it to wherever JSX lives today, letting each **host** decide what state, reactivity, and output mean. MX 1.0 is a strict subset of Marko: every MX file is a valid Marko file, which is what lets MX borrow Marko's parser, formatter, and grammar. `.mx` is the official and only whole-template extension; porting a Marko component that stays within the subset is a rename. SolidMX (codename "Fluid", `.solid.mx`) is the Solid host: MX in JSX's position inside Solid component files.
+
+Custom tags let a project define its own portable markup vocabulary in `tags/x.mx` or `tags/x.tag.ts`. They are discovered without call-site imports and expand to ordinary IR before any host emits. See the [custom-tag guide](apps/docs/docs/custom-tags/index.md).
 
 ## Packages
 
@@ -13,8 +15,8 @@ MX (Markup eXtended) is a template language born from Marko. It takes Marko's sy
 | `packages/editors/vscode` | `@mxlang/vscode` | VS Code extension: language client, TextMate grammars, and `typescriptServerPlugins` manifest |
 | `packages/tooling/eslint-plugin` | `@mxlang/eslint-plugin` | MX-specific lint rules (parser is `@babel/eslint-parser` + `babel-plugin-mx`) |
 | `packages/tooling/vite-plugin` | `@mxlang/vite-plugin` | Vite transform: prints `.solid.mx` to JSX text ahead of `@solidjs/vite-plugin` (the primary integration) |
-| `packages/core` | `@mxlang/core` | The Marko-node consumer every MX host is built on: the structural tag lowerings, the `Policy` contract, three stateful-tag hooks (tag handler, hoist, binding registry), and two front doors (`compileSource` through `@marko/compiler`'s `config.translator` seam, `parseFragment` for a substring of a larger file). Depends on `@marko/compiler` alone. |
-| `packages/hosts/html` | `@mxlang/html` | The vanilla MX host on `@mxlang/core`: `.mx` (official) and `.marko` (alias) files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`. MX 1.0 is a strict subset of Marko syntax (decision 72), so this is Marko syntax, unmodified — no fork. |
+| `packages/core` | `@mxlang/core` | The Marko-node consumer every MX host is built on: structural and custom-tag lowering, the host declarations contract, stateful-tag hooks, and the `compileSource`/`parseFragment` front doors. Depends on `@marko/compiler` alone. |
+| `packages/hosts/html` | `@mxlang/html` | The vanilla MX host on `@mxlang/core`: `.mx` files compile to a pure `(input) => string` function, no runtime beyond an `escape` helper, as a `config.translator` for `@marko/compiler`. MX 1.0 is a strict subset of Marko syntax (decision 72), so this is Marko syntax, unmodified — no fork. |
 | `packages/hosts/astro` | `@mxlang/astro` | The Astro host: an integration plus a renderer that renders `.mx` components to static markup at build time, with no islands and no client JS. Astro's slots (already-rendered HTML strings) map to MX's `content`/attribute-tag thunks; stateful tags are compile errors, since this host has no reactive target (decision 71). |
 | `packages/hosts/preact` | `@mxlang/preact` | The Preact host: a `.mx` template compiles to a Preact component module in JSX text. The first host whose target has no control-flow components at all — `<if>` becomes a ternary chain and `<for>` a `.map` with a `key`, exactly as a Preact author would write them. Ships `MxErrorBoundary`/`MxPlaceholder` for `<try>` (Preact has no built-in error boundary) and a `Target` object so a React host can reuse the emitter rather than fork it. |
 | `packages/hosts/react` | `@mxlang/react` | The React target on the shared Preact/React JSX emitter: `className`/`htmlFor`, native React Fragment and Suspense, and a React class error boundary for `<try>`—no Preact compat layer. |
@@ -115,13 +117,12 @@ needs a browser — so it stays behind the example's own script.
 
 `examples/mx-site` is a different kind of example: a Hono-on-Bun server
 rendering MX (`.mx`) templates to HTML strings with `@mxlang/html`, no
-client runtime, no Solid — one partial (`partials/callout.marko`) is kept as
-the `.marko` alias to exercise it end to end. It imports these files
+client runtime and no Solid. It imports these files
 directly via `@mxlang/html/bun` (no prebuild step). See
 `examples/mx-site/README.md`.
 
 `examples/mx-vite` is a minimal static-site build: two `.mx` pages compiled
-by `@mxlang/vite-plugin`'s `.mx`/`.marko` handling, bundled by `vite build`
+by `@mxlang/vite-plugin`, bundled by `vite build`
 to an SSR entry, then run once to write `dist/*.html`.
 
 `@mxlang/html` needs no app at all — it renders a fixture to stdout,
@@ -138,7 +139,7 @@ cd examples/mx-vite && bun run build
 ```
 
 `examples/astro-static` is the Astro host's example: an Astro site with `.mx`
-components (props, a default slot, a named slot, a `.marko` alias import, one
+components (props, a default slot, a named slot, one
 component composed from another) and, per decision 76b, `.mx` files directly
 under `src/pages` as pages — one through a layout with a `static`-block props
 and `<if>`/`<for>`, one with no layout writing its own full document, and a

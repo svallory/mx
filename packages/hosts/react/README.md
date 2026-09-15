@@ -5,6 +5,10 @@ module: TSX with `/** @jsxImportSource react */`, the author's imports and
 `static` blocks at module scope, and `export interface Input` as the component
 props type.
 
+Project [custom tags](../../../apps/docs/docs/custom-tags/index.md) are
+discovered and expanded before React emission, so they share one definition
+with every other host.
+
 ## Why it shares the Preact emitter
 
 React and Preact make the same structural lowering choices: `<if>` is a

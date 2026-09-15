@@ -9,10 +9,11 @@ description: "How @mxlang/core and each host divide responsibility."
 
 ## Resolve, then emit
 
-The split runs in two stages, and they are separate interfaces:
+The pipeline has three stages, with lowering and emission kept as separate interfaces:
 
-1. **Resolve.** `resolve()` turns Marko's AST into IR, carrying every validation and every error message. It asks the host's `HostDeclarations` object the questions it cannot answer itself — is this name an element or a component, is this tag inert or an error here, how should this modifier be rejected in your words.
-2. **Emit.** The host's `Emitter<Out>` walks that IR, one method per kind, driven by the core's `drive()`. An emitter never sees a Marko node; a resolve-time decision reaches it through `HostTag.data`.
+1. **Parse.** `@marko/compiler` produces the Marko AST for a whole file or fragment.
+2. **Lower.** `lower()` validates structure and expands [custom tags](/custom-tags/) here, recursively, until only ordinary host-independent IR remains. It asks the host's `HostDeclarations` object the questions it cannot answer itself — is this name an element or a component, is this tag inert or an error here, how should this modifier be rejected in your words.
+3. **Emit.** The host's `Emitter<Out>` walks that IR, one method per kind, driven by the core's `drive()`. An emitter never sees a Marko node or a custom-tag call; a lower-time host decision reaches it through `HostTag.data`.
 
 Keeping the two apart is what stops a host from re-deriving structure while it prints, and it is why the IR is the only thing an emitter needs to understand.
 
@@ -23,6 +24,7 @@ Keeping the two apart is what stops a host from re-deriving structure while it p
 | The structural tag lowerings (`<if>`, `<for>`, `<define>`, `<const>`, statement tags) | The disposition table: which tags are inert, which are errors, and why |
 | Guards against unsupported fields and node shapes | Component-versus-element resolution |
 | Resolving Marko's AST into the IR | Emitting each IR kind into the target's own syntax |
+| Expanding custom tags into ordinary IR | Defining the primitive a custom tag may request by name |
 | The two front doors (`compileSource`, `parseFragment`) | Structured attribute values (`class`, `style`), attribute order, modifiers |
 | The `escape` helper | Stateful tags (`<let>`, `<effect>`, `:=`), through three hooks |
 | Positions on every IR node | Its own integration — a Vite plugin, a Bun loader, a TypeScript plugin |

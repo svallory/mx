@@ -12,6 +12,10 @@ MX (`.mx`) template to a pure function — a JS/TS module
 whose default export is `(input) => string`, with no runtime beyond an `escape`
 helper. No scheduler, no signals, no hydration, no resume markers.
 
+Project [custom tags](../../../apps/docs/docs/custom-tags/index.md) are
+discovered and expanded to ordinary IR before this host emits, so the same tag
+definition works here and on every other host.
+
 The generic half lives in [`@mxlang/core`](../core/README.md): the Marko-node
 consumer, the structural tag lowerings, the `config.translator` seam and the
 string-emit model. This package supplies the *policy* — which tags are inert

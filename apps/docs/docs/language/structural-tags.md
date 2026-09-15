@@ -7,6 +7,8 @@ description: "The if/else and for forms that work identically on every host."
 
 MX's structural core is a small set of tags that render exactly the way Marko renders them, on every host. A host may forbid one of these tags outright, but it may never change what one means.
 
+`<try>` is implemented as a [core-owned custom tag](/custom-tags/sidecars/#request-a-host-primitive): the core validates one portable call shape, then requests the active host's `try` primitive. Projects cannot shadow its name.
+
 ## `<if>` / `<else if>` / `<else>`
 
 ```html
@@ -68,3 +70,5 @@ Lowers over `Object.entries(...)`.
 ## What's next
 
 Tag params and attribute tags apply to `<for>`'s own `|item, i|` binding too — see [Attribute tags and tag params](/language/attribute-tags-and-params/).
+
+To define project-specific tags that expand before a host sees them, continue with [Custom tags](/custom-tags/).

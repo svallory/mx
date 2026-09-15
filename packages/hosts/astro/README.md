@@ -13,6 +13,10 @@ runtime-free `(input) => string` function ([`@mxlang/html`](../translator/README
 is called during Astro's build, and never reaches a browser. No islands, no
 hydration, no client JS from this renderer.
 
+Project [custom tags](../../../apps/docs/docs/custom-tags/index.md) are
+discovered and expanded to ordinary IR before Astro emission, using the same
+definitions as the other hosts.
+
 ## Install
 
 ```
