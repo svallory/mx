@@ -293,8 +293,85 @@ just silence.
 
 `analyze`, `finalize`, and `ctx.store` are present in the public types so tag
 definitions do not churn between phases, but execution is deliberately gated
-with a clear “not implemented until P5” diagnostic. Template-only expansion is
-similarly reserved for P3.
+with a clear “not implemented until P5” diagnostic.
+
+## Template custom tags
+
+A tag may instead be backed by a template file — `tags/icon.mx`, ordinary MX
+with no sidecar — by carrying a `template` (`src/template-tag.ts`):
+
+```ts
+const icon: TemplateBackedTag = {
+  template: { filename: "/tags/icon.mx", source, mtimeMs },
+};
+```
+
+The template is lowered to IR once per `(path, mtime, source)` and spliced at
+each call site, so a host sees ordinary IR and never learns which layer wrote
+the markup. The call's body lands where the template writes
+`<${input.content}/>`, each `<@name>` at `<${input.name.content}/>` with
+repeats preserved, and placeholder params flow through `Block.params`. A
+template may call other template tags; expansion is depth-first under the same
+depth cap, and a cycle is an error naming the path (`a.mx -> b.mx -> a.mx`) on
+the call that closes it.
+
+**`input` is substituted, not bound.** Each `input.x` read becomes the
+attribute's own expression, or `undefined` when the call omits the attribute;
+`input["size"]` resolves the same way. The obvious alternative — bind one
+synthetic `Const` holding the attributes and leave the reads alone — is not
+available: a `Const` is a statement, and the four JSX hosts emit a template
+body as a single expression and reject a `<const>` nested in markup, which a
+call inside a `<for>` or `<if>` is. A **spread attribute is refused** on a
+template tag, since its keys are unknown until run time and resolving them to
+`undefined` would silently drop the author's values; so is a surviving bare
+`input` (`typeof input`, `input?.size`, a destructure), which after
+substitution can only be a use this strategy cannot express. `content` is
+reserved as an attribute name, because it names the body slot.
+
+**The one inherent limit: N reads are N evaluations.** A template that reads
+`input.size` twice evaluates the caller's `size=` expression twice, so a
+template must not read a side-effecting attribute more than once. Binding would
+not have had this; it is the price of the four hosts above, and it is pinned by
+a test so a future change is deliberate.
+
+**Both rewrites are AST-based.** Substitution and the hygiene rename parse each
+`Expr.code` with the vendored Babel expression parser, rewrite on the AST
+(scope through `isReferencedIdentifier()` and `path.scope.getBinding()`), and
+reprint. A regex over the printed text was tried first and was silently wrong
+on ordinary expressions — `x?x:x` renamed only the test, leaving the consequent
+on the caller's binding — so text rewriting is not an option here. A
+substituted *compound* expression is parenthesized, since it lands inside
+whatever operator surrounded the read (`size=a ?? b` into `input.size ?? 24`
+printed `a ?? b ?? 24`, a syntax error). Names the IR binds rather than any one
+expression — `<for>` and `<define>` params — are tracked down the walk
+separately, since no single expression's parse can see them.
+
+**Hygiene.** Render-scope names a template declares (`<const>`, `<define>`) are
+renamed to `gensym` names with their references rewritten, so a caller using
+the same name is unaffected; module-level statements hoist to the caller's
+module, where the template's helpers must live. Identical imports are deduped
+and a collision (one local name, two modules) is a positioned error naming both
+files — an import binding is not renamed, because unlike a render-scope name it
+also names a module the author wrote. Its `export interface Input` is not
+carried over, as it would collide with the caller's own.
+
+**Positions** from a template keep that file's line and column, carried on the
+optional `Position.file` and `Expr.file` and on `TranslateError.file`. Absent
+means the file being compiled. Content a call supplies and the template never
+places is reported as a warning naming the missing placeholder, rather than
+silently dropped. Warnings go through `ctx.warnings` (an `MxWarning[]` the
+caller passes in) rather than `console.warn`, so the language server can
+surface them as diagnostics in the file being edited; unset, they print as
+before.
+
+The resolved-IR cache is bounded at 256 templates, oldest-inserted evicted,
+because it is process-wide and a language server is long-lived.
+
+**Composition.** When a tag has both a template and a `transform`, the
+`transform` wins: it may call `ctx.build.template(call)` to expand the template
+with the call's inputs as raw material, or ignore it and build its own IR. A
+sidecar with `attributes`/`parseOptions` and no `transform` expands the
+template as an L1-only tag does, now validated.
 
 ## Host-policy resolution
 
