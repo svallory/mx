@@ -85,14 +85,14 @@ under the sandbox (always "not found," silently falling through to `bunx`).
    above).
 3. Create a small test project with a `package.json` declaring:
    ```json
-   { "mxlang": { "host": "html", "strict": true } }
+   { "mx": { "host": "html", "strict": true } }
    ```
    and an `.mx` file containing a `<let>` tag (rejected under `strict`, per
    `@mxlang/html`'s `strictPolicy` — see its own README).
 4. Open that `.mx` file in Zed. Expect one diagnostic (source `mxlang`)
    naming the `<let>` construct as unsupported under the resolved policy —
    see `packages/tooling/language-server/README.md` "Policy resolution" for exactly
-   how the `#mxlang` field is read.
+   how the `#mx` field is read.
 5. Open a `.solid.mx` file with a `<let>` inside an MX region. Expect the
    Solid host diagnostic to point at the tag's position in the complete
    TypeScript file.

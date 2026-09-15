@@ -43,7 +43,7 @@ ways.
 3. In a test project, add to `package.json`:
 
    ```json
-   { "mxlang": { "host": "html", "strict": true } }
+   { "mx": { "host": "html", "strict": true } }
    ```
 
 4. Open an `.mx` file containing a `<let>` tag. Under a `strict` host policy this is rejected — you should see one diagnostic naming the construct.

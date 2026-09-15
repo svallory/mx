@@ -36,7 +36,7 @@ React class error boundary plus React's `Suspense`.
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
-  "mxlang": { "host": "react" }
+  "mx": { "host": "react" }
 }
 ```
 

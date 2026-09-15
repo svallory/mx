@@ -19,10 +19,10 @@ Marko's own language server compiles with a fixed configuration that carries no 
 
 An editor only hands the server a file path and its text — nothing about which host compiles it. The server resolves that by walking upward from the file to the nearest `package.json`:
 
-1. **An explicit `mxlang` field**, if present — the authoritative source:
+1. **An explicit `mx` field**, if present — the authoritative source:
 
    ```json
-   { "mxlang": { "host": "html", "strict": true } }
+   { "mx": { "host": "html", "strict": true } }
    ```
 
 2. Otherwise, if that `package.json` depends on exactly one `@mxlang/*` host package, that host's default (non-strict) policy applies.
@@ -61,13 +61,13 @@ node node_modules/@mxlang/language-server/dist/bin.js --stdio
 
 `--stdio` is accepted for symmetry with other language servers, but stdio is the only transport this server speaks.
 
-## `package.json#mxlang` and Host Resolution
+## `package.json#mx` and Host Resolution
 
-The language server determines the correct host policy to use by reading the `mxlang` field in the project's `package.json`. For example:
+The language server determines the correct host policy to use by reading the `mx` field in the project's `package.json`. For example:
 
 ```json
 {
-  "mxlang": {
+  "mx": {
     "host": "react",
     "strict": true
   }

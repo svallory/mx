@@ -7,7 +7,7 @@ import { defineConfig } from "vite";
 // and `@preact/preset-vite` compiles that JSX — which is why this example
 // needs no JSX configuration of its own.
 //
-// The host is not configured here: `package.json`'s `"mxlang": { "host":
+// The host is not configured here: `package.json`'s `"mx": { "host":
 // "preact" }` is what routes `.mx` through `@mxlang/preact`, and the same
 // field is what the language server and `mx-tsc` read, so an editor and a
 // build cannot disagree.

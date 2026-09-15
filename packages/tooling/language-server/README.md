@@ -48,7 +48,7 @@ An editor hands the server a file path and text — nothing about which host
 compiles it, or whether that host runs a `strict` policy. The server resolves
 this by walking upward from the file, looking for the nearest `package.json`:
 
-1. **`package.json#mxlang`**, if present: `{ "host": "html" | "astro" |
+1. **`package.json#mx`**, if present: `{ "host": "html" | "astro" |
    "solid", "strict"?: boolean }` (with `"translator"` accepted as a deprecated alias). This is the authoritative source, and
    doubles as the routing config `@mxlang/vite-plugin`/the Bun loader already
    need for a mixed project (decision 71's "mixed projects" case).
