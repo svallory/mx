@@ -82,7 +82,7 @@ describe("Solid IR lowering", () => {
     [
       "list loop",
       `<for|item, i| of=items><p>\${item}</p></for>`,
-      ["<For each={items} keyed={false}>", "{(item, i) => <p>{item}</p>}"],
+      ["<For each={items}>", "{(item, i) => <p>{item}</p>}"],
     ],
     [
       "keyed list loop",

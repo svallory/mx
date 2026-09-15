@@ -242,12 +242,10 @@ function listAttrs(source: string) {
 }
 
 describe("for: Solid 2 list rows", () => {
-  it("lowers <for|it,i| of=xs()> to <For each keyed={false}>", () => {
+  it("lowers <for|it,i| of=xs()> to <For each> with no keyed prop (row bound as a value)", () => {
     const list = listAttrs(`const el = <for|it, i| of=xs()><li>x</li></for>;`);
     expect(list.name).toBe("For");
-    expect(list.attrNames).toEqual(["each", "keyed"]);
-    expect(list.attr("keyed")?.type).toBe("BooleanLiteral");
-    expect(list.attr("keyed")?.value).toBe(false);
+    expect(list.attrNames).toEqual(["each"]);
     expect(list.params).toHaveLength(2);
   });
 

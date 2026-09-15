@@ -506,7 +506,7 @@ export class SolidEmitter implements Emitter<string> {
     const [first = "item", second] = node.params;
     if (node.source.kind === "of") {
       let keyed: string;
-      if (!node.key) keyed = " keyed={false}";
+      if (!node.key) keyed = "";
       else if (node.key.shape === "string") {
         const field =
           node.key.node?.type === "StringLiteral"
