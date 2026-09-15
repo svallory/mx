@@ -1,1 +1,4 @@
-{ "name": "scan-bad-parse-options", "private": true }
+{
+  "name": "scan-bad-parse-options",
+  "private": true
+}

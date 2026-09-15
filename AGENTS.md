@@ -635,11 +635,10 @@ Five facts worth knowing before editing it:
   drops an entry except through `clearCaches()`; measured, 200 compiles with
   200 distinct tag sets leave 200 live ids. In a one-shot build that is
   bounded, but a long-lived language server compiling an edited file over and
-  over grows without limit. **P2 requirement:** the scan must reuse one
-  translator and one taglib per distinct tag set, and call `clearCaches()` (or
-  an equivalent eviction) when the tag set changes, rather than letting each
-  compilation add an id. No P1 code change — the signature-derived id is
-  correct, this is about its lifetime. `analyze`, `finalize`, and `ctx.store`
+  over grows without limit. **Done in P2** (`packages/core/src/scan-cache.ts`):
+  the cache interns one tag-map object per tag set, so the derived id is
+  stable across compiles, and evicts `taglib.clearCaches()` when the
+  parser-facing set changes. `analyze`, `finalize`, and `ctx.store`
   are typed but deliberately fail until P5; template-only expansion fails
   until P3. The TypeScript plugin passes the same map to compilation and its
   second lower. `.solid.mx` carries the map across the parser boundary on the
@@ -686,6 +685,94 @@ Five facts worth knowing before editing it:
   a named or spread attribute the same way — "accepts no attributes" — rather
   than the generic checker's own internal wording ("spread attributes cannot
   be checked...") leaking into a user-facing message.
+- **Custom tags are discovered, not configured** (P2, spec §4;
+  `packages/core/src/{scan,scan-cache}.ts`). `getCustomTags(file)` walks
+  upward from a file to the package root collecting `tags/` directories,
+  indexes `x.mx` and `x.tag.ts` by basename, and extends the walk with
+  `package.json#mx.tags` (a string, or entries of
+  `{ dir, prefix?, hosts?, parseOptions? }` supplying directory-level defaults
+  a sidecar may override). Nearest `tags/` directory wins; `mx.tags` entries
+  come last, in array order. Every integration the spec lists calls it per
+  compiled file — the Bun loaders, the Vite plugin, the Astro `.amx` plugin,
+  the TypeScript plugin, the language server, and `mx-tsc` through the same
+  language plugin — because which tags a template may call follows from where
+  the template lives. An explicitly passed `customTags` still wins over a
+  discovered tag of the same name.
+- **The scan is synchronous, and that is load-bearing.** Bun's `onLoad`,
+  Volar's `createVirtualCode`, `diagnoseDocument` and `mx-tsc` all call from
+  positions that cannot await; only the Vite plugin could. One synchronous
+  implementation is what keeps an editor, a `tsc` run and a build from
+  resolving different tags for one file.
+- **`parseOptions` is read without executing the sidecar**, because it must
+  reach Marko before the *calling* file is parsed. It is extracted statically
+  from the default export with `@marko/compiler`'s own Babel (not a second
+  `@babel/parser`), and the accepted shape is narrow: an object literal, or an
+  identifier bound once at module scope to one (optionally through `as` /
+  `satisfies`), holding boolean-valued `text`/`preserveWhitespace`/
+  `openTagOnly`. A spread, a computed key, a non-boolean or an indirection is
+  a positioned diagnostic naming the sidecar, never a guess. Hooks load lazily
+  on first use via a synchronous `require`, which both Bun and Node handle for
+  a `.ts` file with no transform from MX; a sidecar that throws while loading
+  becomes a `TranslateError` naming it, which is what lets the language server
+  report a diagnostic instead of dying.
+- **Invalidation is by recorded evidence, not by expiry.** A cached scan is
+  rechecked against each scanned directory's entry list, each tag file's
+  mtime, and the `package.json` that supplied `mx.tags`. Two signatures exist
+  on purpose: the *parser-facing* one (names, paths, `parseOptions`) decides
+  whether Marko may keep its lookup, while the *loaded* one adds every tag
+  file's mtime and decides whether a memoized `CustomTag` — which holds the
+  sidecar module it already loaded — may be reused. Conflating them served the
+  old hooks after an edit that changed only a `transform` body.
+  **Caveat when testing a reload:** under Vitest a deleted `require.cache` key
+  does not make `require` re-evaluate a file, because its module runner keeps
+  its own registry; Bun and Node both do re-evaluate, which is what ships. A
+  Vitest test therefore asserts that the directory is rescanned (add a tag
+  file), not that a rebuilt sidecar's hooks changed.
+- **A template-only tag is discovered with no hooks**, so calling one reports
+  P1's template-expansion gate rather than "unknown tag". Inlining is P3.
+- **The scan never hands a core-owned name onward.** A `tags/try.tag.ts` is
+  excluded from the map with a diagnostic naming the file, because
+  `rejectShadowedRegistration` refuses the *whole* `customTags` map when a
+  built-in name appears in it — so passing it through would break every file
+  in the package, including files that never call `<try>`, over one misnamed
+  file. P4's rule is unchanged; the scan simply does not feed it a violation.
+- **A sidecar may not use top-level `await`, and its relative imports need
+  explicit extensions** (`./helper.ts`, not `./helper`). Measured: Bun accepts
+  both forms, Node rejects both (`require() cannot be used on an ESM graph
+  with top-level await`; `Cannot find module`). A sidecar that breaks either
+  works in a `bun` build and fails in the editor — the exact disagreement one
+  shared loader exists to prevent — so `loadSidecar` restates the constraint
+  in its error when the runtime's message identifies it. Sidecars load through
+  Node's type-stripping `require`, so every package that can load one declares
+  `engines.node >= 22.18`; an older Node fails with `Unknown file extension
+  ".ts"` at first tag use.
+- **A tag's name is its filename, case included**: `tags/Icon.tag.ts` is
+  `<Icon>`. The name must match `/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/`; dotfiles
+  are skipped and anything else is a positioned diagnostic naming the file.
+  This is a guard with teeth: `tags/.mx` has an empty basename, and an empty
+  tag name makes `@marko/compiler` throw `"tag.name" is required`, which fails
+  *every* file in the package rather than only a caller. A `.solid.mx` in a
+  `tags/` directory is reported rather than ignored. Note the mtime cache
+  assumes sub-second mtime granularity — true on every platform MX targets,
+  but two writes inside one tick can look like one.
+- **A missing `mx.tags` directory is a diagnostic, not a throw.** It lands in
+  `ScanResult.diagnostics` and the scan continues, so one typo in
+  `package.json` does not break compilation of files that never used that
+  entry. Every integration that scans must *surface* that array or the typo is
+  silent everywhere, which is worse than either a throw or an error: the
+  language server publishes each as an LSP **warning** against the open
+  document whose message names the offending `package.json` (LSP has no way to
+  publish against a different file), and the Vite and TypeScript plugins warn
+  once per distinct problem rather than once per compiled file.
+- **Anything that must run the scan is tested where it can be driven.** The
+  Bun loaders are exercised through `Bun.plugin` under `bun test`
+  (`packages/hosts/{html,hono}/src/bun.test.ts`, both wired into the root
+  `test:bun`); a row that calls a host's `compile*` with a map it fetched
+  itself stays green with `getCustomTags` deleted from `bun.ts` and therefore
+  proves nothing. The language server is driven over stdio with a real
+  `file://` URI, because `resolve("file:///a/page.mx")` yields
+  `<cwd>/file:/a/page.mx` — passing a raw URI discovered zero tags for every
+  real document while a unit test using a plain path stayed green.
 
 ## `@mxlang/solid`: the Solid host on `@mxlang/core`
 

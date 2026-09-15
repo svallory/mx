@@ -197,8 +197,10 @@ compileSource(source, filename, declarations, {
 });
 ```
 
-The calling integration owns discovery and module loading; the core remains
-synchronous. It injects only each definition's `parseOptions` (`text`,
+A map passed in this way is the explicit route, used by a caller that builds
+tags itself. The ordinary route is discovery (see below), which fills the same
+map. Either way the core remains synchronous: it injects only each
+definition's `parseOptions` (`text`,
 `preserveWhitespace`, `openTagOnly`) into `@marko/compiler` before parsing,
 then validates declared `attributes` and `attributeTags` before `transform`.
 Transforms receive resolved author material and return ordinary IR. Builder
@@ -209,6 +211,85 @@ Write failures as `throw ctx.fail(message, position?)`. TypeScript does not
 reliably narrow after a bare call through the parameter property `ctx.fail`,
 despite its `never` return type. Unexpected exceptions are wrapped with the tag
 name and call-site position; an existing `TranslateError` passes through.
+
+## Discovering custom tags
+
+`getCustomTags(file)` builds that same map from the filesystem, so a tag needs
+no import and no configuration:
+
+```
+my-package/
+  package.json          # optionally: "mx": { "tags": [...] }
+  tags/
+    icon.tag.ts         # <icon>, a sidecar with hooks
+    note.mx             # <note>, a template-only tag (expansion is P3)
+  src/
+    page.mx             # calls <icon/> and <note/> with no import
+```
+
+The walk runs from the calling file's directory up to the package root,
+collecting `tags/` directories; a tag's name is its file's basename. Nearest
+directory wins. `package.json#mx.tags` — a string, or entries of
+`{ dir, prefix?, hosts?, parseOptions? }` — extends the walk in array order
+with directory-level defaults a sidecar may override, and comes last in
+precedence.
+
+Two properties make this usable from every integration:
+
+- **It is synchronous**, because every consumer is: Bun's `onLoad`, Volar's
+  `createVirtualCode`, the language server's `diagnoseDocument` and `mx-tsc`
+  all call from positions that cannot await.
+- **It indexes without executing.** `parseOptions` must reach Marko before the
+  *calling* file is parsed, so it is read statically out of the sidecar's
+  default export. That export must be an object literal, or an identifier
+  bound once at module scope to one; `parseOptions` itself must be an object
+  literal of boolean-valued known keys. A spread, a computed key or a value
+  imported from elsewhere cannot be read without running code and is a
+  positioned diagnostic naming the sidecar. Hooks load lazily on first use.
+
+### Writing a sidecar
+
+Two constraints, because the two runtimes that load a sidecar do not accept
+quite the same module (both measured, not inferred):
+
+- **No top-level `await`.** Bun loads it; Node refuses with `require() cannot
+  be used on an ESM graph with top-level await`.
+- **Explicit extensions on relative imports** — `./helper.ts`, not
+  `./helper`. Bun resolves the bare form; Node does not.
+
+Neither costs anything real in compile-time configuration, but a sidecar that
+breaks one works in a `bun` build and fails in the editor, which is the
+disagreement a single loader exists to prevent. The loader restates the
+constraint in its error when the runtime's own message identifies it.
+
+Sidecars are loaded through Node's type-stripping `require`, so the packages
+that load them declare `engines.node >= 22.18`; an older Node reports
+`Unknown file extension ".ts"` at first tag use.
+
+### Naming and caching
+
+A tag's name is its filename, case included: `tags/Icon.tag.ts` is `<Icon>`,
+not `<icon>`. A name must start with a letter, digit or underscore and may
+then contain letters, digits, underscores, hyphens and dots; anything else —
+including a dotfile such as `.DS_Store.mx`, and `tags/.mx`, whose empty name
+makes `@marko/compiler` fail *every* file in the package — is skipped or
+reported rather than registered. A `.solid.mx` file in a `tags/` directory is
+a different file kind and is reported, not silently ignored.
+
+Results are cached per directory and invalidated by what the scan recorded: a
+directory's entry list, each tag file's mtime, and the `package.json` carrying
+`mx.tags`. Invalidation is therefore only as precise as the filesystem's mtime
+granularity; every platform MX targets records sub-second mtimes, but two
+writes inside one tick can look like one. A broken sidecar — unparseable `parseOptions`, or a module that
+throws while loading — is a `TranslateError` naming that file, which is what
+lets the language server report a diagnostic rather than crash. An `mx.tags`
+entry naming a directory that does not exist is softer still: it lands in
+`ScanResult.diagnostics` and the scan carries on, so one typo in
+`package.json` cannot break compilation of every file in the package. A
+caller is expected to surface that array — the language server publishes each
+as a warning naming the offending `package.json`, and the Vite and TypeScript
+plugins warn once per distinct problem — because a diagnostic nothing reads is
+just silence.
 
 `analyze`, `finalize`, and `ctx.store` are present in the public types so tag
 definitions do not churn between phases, but execution is deliberately gated
@@ -329,4 +410,7 @@ bunx vitest run --root ../.. --project @mxlang/core
 
 `src/lower.test.ts` (one fixture per IR kind, positions, host hooks and error
 cases), `src/emit.test.ts` (the exhaustive driver), `src/fragment.test.ts` (the
-fragment door, non-zero bases and the error path), and `src/escape.test.ts`.
+fragment door, non-zero bases and the error path), `src/custom-tags.test.ts`,
+`src/scan.test.ts` (the walk, `mx.tags`, static `parseOptions` reading, cache
+invalidation and taglib-id reuse, over fixtures in `src/fixtures/scan/`), and
+`src/escape.test.ts`.

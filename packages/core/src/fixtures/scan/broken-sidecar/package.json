@@ -1,1 +1,4 @@
-{ "name": "scan-broken-sidecar", "private": true }
+{
+  "name": "scan-broken-sidecar",
+  "private": true
+}

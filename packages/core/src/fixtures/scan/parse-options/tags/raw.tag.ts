@@ -7,6 +7,8 @@ import type { CustomTag } from "../../../../custom-tags.ts";
  */
 const raw: CustomTag = {
   parseOptions: { text: true, preserveWhitespace: true },
-  transform: (call, ctx) => [ctx.build.text(String(call.content ? "body" : ""))],
+  transform: (call, ctx) => [
+    ctx.build.text(String(call.content ? "body" : "")),
+  ],
 };
 export default raw;

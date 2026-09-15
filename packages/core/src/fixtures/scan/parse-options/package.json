@@ -1,1 +1,4 @@
-{ "name": "scan-parse-options", "private": true }
+{
+  "name": "scan-parse-options",
+  "private": true
+}
