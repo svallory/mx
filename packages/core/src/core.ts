@@ -54,11 +54,12 @@ const require = createRequire(import.meta.url);
  * Required lazily so the type surface stays importable without pulling in a
  * 1.7MB bundle.
  */
-function markoBabel(): {
+export function markoBabel(): {
   parse: (code: string, options?: Node) => Node;
   parseExpression: (code: string, options?: Node) => Node;
   traverse: Node;
   types: Node;
+  generator: (node: Node, options?: Node) => { code: string };
 } {
   return require("@marko/compiler/internal/babel");
 }
@@ -74,12 +75,22 @@ function markoBabel(): {
 export class TranslateError extends Error {
   readonly line: number;
   readonly column: number;
+  /**
+   * The file `line`/`column` are measured in, when it is not the file being
+   * compiled — a diagnostic raised inside an inlined tag template.
+   *
+   * `undefined` for every error the compiler raises about the file it was
+   * given, which is why no existing consumer had to change: only a reporter
+   * that can address a second file need read it.
+   */
+  readonly file?: string;
 
-  constructor(message: string, line: number, column: number) {
+  constructor(message: string, line: number, column: number, file?: string) {
     super(message);
     this.name = "TranslateError";
     this.line = line;
     this.column = column;
+    this.file = file;
   }
 }
 
@@ -206,11 +217,65 @@ export interface Ctx {
   customTagDepth?: number;
   /** Per-file serial for hygienic names minted by custom tags. */
   customTagGensym?: number;
+  /**
+   * `import` statements already hoisted into this file's module from a tag
+   * template, keyed by the local binding name.
+   *
+   * Two call sites of one template, or two templates importing the same
+   * helper, must contribute one `import` rather than one per expansion; and
+   * two templates importing *different* modules under the same local name must
+   * be a diagnostic rather than an ambiguous binding both bodies then read.
+   */
+  templateImports?: Map<string, { code: string; file: string }>;
+  /**
+   * Positioned warnings raised during lowering: a construct that compiles but
+   * drops something the author wrote.
+   *
+   * A sink rather than `console.warn` because the audience is an editor. A
+   * warning printed to a build's stdout is invisible in the one place it
+   * matters — the file being edited — and these are all silent-drop reports,
+   * which is the class this codebase's guards exist to surface. The language
+   * server drains this into LSP diagnostics; a plain build leaves it unset and
+   * `warn()` falls back to `console.warn`, so no caller has to opt in.
+   */
+  warnings?: MxWarning[];
+  /**
+   * Template files currently being expanded, outermost first.
+   *
+   * A template tag may call other custom tags, so expansion is depth-first;
+   * this is the path that makes a cycle detectable and reportable by name
+   * (`a.mx -> b.mx -> a.mx`) rather than only as a depth-cap failure.
+   */
+  templateStack?: string[];
 }
 
-export function fail(message: string, node: Node): never {
+/** One positioned warning: a compile that succeeded while dropping something. */
+export interface MxWarning {
+  message: string;
+  line: number;
+  column: number;
+  file?: string;
+}
+
+/**
+ * Records a positioned warning, or prints it when no sink is collecting.
+ *
+ * The fallback keeps a plain `compile()` call as loud as it was before the
+ * sink existed; a caller that wants them (the language server) passes
+ * `ctx.warnings` and publishes them instead.
+ */
+export function warn(ctx: Ctx, warning: MxWarning): void {
+  if (ctx.warnings) {
+    ctx.warnings.push(warning);
+    return;
+  }
+  const where = warning.file ? `${warning.file}:` : "";
+  console.warn(`${where}${warning.line}:${warning.column}: ${warning.message}`);
+}
+
+export function fail(message: string, node: Node, file?: string): never {
   const loc = node?.loc?.start ?? node?.start ?? { line: 0, column: 0 };
-  throw new TranslateError(message, loc.line ?? 0, loc.column ?? 0);
+  throw new TranslateError(message, loc.line ?? 0, loc.column ?? 0, file);
 }
 
 export function quote(text: string): string {

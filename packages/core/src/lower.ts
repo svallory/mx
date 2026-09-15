@@ -35,6 +35,7 @@ import {
   hasContent,
   importBindings,
   type Node,
+  newCtx,
   rejectInertShape,
   rejectUnsupportedFields,
   scopeBindings,
@@ -50,6 +51,7 @@ import {
   transformCustomTag,
 } from "./custom-tags.ts";
 import type { HostDeclarations } from "./declarations.ts";
+import { parseFragment } from "./fragment.ts";
 import type {
   Attr,
   AttributeTag,
@@ -64,6 +66,7 @@ import type {
   Position,
 } from "./ir.ts";
 import type { SourceSpan } from "./mapping.ts";
+import { registerTemplateLowerer, type TemplateTag } from "./template-tag.ts";
 
 /** A node's start position, in `TranslateError`'s own 1-based/0-based shape. */
 function posOf(node: Node): Position {
@@ -596,6 +599,15 @@ function lowerStatement(ctx: Ctx, node: Node, name: string): IrNode {
     // registered only after the whole body resolved would make every
     // imported component an unbound capitalized tag.
     for (const binding of bindings) ctx.imports.add(binding);
+    // Also recorded against the template-import table, so a tag template that
+    // imports the same helper the caller already imported contributes no
+    // second statement, and one that imports a *different* module under the
+    // same local name is a diagnostic rather than a silent shadow.
+    ctx.templateImports ??= new Map();
+    const table = ctx.templateImports;
+    for (const binding of bindings) {
+      if (!table.has(binding)) table.set(binding, { code: line, file: "" });
+    }
     return { kind: "Import", code: line, bindings, loc, end };
   }
   if (name === "static") {
@@ -985,5 +997,60 @@ export function lower(ctx: Ctx, body: Node[]): Ir {
 
   return ir;
 }
+
+/**
+ * Lowers one tag-template file to IR, for `template-tag.ts` to splice.
+ *
+ * Registered rather than imported by that module because the dependency runs
+ * the other way: `lower.ts` calls the expander, so the expander cannot import
+ * `lower.ts` back without a cycle.
+ *
+ * The template is parsed and lowered with **its own `Ctx`, over its own
+ * source**. That is the whole of the third position rule's mechanism: every
+ * `fail()` raised while lowering the template already measures against the
+ * template's text, and `template-tag.ts` only has to attach the file name
+ * afterwards. It is also the hygiene boundary — `bindings`, `defines` and
+ * `imports` are the template's own, so nothing it declares is visible to the
+ * caller's scope.
+ *
+ * The host's declarations and taglib lookup are the caller's, deliberately: a
+ * template is compiled *for* the host that is compiling the caller, which is
+ * what lets one `tags/icon.mx` render on all six.
+ */
+registerTemplateLowerer((ctx: Ctx, tag: TemplateTag) => {
+  const { body } = parseFragment(tag.source, {
+    filename: tag.filename,
+    customTags: ctx.customTags as Record<string, CustomTag> | undefined,
+  });
+  const templateCtx = newCtx(
+    tag.source,
+    ctx.generate,
+    ctx.declarations,
+    ctx.lookup,
+  );
+  templateCtx.customTags = ctx.customTags;
+  templateCtx.customTagDepth = ctx.customTagDepth;
+  // Shared by reference, not copied, and that is what makes the cycle check
+  // correct across the cache. The stack is pushed and popped by
+  // `expandTemplate` *around* the cache lookup, so it reflects the call path
+  // currently being expanded rather than anything the cache holds — a cached
+  // template's body still re-enters `expandTemplate` for each nested tag it
+  // calls, which is where the check runs. A copy would make a cycle through
+  // two levels invisible to the inner one.
+  templateCtx.templateStack = ctx.templateStack;
+  templateCtx.templateImports = ctx.templateImports;
+
+  const ir = lower(templateCtx, body);
+  return {
+    body: ir.body,
+    // A template's module-level statements are the caller's module's: its
+    // `import`s are how the template reaches its helpers, and its `static`
+    // blocks are evaluated once per module rather than once per call. The
+    // author's `export interface Input` is the tag's own typed contract and
+    // is deliberately *not* carried over — it would collide with the caller's
+    // own `Input`, which is the interface the caller's render function takes.
+    module: [...ir.imports, ...ir.hoisted, ...ir.prelude],
+  };
+});
 
 export type { HostDeclarations };

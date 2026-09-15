@@ -639,13 +639,15 @@ Five facts worth knowing before editing it:
   the cache interns one tag-map object per tag set, so the derived id is
   stable across compiles, and evicts `taglib.clearCaches()` when the
   parser-facing set changes. `analyze`, `finalize`, and `ctx.store`
-  are typed but deliberately fail until P5; template-only expansion fails
-  until P3. The TypeScript plugin passes the same map to compilation and its
+  are typed but deliberately fail until P5. The TypeScript plugin passes the
+  same map to compilation and its
   second lower. `.solid.mx` carries the map across the parser boundary on the
   `mxCustomTags` parser option (`print(source, file, { customTags })`), the
   only channel the in-tokenizer bridge has to the caller.
   `bun run oracle:custom-tags` is the six-host `<icon>` gate; every row,
-  Solid included, renders and compares against `expected.html`.
+  Solid included, renders and compares against `expected.html`. It runs
+  **two** fixtures — `icon` (an L2 sidecar) and `icon-template` (the same tag
+  as an L1 template) — for a 12-row count gate.
 - **`<try>` is a core-owned custom tag (spec §5 P4), not per-host code.**
   `packages/core/src/builtin-tags.ts` exports `BUILTIN_CUSTOM_TAGS`, and a
   name it lists (today, only `try`) cannot be shadowed by a registered
