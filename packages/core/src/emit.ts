@@ -54,7 +54,7 @@ export interface Emitter<Out> {
  * Walks a list of IR nodes, calling the emitter's method for each kind.
  *
  * Module-level kinds (`Import`, `Static`, `Export`, `InputInterface`) never
- * reach here: `resolve()` lifts them out of the body into `Ir`'s own fields,
+ * reach here: `lower()` lifts them out of the body into `Ir`'s own fields,
  * so a host places them from there rather than filtering the tree.
  */
 export function drive<Out>(emitter: Emitter<Out>, nodes: IrNode[]): void {
@@ -96,9 +96,9 @@ export function drive<Out>(emitter: Emitter<Out>, nodes: IrNode[]): void {
       case "Comment":
         emitter.comment(node);
         break;
-      // The module-level kinds, lifted into `Ir`'s fields by `resolve()`. A
+      // The module-level kinds, lifted into `Ir`'s fields by `lower()`. A
       // host reads them from there, so reaching one here means the IR was
-      // hand-built rather than resolved. Throwing rather than ignoring: a
+      // hand-built rather than lowered. Throwing rather than ignoring: a
       // silent `break` would drop a real `import` or `export` from a
       // successful compile, which is the S8 class this codebase's guards
       // exist to close.
@@ -107,7 +107,7 @@ export function drive<Out>(emitter: Emitter<Out>, nodes: IrNode[]): void {
       case "Export":
       case "InputInterface":
         throw new Error(
-          `@mxlang/core: unexpected module-level node kind "${node.kind}" in the body walk; resolve() lifts these into Ir's own fields`,
+          `@mxlang/core: unexpected module-level node kind "${node.kind}" in the body walk; lower() lifts these into Ir's own fields`,
         );
       // A kind no emitter knows about. `node` is `never` here when the switch
       // is exhaustive, so the compiler catches a *new* IR kind at build time;
@@ -124,7 +124,7 @@ export function drive<Out>(emitter: Emitter<Out>, nodes: IrNode[]): void {
   }
 }
 
-/** Drives a whole resolved template and returns the emitter's output. */
+/** Drives a whole lowered template and returns the emitter's output. */
 export function emit<Out>(emitter: Emitter<Out>, ir: Ir): Out {
   drive(emitter, ir.body);
   return emitter.done();

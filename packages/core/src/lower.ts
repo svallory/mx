@@ -1,5 +1,5 @@
 /**
- * The resolver (decision 79): Marko's AST in, MX's host-independent IR out.
+ * The lowerer (decision 79): Marko's AST in, MX's host-independent IR out.
  *
  * This is the core's whole node walk, with every `out +=` removed. It does all
  * the validation the emitting walk used to do — dispositions and inert shapes,
@@ -15,7 +15,7 @@
  * ## The two decision-70 hooks, as IR annotations
  *
  * `ctx.hoist(code)` and `ctx.bindings` still exist, and still run *here*
- * rather than at emit time: both are resolve-time state. A hoisted statement
+ * rather than at emit time: both are lower-time state. A hoisted statement
  * is recorded on the enclosing scope (the template's `prelude`, or the nearest
  * `Define`'s own), and a registered binding rewrites identifier *references*
  * as each expression is printed — so the `Expr.code` a host receives is
@@ -126,7 +126,7 @@ function exprOf(ctx: Ctx, node: Node): Expr {
  *
  * `ctx.prelude` is swapped as the walk enters and leaves a `<define>`, so a
  * `ctx.hoist` from inside one lands on that define's own head rather than the
- * render function's — the same function-boundary rule the resolver applies to
+ * render function's — the same function-boundary rule the lowerer applies to
  * the template body.
  */
 function withPrelude<T>(ctx: Ctx, run: () => T): [T, Ctx["prelude"]] {
@@ -139,7 +139,7 @@ function withPrelude<T>(ctx: Ctx, run: () => T): [T, Ctx["prelude"]] {
 }
 
 /** Resolves one attribute of an element or component call. */
-function resolveAttr(
+function lowerAttr(
   ctx: Ctx,
   attr: Node,
   on: "element" | "component" = "element",
@@ -221,14 +221,14 @@ function resolveAttr(
   };
 }
 
-function resolveAttrs(
+function lowerAttrs(
   ctx: Ctx,
   node: Node,
   name: string,
   on: "element" | "component" = "element",
 ): Attr[] {
   const attrs = (node.attributes ?? []).map((attr: Node) =>
-    resolveAttr(ctx, attr, on),
+    lowerAttr(ctx, attr, on),
   );
   return ctx.declarations.orderAttrs?.(name, attrs, on, ctx) ?? attrs;
 }
@@ -259,18 +259,18 @@ function paramBindings(node: Node): string[] {
 }
 
 /**
- * A child list resolved as a callable block, with its params shadowing.
+ * A child list lowered as a callable block, with its params shadowing.
  *
  * A block's params are in scope for its own body only: inside
  * `<@footer|year|>`, `year` is the parameter, not any host binding of the same
  * name. Restored on the way out.
  */
-function resolveBlock(ctx: Ctx, node: Node): Block {
+function lowerBlock(ctx: Ctx, node: Node): Block {
   // A block is its own JS scope: both the params it shadows *and* anything a
   // `<const>` inside it unregisters are confined to it.
   const unscope = scopeBindings(ctx);
   const restore = shadowBindings(ctx, paramBindings(node));
-  const children = resolveChildren(ctx, node.body?.body ?? []);
+  const children = lowerChildren(ctx, node.body?.body ?? []);
   restore();
   unscope();
   return {
@@ -282,7 +282,7 @@ function resolveBlock(ctx: Ctx, node: Node): Block {
 }
 
 /** `<@name>` children of a component call, in source order. */
-function resolveAttributeTags(ctx: Ctx, node: Node): AttributeTag[] {
+function lowerAttributeTags(ctx: Ctx, node: Node): AttributeTag[] {
   const tags: AttributeTag[] = [];
   for (const block of node.attributeTags ?? []) {
     if (block.type !== "MarkoTag") continue;
@@ -292,7 +292,7 @@ function resolveAttributeTags(ctx: Ctx, node: Node): AttributeTag[] {
         const span = nodeSpan(ctx, block.name);
         return { sourceStart: span.sourceStart + 1, sourceEnd: span.sourceEnd };
       })(),
-      block: resolveBlock(ctx, block),
+      block: lowerBlock(ctx, block),
       loc: posOf(block),
     });
   }
@@ -305,7 +305,7 @@ function resolveAttributeTags(ctx: Ctx, node: Node): AttributeTag[] {
  * Returns the index of the first sibling it did not consume, so the caller
  * resumes after the whole chain rather than re-reading `<else>` as a tag.
  */
-function resolveIfChain(
+function lowerIfChain(
   ctx: Ctx,
   children: Node[],
   index: number,
@@ -319,7 +319,7 @@ function resolveIfChain(
   // shadow the host's binding for the code that follows the chain.
   const branchChildren = (branchNode: Node): IrNode[] => {
     const unscope = scopeBindings(ctx);
-    const children = resolveChildren(ctx, branchNode.body?.body ?? []);
+    const children = lowerChildren(ctx, branchNode.body?.body ?? []);
     unscope();
     return children;
   };
@@ -379,7 +379,7 @@ function resolveIfChain(
  * 65). A reactive host (Solid) emits it as the `keyed` prop on `<For>`.
  * Carried in the IR so both paths work from the same tree.
  */
-function resolveFor(ctx: Ctx, node: Node): IrNode {
+function lowerFor(ctx: Ctx, node: Node): IrNode {
   rejectUnsupportedFields(ctx, node, "`<for>`", { params: true });
 
   const params = paramsOf(ctx, node);
@@ -454,7 +454,7 @@ function resolveFor(ctx: Ctx, node: Node): IrNode {
   // The loop body is a JS block, so a `<const>` inside it is confined to it.
   const unscope = scopeBindings(ctx);
   const restore = shadowBindings(ctx, bindings);
-  const children = resolveChildren(ctx, node.body?.body ?? []);
+  const children = lowerChildren(ctx, node.body?.body ?? []);
   restore();
   unscope();
 
@@ -471,7 +471,7 @@ function resolveFor(ctx: Ctx, node: Node): IrNode {
 }
 
 /** `<const/name=expr/>` — a binding at render scope. */
-function resolveConst(ctx: Ctx, node: Node): IrNode {
+function lowerConst(ctx: Ctx, node: Node): IrNode {
   if (!node.var) {
     fail(
       "`<const>` without a variable name (write `<const/name=value/>`)",
@@ -498,7 +498,7 @@ function resolveConst(ctx: Ctx, node: Node): IrNode {
 }
 
 /** `<define/name|params|>...</define>` — a reusable block. */
-function resolveDefine(ctx: Ctx, node: Node): IrNode {
+function lowerDefine(ctx: Ctx, node: Node): IrNode {
   if (!node.var) {
     fail("`<define>` without a name (write `<define/name>`)", node);
   }
@@ -512,7 +512,7 @@ function resolveDefine(ctx: Ctx, node: Node): IrNode {
   // read the define's own params.
   const restore = shadowBindings(ctx, paramBindings(node));
   const [children, prelude] = withPrelude(ctx, () =>
-    resolveChildren(ctx, node.body?.body ?? []),
+    lowerChildren(ctx, node.body?.body ?? []),
   );
   restore();
 
@@ -541,14 +541,14 @@ function resolveDefine(ctx: Ctx, node: Node): IrNode {
  * interface Input` is lifted so a host can place it above the render function;
  * any other `export` hoists verbatim as a real module export.
  */
-function resolveStatement(ctx: Ctx, node: Node, name: string): IrNode {
+function lowerStatement(ctx: Ctx, node: Node, name: string): IrNode {
   const line = sliceLoc(ctx, node.loc).trim();
   const loc = posOf(node);
   const end = endPosOf(node);
 
   if (name === "import") {
     const bindings = importBindings(line);
-    // Recorded *now*, not in `resolve`'s post-pass: a component call later in
+    // Recorded *now*, not in `lower`'s post-pass: a component call later in
     // the body asks `isComponent`, which consults `ctx.imports`, so a binding
     // registered only after the whole body resolved would make every
     // imported component an unbound capitalized tag.
@@ -575,12 +575,12 @@ function resolveStatement(ctx: Ctx, node: Node, name: string): IrNode {
   );
 }
 
-/** A tag this host claims, with every part resolved for its emitter. */
-function resolveHostTag(ctx: Ctx, node: Node, name: string): IrNode {
+/** A tag this host claims, with every part lowered for its emitter. */
+function lowerHostTag(ctx: Ctx, node: Node, name: string): IrNode {
   const loc = posOf(node);
   const unscope = scopeBindings(ctx);
   const restore = shadowBindings(ctx, paramBindings(node));
-  const children = resolveChildren(ctx, node.body?.body ?? []);
+  const children = lowerChildren(ctx, node.body?.body ?? []);
   restore();
   unscope();
 
@@ -588,9 +588,9 @@ function resolveHostTag(ctx: Ctx, node: Node, name: string): IrNode {
     kind: "HostTag",
     tag: {
       name,
-      attrs: resolveAttrs(ctx, node, name),
+      attrs: lowerAttrs(ctx, node, name),
       children,
-      attributeTags: resolveAttributeTags(ctx, node),
+      attributeTags: lowerAttributeTags(ctx, node),
       params: paramsOf(ctx, node),
       var: node.var ? declName(ctx, node.var) : null,
       data: ctx.declarations.resolveHostTag?.(name, node, ctx),
@@ -601,11 +601,7 @@ function resolveHostTag(ctx: Ctx, node: Node, name: string): IrNode {
 }
 
 /** A component call, with its props, children and attribute tags. */
-function resolveComponent(
-  ctx: Ctx,
-  node: Node,
-  target: ComponentTarget,
-): IrNode {
+function lowerComponent(ctx: Ctx, node: Node, target: ComponentTarget): IrNode {
   // The host gets first refusal, before any `Component` node exists: a call it
   // will not route must fail here rather than reach an emitter, which no
   // longer has the Marko node to judge it by.
@@ -657,9 +653,9 @@ function resolveComponent(
     kind: "Component",
     target,
     nameSpan: target.kind === "dynamic" ? null : nodeSpan(ctx, node.name),
-    attrs: resolveAttrs(ctx, node, targetName(target), "component"),
-    content: hasContent(children) ? resolveBlock(ctx, node) : null,
-    attributeTags: resolveAttributeTags(ctx, node),
+    attrs: lowerAttrs(ctx, node, targetName(target), "component"),
+    content: hasContent(children) ? lowerBlock(ctx, node) : null,
+    attributeTags: lowerAttributeTags(ctx, node),
     args: (node.arguments ?? []).map((a: Node) => exprOf(ctx, a)),
     loc: posOf(node),
   };
@@ -672,14 +668,14 @@ function targetName(target: ComponentTarget): string {
   return target.kind === "dynamic" ? "dynamic tag" : target.name;
 }
 
-function resolveTag(ctx: Ctx, node: Node): IrNode {
+function lowerTag(ctx: Ctx, node: Node): IrNode {
   // A bare `${expr}` on its own line parses as a tag whose *name* is the
   // expression, with no attributes and no body — Marko's concise mode has no
   // other shape for it. Treated as the escaped placeholder the author wrote.
   if (node.name && node.name.type !== "StringLiteral") {
     const claimed = ctx.declarations.claimsTag?.(DYNAMIC_TAG, ctx);
     if ((node.attributes ?? []).length === 0 && !node.body?.body?.length) {
-      if (claimed) return resolveHostTag(ctx, node, DYNAMIC_TAG);
+      if (claimed) return lowerHostTag(ctx, node, DYNAMIC_TAG);
       return {
         kind: "Interpolation",
         expr: exprOf(ctx, node.name),
@@ -687,7 +683,7 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
         loc: posOf(node),
       };
     }
-    if (claimed) return resolveHostTag(ctx, node, DYNAMIC_TAG);
+    if (claimed) return lowerHostTag(ctx, node, DYNAMIC_TAG);
     fail("dynamic tag name is not supported in a standalone template", node);
   }
 
@@ -705,13 +701,13 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
     case "import":
     case "static":
     case "export":
-      return resolveStatement(ctx, node, name);
+      return lowerStatement(ctx, node, name);
     case "for":
-      return resolveFor(ctx, node);
+      return lowerFor(ctx, node);
     case "const":
-      return resolveConst(ctx, node);
+      return lowerConst(ctx, node);
     case "define":
-      return resolveDefine(ctx, node);
+      return lowerDefine(ctx, node);
     case "else": {
       const label = attrByName(node, "if") ? "else if" : "else";
       return fail(`\`<${label}>\` without a preceding \`<if>\``, node);
@@ -721,7 +717,7 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
   }
 
   if (ctx.declarations.claimsTag?.(name, ctx)) {
-    return resolveHostTag(ctx, node, name);
+    return lowerHostTag(ctx, node, name);
   }
 
   if (name.startsWith("@")) {
@@ -733,7 +729,7 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
 
   if (ctx.declarations.isComponent(name, ctx)) {
     const params = ctx.defines.get(name);
-    return resolveComponent(
+    return lowerComponent(
       ctx,
       node,
       params ? { kind: "define", name, params } : { kind: "name", name },
@@ -773,14 +769,14 @@ function resolveTag(ctx: Ctx, node: Node): IrNode {
   return {
     kind: "Element",
     name,
-    attrs: resolveAttrs(ctx, node, name),
-    children: isVoid ? [] : resolveChildren(ctx, node.body?.body ?? []),
+    attrs: lowerAttrs(ctx, node, name),
+    children: isVoid ? [] : lowerChildren(ctx, node.body?.body ?? []),
     void: isVoid,
     loc: posOf(node),
   };
 }
 
-export function resolveChildren(ctx: Ctx, children: Node[]): IrNode[] {
+export function lowerChildren(ctx: Ctx, children: Node[]): IrNode[] {
   const out: IrNode[] = [];
   let index = 0;
 
@@ -788,7 +784,7 @@ export function resolveChildren(ctx: Ctx, children: Node[]): IrNode[] {
     const child = children[index];
 
     if (child.type === "MarkoTag" && child.name?.value === "if") {
-      const [node, next] = resolveIfChain(ctx, children, index);
+      const [node, next] = lowerIfChain(ctx, children, index);
       out.push(node);
       index = next;
       continue;
@@ -813,12 +809,12 @@ export function resolveChildren(ctx: Ctx, children: Node[]): IrNode[] {
         break;
       case "MarkoTag":
         // A statement the host hoisted stays on `ctx.prelude` and is drained
-        // by the enclosing *function* — `resolveDefine`, or `resolve` for the
+        // by the enclosing *function* — `lowerDefine`, or `lower` for the
         // render function — never here. Draining it at every child list would
         // trap a hoist from inside an `<if>` in that branch, which is the one
         // thing decision 70's hoist hook exists to prevent: the declaration
         // has to outlive the block it was written in.
-        out.push(resolveTag(ctx, child));
+        out.push(lowerTag(ctx, child));
         break;
       case "MarkoDocumentType":
         out.push({
@@ -851,14 +847,14 @@ export function resolveChildren(ctx: Ctx, children: Node[]): IrNode[] {
 }
 
 /**
- * Resolves a whole template body to the IR.
+ * Lowers a whole template body to the IR.
  *
  * Module-level parts (`import`, `static`, `export interface Input`) are lifted
  * out of the body into `Ir`'s own fields, so a host places them without
  * filtering the tree for statement nodes.
  */
-export function resolve(ctx: Ctx, body: Node[]): Ir {
-  const [nodes, prelude] = withPrelude(ctx, () => resolveChildren(ctx, body));
+export function lower(ctx: Ctx, body: Node[]): Ir {
+  const [nodes, prelude] = withPrelude(ctx, () => lowerChildren(ctx, body));
 
   const ir: Ir = {
     imports: [],

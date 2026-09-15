@@ -17,10 +17,10 @@ import {
   type HostDeclarations,
   type Ir,
   type IrNode,
+  lower,
   type Node,
   newCtx,
   parseFragment,
-  resolve,
   TranslateError,
 } from "@mxlang/core";
 
@@ -588,7 +588,7 @@ export function lowerAstroMx(source: string, filename: string): LowerResult {
 
   try {
     const ctx = newCtx(source, (node) => sourceOf(source, node), declarations);
-    const ir = resolve(ctx, body);
+    const ir = lower(ctx, body);
     const statements: HoistedStatement[] = [
       ...ir.imports,
       ...ir.hoisted,

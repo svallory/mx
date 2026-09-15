@@ -30,7 +30,7 @@ It depends on `@marko/compiler` and nothing else.
 ## The HostDeclarations contract
 
 A host passes one `HostDeclarations` object. `Policy` remains a compatibility
-alias of that type only. Every member is a resolve-time question:
+alias of that type only. Every member is a lower-time question:
 
 | Member | What it decides |
 | --- | --- |
@@ -192,13 +192,13 @@ which is why it is its own module rather than part of `core.ts`.
 
 ## The IR, and what a host implements (decision 79)
 
-The core **resolves** a Marko template into a small host-independent tree, and
+The core **lowers** a Marko template into a small host-independent tree, and
 a host **emits** from that tree. No host walks a Marko node.
 
 ```
-Marko AST ──resolve()──▶ Ir ──drive(emitter)──▶ whatever the host emits
+Marko AST ──lower()──▶ Ir ──drive(emitter)──▶ whatever the host emits
              ▲                                  (strings, JSX nodes, …)
-             └─ HostDeclarations: the questions the resolver asks
+             └─ HostDeclarations: the questions the lowerer asks
 ```
 
 `src/ir.ts` defines the kinds. Each one exists because a host has to emit it
@@ -247,7 +247,7 @@ section).
 1. **Declare.** Supply a `HostDeclarations` (`src/declarations.ts`): the `tags`
    disposition table, `isElement`, `isComponent`, optionally `checkBinding`,
    `keepComments`, `claimsTag`, `resolveHostTag` and `rejectModifier`. Every
-   member is a *question* — none of them can emit, because during resolve there
+   member is a *question* — none of them can emit, because during lower there
    is nothing to emit into.
 2. **Claim what is yours.** `claimsTag(name)` says the host lowers a tag
    itself; `resolveHostTag(name, node, ctx)` then records its decision into the
@@ -273,7 +273,7 @@ the emitted-line count rather than a loop counter. The expression-shaped
 example is `@mxlang/astro`'s `.amx` emitter: an `Emitter<string>` producing
 ternaries, `.map` expressions, `class:list` and Astro named slots.
 
-Statement tags resolve into `Ir.imports`, `Ir.hoisted` and
+Statement tags lower into `Ir.imports`, `Ir.hoisted` and
 `Ir.inputInterface`; each host places them in its own module shape. This is
 also how `.amx` moves a template `static` statement into Astro frontmatter.
 
@@ -283,6 +283,6 @@ also how `.amx` moves a template `static` statement into Astro frontmatter.
 bunx vitest run --root ../.. --project @mxlang/core
 ```
 
-`src/resolve.test.ts` (one fixture per IR kind, positions, host hooks and error
+`src/lower.test.ts` (one fixture per IR kind, positions, host hooks and error
 cases), `src/emit.test.ts` (the exhaustive driver), `src/fragment.test.ts` (the
 fragment door, non-zero bases and the error path), and `src/escape.test.ts`.

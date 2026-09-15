@@ -2,10 +2,10 @@ import generate from "@babel/generator";
 import { parse as parseBabel } from "@babel/parser";
 import {
   type GeneratedMapping,
+  lower,
   type Node,
   newCtx,
   parseFragment,
-  resolve,
   TranslateError,
 } from "@mxlang/core";
 import MagicString from "magic-string";
@@ -137,7 +137,7 @@ export function compileSolidMx(
   const baseColumn = options.baseColumn ?? 0;
   const positionedSource = `${"\n".repeat(baseLine)}${" ".repeat(Math.max(baseOffset - baseLine, baseColumn))}${source}`;
   const ctx = newCtx(positionedSource, generateExpression, solidDeclarations);
-  const ir = resolve(ctx, body);
+  const ir = lower(ctx, body);
   if (
     ir.imports.length > 0 ||
     ir.hoisted.length > 0 ||

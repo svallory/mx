@@ -20,7 +20,7 @@ import { dirname } from "node:path";
 import { type Ctx, type Node, newCtx } from "./core.ts";
 import type { Policy } from "./declarations.ts";
 import type { Ir } from "./ir.ts";
-import { resolve } from "./resolve.ts";
+import { lower } from "./lower.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -61,7 +61,7 @@ export interface HostOptions extends TranslatorOptions {
    * rewrites the module shape. Receives and returns the whole module text.
    */
   postEmit?: (code: string) => string;
-  /** Emits the module from the resolved IR (decision 79). */
+  /** Emits the module from the lowered IR (decision 79). */
   emitIr: (ir: Ir, ctx: Ctx) => string;
 }
 
@@ -121,7 +121,7 @@ export function createTranslator(host: TranslatorOptions = {}) {
             state.policy,
             state.lookup,
           );
-          const code = state.emitIr(resolve(ctx, path.node.body), ctx);
+          const code = state.emitIr(lower(ctx, path.node.body), ctx);
           state.code = state.postEmit ? state.postEmit(code) : code;
           path.node.body = [];
         },

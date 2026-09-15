@@ -61,6 +61,7 @@ export type {
   IrNode,
   Position,
 } from "./ir.ts";
+export { expressionShape, lower, lowerChildren } from "./lower.ts";
 export {
   concatMapped,
   type GeneratedMapping,
@@ -69,4 +70,3 @@ export {
   replaceMapped,
   type SourceSpan,
 } from "./mapping.ts";
-export { expressionShape, resolve, resolveChildren } from "./resolve.ts";
