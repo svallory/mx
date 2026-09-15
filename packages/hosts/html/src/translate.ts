@@ -441,8 +441,13 @@ function resolveHostTag(name: string, node: Node, ctx: Ctx): HostTagData {
     return { kind: "style" };
   }
 
-  // `<try>` with a `<@placeholder>` needs a second render pass over suspended
-  // content, which this target has no way to schedule.
+  // `<try>` itself is a core-owned custom tag
+  // (`packages/core/src/builtin-tags.ts`): every other shape check — no
+  // params, no `/var`, one `<@catch>`, one `<@placeholder>` with no params of
+  // its own — already ran before this host is asked to render the primitive.
+  // Only this target's own limit remains here: a `<@placeholder>` needs a
+  // second render pass over suspended content, which this target has no way
+  // to schedule.
   const placeholder = (node.attributeTags ?? []).find(
     (t: Node) => String(t.name?.value) === "@placeholder",
   );

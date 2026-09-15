@@ -246,15 +246,16 @@ describe("attribute tag parse errors", () => {
   it("rejects an unknown attribute tag inside `<try>`", () => {
     expectSyntaxError(
       `const el = <try><@header>x</@header></try>;`,
-      "attribute tag `<@header>` inside `<try>`",
+      "unknown attribute tag `<@header>`",
     );
   });
 });
 
 /**
- * Decision 51, rule 3: `<try>` reads its two tags out of the generic
- * collector, so the shapes it emits are unchanged but the rejections it
- * inherits are the generic ones.
+ * `<try>` is a core-owned custom tag (`packages/core/src/builtin-tags.ts`):
+ * it declares `<@catch>`/`<@placeholder>` through the generic `attributeTags`
+ * contract, so the shapes it emits are unchanged but the rejections it
+ * inherits are the generic custom-tag ones.
  */
 describe("`<try>` on the generic attribute-tag path", () => {
   it("still lowers to Errored/Loading", () => {
@@ -268,7 +269,7 @@ describe("`<try>` on the generic attribute-tag path", () => {
   it("reports a duplicate `<@catch>` through the generic message", () => {
     expectSyntaxError(
       `const el = <try><@catch|e|>a</@catch><@catch|e|>b</@catch></try>;`,
-      "attribute tag `@catch` given twice",
+      "attribute tag `<@catch>` may not be repeated",
     );
   });
 });

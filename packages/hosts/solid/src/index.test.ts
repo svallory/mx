@@ -131,6 +131,16 @@ describe("Solid IR lowering", () => {
         "<Loading fallback={<>wait</>}><Risky /></Loading>",
       ],
     ],
+    // Round 1 item 1 regression: `<try>`'s body must reach the host
+    // unchanged, matching `lowerHostTag`'s old unconditional lowering,
+    // rather than being gated on `hasContent` the way an ordinary
+    // (template-authored) custom tag's body is.
+    ["try whitespace-only body", `<try>  </try>`, ["<Loading> </Loading>"]],
+    [
+      "try mixed text and markup body",
+      `<try>a <b>c</b></try>`,
+      ["<Loading>a <b>c</b></Loading>"],
+    ],
   ];
 
   for (const [name, source, expected] of rows) {
@@ -160,16 +170,16 @@ describe("Solid host errors", () => {
     ["try params", `<try|value|><p>x</p></try>`, "tag params"],
     ["try variable", `<try/value><p>x</p></try>`, "tag variable"],
     ["try arguments", `<try(value)><p>x</p></try>`, "tag arguments"],
-    ["try attrs", `<try foo=1><p>x</p></try>`, "attributes on `<try>`"],
+    ["try attrs", `<try foo=1><p>x</p></try>`, "accepts no attributes"],
     [
       "try unknown attribute tag",
       `<try><@head>x</@head></try>`,
-      "inside `<try>`",
+      "unknown attribute tag `<@head>`",
     ],
     [
       "try duplicate catch",
       `<try><@catch|e|>a</@catch><@catch|e|>b</@catch></try>`,
-      "given twice",
+      "may not be repeated",
     ],
     [
       "try placeholder params",
