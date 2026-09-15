@@ -1,3 +1,4 @@
+import type { CustomTag } from "@mxlang/core";
 import { describe, expect, it } from "vitest";
 import { compile } from "./index.ts";
 import { brandRender } from "./translate.ts";
@@ -495,5 +496,58 @@ describe("the strict policy (decision 68's fold): reactive tags error by name", 
     expect(() => compile(src(body), file, { strict: true })).toThrow(
       /collides with the template input parameter/,
     );
+  });
+});
+
+// Ref custom-tags-import-precedence: spec §4's precedence (explicit import >
+// local tags/ > mx.tags) means a file-local binding wins over a registered
+// custom tag — but only a PascalCase one, matching Marko's own rule that a
+// lowercase local variable is never resolved as a component call.
+describe("import precedence over registered custom tags", () => {
+  const marker: CustomTag = {
+    transform: (_call, ctx) => [ctx.build.element("mx-marker", [], [])],
+  };
+
+  it("resolves an imported PascalCase component over a registered custom tag of the same name", () => {
+    const body = ['import Panel from "./panel.marko"', "<Panel/>"].join("\n");
+    const { code } = compile(src(body), file, {
+      customTags: { Panel: marker },
+    });
+    expect(code).not.toContain("mx-marker");
+    expect(code).toContain("Panel(");
+  });
+
+  // Round 1 regression: `fileLocalBinding` had no casing guard, so a
+  // *lowercase* import shadowed a registered custom tag of the same name —
+  // even though Marko itself never resolves a lowercase local variable as a
+  // component. Measured on main before this fix: this compiled clean and
+  // expanded the custom tag; after the regression, it started throwing
+  // "Local variables must be in a dynamic tag unless they are PascalCase."
+  it("does not let a lowercase import shadow a registered custom tag of the same name", () => {
+    const body = ['import panel from "./panel.marko"', "<panel/>"].join("\n");
+    const { code } = compile(src(body), file, {
+      customTags: { panel: marker },
+    });
+    expect(code).toContain("mx-marker");
+  });
+
+  // Same regression, against a host-claimed lowercase tag instead of a
+  // registered custom tag: `<style>` is claimed by this host's own
+  // `claimsTag`, and an unrelated lowercase import of the same name must not
+  // block that claim either.
+  it("does not let a lowercase import shadow a host-claimed tag of the same name", () => {
+    const body = [
+      'import style from "./style.ts"',
+      "<style>a { color: red; }</style>",
+    ].join("\n");
+    const { code } = compile(src(body), file);
+    expect(code).toContain("a { color: red; }");
+  });
+
+  it("still resolves a registered custom tag over an unbound name (no import, no <define>)", () => {
+    const { code } = compile(src("<Widget/>"), file, {
+      customTags: { Widget: marker },
+    });
+    expect(code).toContain("mx-marker");
   });
 });

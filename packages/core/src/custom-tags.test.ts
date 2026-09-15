@@ -1090,3 +1090,69 @@ describe("core-owned custom tags", () => {
     ).toThrowError("accepts no attributes");
   });
 });
+
+// Ref custom-tags-import-precedence: spec §4's precedence (explicit import >
+// local `tags/` > `mx.tags`) means a file-local binding must win over a
+// registered custom tag of the same name, not the other way around.
+// Real-host coverage (an imported/`<define>`d PascalCase component winning
+// over a registered custom tag, and a lowercase import *not* shadowing one)
+// lives in `packages/hosts/html/src/translate.test.ts`'s "import precedence
+// over registered custom tags" describe block, against the real `compile()`
+// entry point rather than a synthetic policy — see item 2 of round 1's
+// review. What's left here is IR-level coverage a host-level test can't
+// reach as directly: the casing gate itself, and that the fix doesn't
+// disturb precedence rules it isn't supposed to touch.
+describe("import precedence over registered custom tags (IR-level)", () => {
+  const componentPolicy: Policy = {
+    ...fakeDeclarations(),
+    isComponent: (name, ctx) => ctx.defines.has(name) || ctx.imports.has(name),
+  };
+
+  // This is the regression round 1 found: `fileLocalBinding` had no casing
+  // guard, so a *lowercase* import shadowed a registered custom tag of the
+  // same name even though no host ever treats a lowercase local variable as
+  // a component (Marko's own rule — html `translate.ts`'s `isComponent`,
+  // preact `emitter.ts`'s `isComponentName`). Without the `/^[A-Z]/` guard
+  // in `lower.ts`, this test fails: the `<panel>` call would route to
+  // `Component` instead of expanding the custom tag.
+  it("does not let a lowercase import shadow a registered custom tag of the same name", () => {
+    const panel: CustomTag = {
+      transform: (_call, ctx) => [ctx.build.element("mx-marker", [], [])],
+    };
+    const ir = lowerWithTags(
+      'import panel from "./panel.marko"\n<panel/>\n',
+      { panel },
+      componentPolicy,
+    );
+    expect(find(ir.body, "Element").name).toBe("mx-marker");
+  });
+
+  // The `!fileLocalBinding && claimsTag(...)` branch (lower.ts, gating a
+  // host claim on the absence of a file-local binding) is currently
+  // unreachable by any real host: every host that claims tags beyond `try`
+  // and the dynamic-tag sentinel (only `@mxlang/html`, for `let`/`server`/
+  // `html-comment`/`html-script`/`html-style`/`style`) claims exclusively
+  // lowercase names, and the casing gate above means `fileLocalBinding` is
+  // never true for a lowercase name in the first place — so on every real
+  // host the `!fileLocalBinding &&` in front of `claimsTag` never changes
+  // the outcome. This test exercises it directly against a synthetic policy
+  // that claims a PascalCase name, purely to pin the order the code encodes
+  // (file-local binding wins over a host claim) should a host ever claim a
+  // PascalCase tag; it is not evidence of a real-host code path today. See
+  // AGENTS.md's custom-tags precedence bullet for the same caveat.
+  it("would resolve a file-local binding over a host claim of the same PascalCase name (currently unreachable by any real host)", () => {
+    const ir = lowerWithTags(
+      'import Boundary from "./boundary.marko"\n<Boundary/>\n',
+      {},
+      {
+        ...componentPolicy,
+        claimsTag: (name) => name === "Boundary",
+        resolveHostTag: (name) => ({ name }),
+      },
+    );
+    expect(find(ir.body, "Component").target).toMatchObject({
+      kind: "name",
+      name: "Boundary",
+    });
+  });
+});
