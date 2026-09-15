@@ -373,4 +373,24 @@ describe("mx-tsc", () => {
     },
     SPAWN_TIMEOUT_MS,
   );
+
+  it(
+    "type-checks a template calling a tag discovered with no configuration",
+    () => {
+      // `mx-tsc` passes no `customTags` to the language plugin, so this
+      // project type-checks only if the scan found `tags/stamp.tag.ts` on its
+      // own. Removing that directory makes this fixture fail with TS2306
+      // ("not a module"), which is what makes it a gate rather than a file
+      // that happens to compile.
+      const result = run(mxTsc, [
+        "--noEmit",
+        "-p",
+        join(fixtures, "discovered-tag"),
+      ]);
+
+      expect(result.output).toBe("");
+      expect(result.status).toBe(0);
+    },
+    SPAWN_TIMEOUT_MS,
+  );
 });
