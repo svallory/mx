@@ -1,9 +1,9 @@
 # mx-site
 
-A demo of `@mxlang/html` — stock `.marko` templates compiled to
+A demo of `@mxlang/html` — `.mx` templates compiled to
 string-returning TypeScript modules, served two ways: a real Hono-on-Bun
 server, and a static build. No client runtime, no Solid; both targets render
-the exact same `src/pages/*.marko` templates, imported directly via
+the exact same `src/pages/*.mx` templates, imported directly via
 `@mxlang/html/bun`'s Bun loader (see `bunfig.toml`).
 
 ## What it demonstrates
@@ -16,7 +16,7 @@ the exact same `src/pages/*.marko` templates, imported directly via
 | `/mixins` | `<define>` with args called more than once, and a `<define>` taking a block |
 | `/raw` | `$!{}` raw output beside `${}` escaped output on the same data |
 
-Every page is wrapped in `src/pages/layout.marko`, so the layout/partial
+Every page is wrapped in `src/pages/layout.mx`, so the layout/partial
 pattern runs on every route, not just `/`.
 
 Every component tag in this app is capitalized (`<Layout>`, `<Callout>`), but
