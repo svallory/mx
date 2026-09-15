@@ -23,6 +23,7 @@
  * walk enters and leaves each binding construct, exactly as before.
  */
 
+import { BUILTIN_CUSTOM_TAGS } from "./builtin-tags.ts";
 import {
   attrByName,
   bindingIdentifiers,
@@ -44,6 +45,7 @@ import {
 import {
   type CustomTag,
   MAX_EXPANSION_DEPTH,
+  shadowedBuiltinMessage,
   type TagCall,
   transformCustomTag,
 } from "./custom-tags.ts";
@@ -641,12 +643,25 @@ function lowerHostTag(ctx: Ctx, node: Node, name: string): IrNode {
   };
 }
 
-/** Lowers one registered custom tag call and splices its ordinary IR roots. */
+/**
+ * Lowers one registered custom tag call and splices its ordinary IR roots.
+ *
+ * `content` is gated on `hasContent` for an ordinary (user-registered) tag:
+ * whitespace-only body text means "no children supplied", which is the right
+ * default for a template-authored tag deciding what an empty call means. A
+ * core-owned built-in like `<try>` is a structural pass-through wrapper, not
+ * a template — its whole job is to reproduce the caller's body unchanged, the
+ * way `lowerHostTag` always did (`lowerChildren(node.body?.body ?? [])`,
+ * unconditionally). Gating it the same way silently dropped whitespace-only
+ * bodies (`<try>  </try>`) that used to render. `isBuiltin` therefore skips
+ * the gate and always lowers the raw block.
+ */
 function lowerCustomTag(
   ctx: Ctx,
   node: Node,
   name: string,
   definition: CustomTag,
+  isBuiltin = false,
 ): IrNode[] {
   const depth = (ctx.customTagDepth ?? 0) + 1;
   if (depth > MAX_EXPANSION_DEPTH) {
@@ -670,7 +685,7 @@ function lowerCustomTag(
       name,
       loc: posOf(node),
       attrs: lowerAttrs(ctx, node, name, "component"),
-      content: hasContent(children) ? lowerBlock(ctx, node) : null,
+      content: isBuiltin || hasContent(children) ? lowerBlock(ctx, node) : null,
       attributeTags: lowerAttributeTags(ctx, node),
       params: paramsOf(ctx, node),
       var: node.var ? declName(ctx, node.var) : null,
@@ -770,6 +785,20 @@ function lowerTag(ctx: Ctx, node: Node): IrNode | IrNode[] {
       `attribute tag \`<${name}>\` is only valid directly inside a component call`,
       node,
     );
+  }
+
+  // Core-owned custom tags (`<try>`) are consulted before a caller's own
+  // `ctx.customTags`, and win unconditionally: a caller registering the same
+  // name is a shadowing attempt on a built-in, rejected here rather than
+  // silently ignored.
+  const builtinTag = Object.hasOwn(BUILTIN_CUSTOM_TAGS, name)
+    ? BUILTIN_CUSTOM_TAGS[name]
+    : undefined;
+  if (builtinTag) {
+    if (ctx.customTags && Object.hasOwn(ctx.customTags, name)) {
+      fail(shadowedBuiltinMessage(name), node);
+    }
+    return lowerCustomTag(ctx, node, name, builtinTag, true);
   }
 
   // Registered custom tags take precedence over host claims so a shared tag

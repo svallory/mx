@@ -145,6 +145,24 @@ function parserTaglibId(
 }
 
 /**
+ * The error a registered name shadowing a core-owned built-in (`<try>`)
+ * always throws, wherever it is caught.
+ *
+ * Two call sites throw it: `customTagTaglib` below (registration-time, before
+ * any parsing — the one place both compile entry points, `compile.ts`'s
+ * whole-file compile and `fragment.ts`'s `.solid.mx`/TS-plugin path, hand the
+ * complete `customTags` map over) and `lowerTag`'s call-site check (which
+ * only ever sees a name Marko has already agreed to parse as that tag).
+ * Without the registration-time check, a shadowing registration that also
+ * set `parseOptions` (e.g. `try: { parseOptions: { openTagOnly: true } }`)
+ * changed how the parser itself read `<try>` before lowering ever ran,
+ * surfacing as an unrelated parser error instead of this diagnostic.
+ */
+export function shadowedBuiltinMessage(name: string): string {
+  return `\`<${name}>\` is a core-owned custom tag and cannot be shadowed by a registered custom tag of the same name`;
+}
+
+/**
  * Converts registered tags into the parser-only part of a Marko taglib.
  *
  * Hooks and attribute declarations never enter the compiler's taglib: some
@@ -374,12 +392,20 @@ export function validateCustomTagCall(
 ): void {
   const attributes = definition.attributes;
   if (attributes) {
+    // A tag declaring no attributes at all (`attributes: {}`) rejects a
+    // spread the same way it rejects a named one: "cannot be checked" is
+    // true of every declaration, so it describes the checker rather than the
+    // author's actual mistake — writing an attribute where the tag accepts
+    // none.
+    const acceptsNone = Object.keys(attributes).length === 0;
     const present = new Set<string>();
     for (const attr of call.attrs) {
       if (attr.kind === "spread") {
         failAt(
           call.name,
-          "spread attributes cannot be checked against this tag's declared attributes",
+          acceptsNone
+            ? "accepts no attributes"
+            : "spread attributes cannot be checked against this tag's declared attributes",
           attr.loc,
         );
       }
@@ -387,7 +413,13 @@ export function validateCustomTagCall(
         ? attributes[attr.name]
         : undefined;
       if (!declaration) {
-        failAt(call.name, `unknown attribute \`${attr.name}\``, attr.loc);
+        failAt(
+          call.name,
+          acceptsNone
+            ? "accepts no attributes"
+            : `unknown attribute \`${attr.name}\``,
+          attr.loc,
+        );
       }
       present.add(attr.name);
 

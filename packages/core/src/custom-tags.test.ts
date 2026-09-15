@@ -190,27 +190,31 @@ describe("custom tag transforms", () => {
   });
 
   it("lets a custom tag override a host claim and request that primitive", () => {
+    // `try` itself is a core-owned built-in (`builtin-tags.ts`) and cannot be
+    // registered by a caller — see the "core-owned custom tags" describe
+    // block below — so this exercises the general mechanism under a name the
+    // core does not reserve.
     const boundary: CustomTag = {
       transform: (call, ctx) => [
         ctx.build.hostTag(
-          "try",
+          "boundary",
           call.content?.children ?? [],
           call.attributeTags,
         ),
       ],
     };
     const ir = lowerWithTags(
-      "<try><p>x</p></try>\n",
-      { try: boundary },
+      "<boundary><p>x</p></boundary>\n",
+      { boundary },
       {
         ...fakeDeclarations(),
-        claimsTag: (name) => name === "try",
+        claimsTag: (name) => name === "boundary",
         resolveHostTag: (name) => ({ name }),
       },
     );
     expect(find(ir.body, "HostTag").tag).toMatchObject({
-      name: "try",
-      data: { name: "try" },
+      name: "boundary",
+      data: { name: "boundary" },
     });
   });
 
@@ -640,4 +644,133 @@ it("uses TranslateError for custom-tag diagnostics", () => {
   } catch (error) {
     expect(error).toBeInstanceOf(TranslateError);
   }
+});
+
+describe("core-owned custom tags", () => {
+  const tryDeclarations: Policy = {
+    ...fakeDeclarations(),
+    claimsTag: (name) => name === "try",
+    resolveHostTag: (name) => ({ name }),
+  };
+
+  it("rejects a registered `try` custom tag as an attempt to shadow a built-in", () => {
+    const shadow: CustomTag = { transform: () => [] };
+    expect(() =>
+      lowerWithTags("<try><p>x</p></try>\n", { try: shadow }, tryDeclarations),
+    ).toThrowError(
+      "`<try>` is a core-owned custom tag and cannot be shadowed by a registered custom tag of the same name",
+    );
+  });
+
+  it("lowers a plain `<try>` to the host's `try` primitive with no attribute tags", () => {
+    const ir = lowerWithTags("<try><p>x</p></try>\n", {}, tryDeclarations);
+    const hostTag = find(ir.body, "HostTag");
+    expect(hostTag.tag).toMatchObject({ name: "try" });
+    expect(hostTag.tag.attributeTags).toEqual([]);
+  });
+
+  it("passes `<@catch>`/`<@placeholder>` through as the host tag's attribute tags", () => {
+    const ir = lowerWithTags(
+      "<try><p>x</p><@catch|e|><p>${e}</p></@catch><@placeholder>wait</@placeholder></try>\n",
+      {},
+      tryDeclarations,
+    );
+    const hostTag = find(ir.body, "HostTag");
+    expect(hostTag.tag.attributeTags.map((tag) => tag.name).sort()).toEqual([
+      "catch",
+      "placeholder",
+    ]);
+  });
+
+  it("rejects tag params on `<try>`", () => {
+    expect(() =>
+      lowerWithTags("<try|a|><p>x</p></try>\n", {}, tryDeclarations),
+    ).toThrowError(/tag params .*on `<try>`/);
+  });
+
+  it("rejects a tag variable on `<try>`", () => {
+    expect(() =>
+      lowerWithTags("<try/v><p>x</p></try>\n", {}, tryDeclarations),
+    ).toThrowError(/tag variable .*on `<try>`/);
+  });
+
+  it("rejects an unknown attribute tag inside `<try>`", () => {
+    expect(() =>
+      lowerWithTags(
+        "<try><p>x</p><@other>y</@other></try>\n",
+        {},
+        tryDeclarations,
+      ),
+    ).toThrowError(/unknown attribute tag `<@other>`/);
+  });
+
+  it("rejects a repeated `<@catch>` inside `<try>`", () => {
+    expect(() =>
+      lowerWithTags(
+        "<try><@catch>a</@catch><@catch>b</@catch></try>\n",
+        {},
+        tryDeclarations,
+      ),
+    ).toThrowError(/may not be repeated/);
+  });
+
+  it("rejects tag params on `<@placeholder>`", () => {
+    expect(() =>
+      lowerWithTags(
+        "<try><@placeholder|v|>wait</@placeholder></try>\n",
+        {},
+        tryDeclarations,
+      ),
+    ).toThrowError(/tag params .*on `<@placeholder>`/);
+  });
+
+  // Round 1 item 1: `hasContent` treats whitespace-only body text as no
+  // content, the right default for a template-authored tag deciding what an
+  // empty call means. `<try>` is a structural pass-through, not a template —
+  // its body must reach the host unchanged, the way `lowerHostTag` always
+  // lowered `node.body?.body ?? []` unconditionally. `lowerCustomTag`'s
+  // `isBuiltin` flag skips the `hasContent` gate for built-ins.
+  it("preserves a whitespace-only `<try>` body rather than dropping it", () => {
+    const ir = lowerWithTags("<try>  </try>\n", {}, tryDeclarations);
+    const hostTag = find(ir.body, "HostTag");
+    expect(hostTag.tag.children).toEqual([
+      expect.objectContaining({ kind: "Text", value: " " }),
+    ]);
+  });
+
+  it("preserves markup mixed with text in a `<try>` body", () => {
+    const ir = lowerWithTags("<try>a <b>c</b></try>\n", {}, tryDeclarations);
+    const hostTag = find(ir.body, "HostTag");
+    expect(hostTag.tag.children).toMatchObject([
+      { kind: "Text", value: "a " },
+      { kind: "Element", name: "b" },
+    ]);
+  });
+
+  // Round 1 item 2: a shadowing registration that also sets `parseOptions`
+  // used to change how the parser itself read `<try>` before lowering ever
+  // ran, surfacing an unrelated parser error instead of the shadow
+  // diagnostic. `createTranslator`/`parseOnlyTranslator` now reject the
+  // registration before any parse.
+  it("rejects a shadowing `try` registration with `parseOptions` before parsing", () => {
+    const shadow: CustomTag = {
+      parseOptions: { openTagOnly: true },
+      transform: () => [],
+    };
+    expect(() =>
+      lowerWithTags("<try><p>x</p></try>\n", { try: shadow }, tryDeclarations),
+    ).toThrowError(
+      "`<try>` is a core-owned custom tag and cannot be shadowed by a registered custom tag of the same name",
+    );
+  });
+
+  // Round 1 item 3: an empty `attributes: {}` declaration used to report
+  // "spread attributes cannot be checked against this tag's declared
+  // attributes" for `<try ...rest>` — a message describing the checker
+  // rather than the author's actual mistake.
+  it("reports a spread on `<try>` as accepting no attributes", () => {
+    expect(() =>
+      lowerWithTags("<try ...rest><p>x</p></try>\n", {}, tryDeclarations),
+    ).toThrowError("accepts no attributes");
+  });
 });

@@ -34,6 +34,7 @@
  */
 
 import { createRequire } from "node:module";
+import { rejectShadowedRegistration } from "./builtin-tags.ts";
 import type { Node } from "./core.ts";
 import { type CustomTag, customTagTaglib } from "./custom-tags.ts";
 
@@ -55,6 +56,7 @@ const PARSE_ONLY_TRANSLATOR = {
 function parseOnlyTranslator(
   customTags: Record<string, CustomTag> | undefined,
 ) {
+  rejectShadowedRegistration(customTags);
   const taglib = customTagTaglib(customTags);
   return taglib
     ? { ...PARSE_ONLY_TRANSLATOR, taglibs: [taglib] }
