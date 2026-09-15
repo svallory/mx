@@ -5,7 +5,7 @@
  * Rule, in order:
  *
  * 1. Walk upward from the file's directory looking for the nearest
- *    `package.json`. If it has a `"mxlang"` field, that field *is* the
+ *    `package.json`. If it has an `"mx"` field, that field *is* the
  *    answer: `{ host: "html" | "astro" | "solid" | "preact" | "react" | "hono", strict?: boolean }`
  *    (with "translator" accepted as a deprecated alias for "html").
  * 2. Otherwise, if that same `package.json` depends (in `dependencies` or
@@ -51,7 +51,7 @@ const HOST_PACKAGES: Record<string, HostPolicy["host"]> = {
 const DEFAULT_POLICY: HostPolicy = { host: "html" };
 
 interface PackageJsonShape {
-  mxlang?: { host?: string; strict?: boolean };
+  mx?: { host?: string; strict?: boolean };
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }
@@ -106,16 +106,16 @@ export function resolveHostPolicy(filePath: string): HostPolicy {
   const found = findNearestPackageJson(dirname(filePath));
   if (!found) return DEFAULT_POLICY;
 
-  const { mxlang, dependencies, devDependencies } = found.pkg;
+  const { mx, dependencies, devDependencies } = found.pkg;
 
-  if (mxlang && isKnownHost(mxlang.host)) {
-    if (mxlang.host === "translator") {
+  if (mx && isKnownHost(mx.host)) {
+    if (mx.host === "translator") {
       console.warn(
-        "Warning: The 'translator' mxlang.host alias is deprecated and will be removed in a future release. Use 'html' instead.",
+        "Warning: The 'translator' mx.host alias is deprecated and will be removed in a future release. Use 'html' instead.",
       );
-      return { host: "html", strict: mxlang.strict };
+      return { host: "html", strict: mx.strict };
     }
-    return { host: mxlang.host as HostPolicy["host"], strict: mxlang.strict };
+    return { host: mx.host as HostPolicy["host"], strict: mx.strict };
   }
 
   const deps = { ...dependencies, ...devDependencies };

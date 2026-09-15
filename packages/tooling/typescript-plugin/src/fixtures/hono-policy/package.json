@@ -1,6 +1,6 @@
 {
   "name": "hono-policy-fixture",
-  "mxlang": {
+  "mx": {
     "host": "hono"
   }
 }

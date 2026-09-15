@@ -75,7 +75,7 @@ describe("stdio server (e2e)", () => {
     });
 
     // This file's nearest package.json (fixtures/explicit-field) declares
-    // `"mxlang": { "host": "astro", "strict": true }`, which resolves to the
+    // `"mx": { "host": "astro", "strict": true }`, which resolves to the
     // translator's strictPolicy — under which <let> is a compile error.
     const uri = `file://${join(import.meta.dirname, "fixtures/explicit-field/nested/App.mx")}`;
     conn.sendNotification("textDocument/didOpen", {

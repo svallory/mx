@@ -1,6 +1,6 @@
 {
   "name": "hono-explicit-fixture",
-  "mxlang": {
+  "mx": {
     "host": "hono"
   }
 }

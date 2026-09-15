@@ -478,7 +478,7 @@ describe("mx()", () => {
       const path = writeMx("greeting.mx", GREETING);
       writeFileSync(
         join(dirname(path), "package.json"),
-        JSON.stringify({ name: "app", mxlang: { host: "preact" } }),
+        JSON.stringify({ name: "app", mx: { host: "preact" } }),
       );
       const transform = transformOf(mx());
 
@@ -493,7 +493,7 @@ describe("mx()", () => {
       const path = writeMx("greeting.mx", GREETING);
       writeFileSync(
         join(dirname(path), "package.json"),
-        JSON.stringify({ name: "app", mxlang: { host: "react" } }),
+        JSON.stringify({ name: "app", mx: { host: "react" } }),
       );
       const transform = transformOf(mx());
 
