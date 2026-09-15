@@ -8,7 +8,7 @@ JSX lives today (see `notes/mx-vision.md`). MX itself defines the markup and the
 attribute tags, tag params, `<define>`, `<const>`, `static`, `import` — and each
 **host** decides what state, reactivity and output mean. This package is the
 half that is the same for every host: it consumes Marko's AST through
-`@marko/compiler`, resolves the structural lowerings into an IR, and asks
+`@marko/compiler`, lowers the structural forms into an IR, and asks
 `HostDeclarations` for everything host-specific.
 
 It depends on `@marko/compiler` and nothing else.
@@ -21,6 +21,7 @@ It depends on `@marko/compiler` and nothing else.
 | The field guard (`rejectUnsupportedFields`) and the inert-shape guard | Component-versus-element resolution, and what a component call emits |
 | The IR and its `drive`/`emit` traversal | An `Emitter` for the target's output shape, attributes and component calls |
 | The two front doors (`compileSource`, `parseFragment`) | Stateful tags (`<let>`, `<effect>`, `:=`), through the three hooks |
+| Custom-tag declarations, validation, and IR transforms | Discovery and sidecar loading in the calling integration |
 | `escape` | Its own integration: a Vite plugin, a Bun loader, a TypeScript plugin |
 
 `@mxlang/html` is the first host (vanilla HTML strings); `@mxlang/astro`
@@ -170,6 +171,49 @@ for the bridge's own side of that hand-off. Documented limits:
   is shifted separately and the same error rethrown.
 - Marko never populates Babel's file-level `comments` array; `MarkoComment`
   nodes in the body shift like any other node.
+
+## Programmatic custom tags
+
+Every front door and host compiler accepts a `customTags` map whose keys are
+the names written at call sites and whose values implement `CustomTag`:
+
+```ts
+import type { CustomTag } from "@mxlang/core";
+
+const icon: CustomTag = {
+  attributes: {
+    name: { type: "string", required: true, staticOnly: true },
+  },
+  transform(call, ctx) {
+    const name = call.attrs.find((attr) => attr.kind !== "spread" && attr.name === "name");
+    if (name?.kind !== "static") throw ctx.fail("requires a static `name`");
+    return [ctx.build.element("svg", [ctx.build.attr("data-icon", name.value)])];
+  },
+};
+
+compileSource(source, filename, declarations, {
+  customTags: { icon },
+  emitIr,
+});
+```
+
+The calling integration owns discovery and module loading; the core remains
+synchronous. It injects only each definition's `parseOptions` (`text`,
+`preserveWhitespace`, `openTagOnly`) into `@marko/compiler` before parsing,
+then validates declared `attributes` and `attributeTags` before `transform`.
+Transforms receive resolved author material and return ordinary IR. Builder
+output is stamped with the call-site position, `ctx.gensym()` is unique within
+the file, and `ctx.build.hostTag()` is the only route to a host primitive.
+
+Write failures as `throw ctx.fail(message, position?)`. TypeScript does not
+reliably narrow after a bare call through the parameter property `ctx.fail`,
+despite its `never` return type. Unexpected exceptions are wrapped with the tag
+name and call-site position; an existing `TranslateError` passes through.
+
+`analyze`, `finalize`, and `ctx.store` are present in the public types so tag
+definitions do not churn between phases, but execution is deliberately gated
+with a clear “not implemented until P5” diagnostic. Template-only expansion is
+similarly reserved for P3.
 
 ## Host-policy resolution
 

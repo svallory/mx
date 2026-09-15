@@ -35,6 +35,7 @@
 
 import { createRequire } from "node:module";
 import type { Node } from "./core.ts";
+import { type CustomTag, customTagTaglib } from "./custom-tags.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -50,6 +51,15 @@ const PARSE_ONLY_TRANSLATOR = {
   tagDiscoveryDirs: [],
   translate: {},
 };
+
+function parseOnlyTranslator(
+  customTags: Record<string, CustomTag> | undefined,
+) {
+  const taglib = customTagTaglib(customTags);
+  return taglib
+    ? { ...PARSE_ONLY_TRANSLATOR, taglibs: [taglib] }
+    : PARSE_ONLY_TRANSLATOR;
+}
 
 export interface FragmentBase {
   /** The name reported for the *enclosing* file, in diagnostics. */
@@ -68,7 +78,11 @@ export interface FragmentBase {
    * in both the fragment and the file.
    */
   baseColumn?: number;
+  /** Registered custom tags whose parse options affect this fragment. */
+  customTags?: Record<string, CustomTag>;
 }
+
+type ResolvedFragmentBase = Required<Omit<FragmentBase, "customTags">>;
 
 export interface FragmentResult {
   /** The parsed program's body: the fragment's top-level nodes. */
@@ -87,7 +101,7 @@ interface PositionedError extends Error {
 
 function shiftPosition(
   position: Node,
-  base: Required<FragmentBase>,
+  base: ResolvedFragmentBase,
   seen?: Set<object>,
 ): void {
   if (!position || typeof position !== "object") return;
@@ -121,7 +135,7 @@ function shiftPosition(
  */
 function shiftNode(
   node: Node,
-  base: Required<FragmentBase>,
+  base: ResolvedFragmentBase,
   seen: Set<object> = new Set(),
 ): void {
   if (!node || typeof node !== "object") return;
@@ -167,7 +181,7 @@ export function parseFragment(
   source: string,
   base: FragmentBase = {},
 ): FragmentResult {
-  const resolved: Required<FragmentBase> = {
+  const resolved: ResolvedFragmentBase = {
     filename: base.filename ?? "fragment.mx",
     baseOffset: base.baseOffset ?? 0,
     baseLine: base.baseLine ?? 0,
@@ -185,7 +199,7 @@ export function parseFragment(
       // (`marko/translator`, from the `marko` package) before it parses, which
       // a package that only wants the AST has no reason to depend on — and
       // `@mxlang/core` does not.
-      translator: PARSE_ONLY_TRANSLATOR,
+      translator: parseOnlyTranslator(base.customTags),
       // biome-ignore lint/suspicious/noExplicitAny: the compiler's result type is untyped here
     } as any).ast;
   } catch (error) {
@@ -226,7 +240,7 @@ export function parseFragmentNative(
   const ast: Node = compiler.compileSync(source, filename, {
     output: "source",
     ast: true,
-    translator: PARSE_ONLY_TRANSLATOR,
+    translator: parseOnlyTranslator(base.customTags),
     htmlParseOptions: {
       startOffset: base.baseOffset ?? 0,
       startLine: base.baseLine ?? 0,

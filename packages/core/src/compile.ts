@@ -18,6 +18,7 @@
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { type Ctx, type Node, newCtx } from "./core.ts";
+import { type CustomTag, customTagTaglib } from "./custom-tags.ts";
 import type { Policy } from "./declarations.ts";
 import type { Ir } from "./ir.ts";
 import { lower } from "./lower.ts";
@@ -53,6 +54,8 @@ export interface TranslatorOptions {
    * requires explicit imports passes `[]`.
    */
   tagDiscoveryDirs?: string[];
+  /** Custom tags already loaded by the calling integration, by call name. */
+  customTags?: Record<string, CustomTag>;
 }
 
 export interface HostOptions extends TranslatorOptions {
@@ -82,6 +85,7 @@ let current: {
   lookup?: Lookup;
   postEmit?: (code: string) => string;
   emitIr: (ir: Ir, ctx: Ctx) => string;
+  customTags?: Readonly<Record<string, CustomTag>>;
 } | null = null;
 
 /**
@@ -106,8 +110,9 @@ function printExpression(node: unknown): string {
  * `compileSync`.
  */
 export function createTranslator(host: TranslatorOptions = {}) {
+  const customTags = customTagTaglib(host.customTags);
   return {
-    taglibs: host.taglibs ?? [],
+    taglibs: [...(host.taglibs ?? []), ...(customTags ? [customTags] : [])],
     tagDiscoveryDirs: host.tagDiscoveryDirs ?? [],
     translate: {
       // biome-ignore lint/style/useNamingConvention: a Marko translate visitor key is a node type
@@ -121,6 +126,7 @@ export function createTranslator(host: TranslatorOptions = {}) {
             state.policy,
             state.lookup,
           );
+          ctx.customTags = state.customTags;
           const code = state.emitIr(lower(ctx, path.node.body), ctx);
           state.code = state.postEmit ? state.postEmit(code) : code;
           path.node.body = [];
@@ -155,6 +161,7 @@ export function compileSource(
     policy,
     postEmit: host.postEmit,
     emitIr: host.emitIr,
+    customTags: host.customTags,
     // The lookup is keyed on the translator object, so asking for it here gets
     // exactly the taglibs this host registers plus Marko's own element
     // taglibs — and the tag-discovery directories beside this particular file.

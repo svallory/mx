@@ -34,6 +34,7 @@
  */
 
 import { createRequire } from "node:module";
+import type { CustomTag } from "./custom-tags.ts";
 import type { HostDeclarations } from "./declarations.ts";
 
 const require = createRequire(import.meta.url);
@@ -199,6 +200,12 @@ export interface Ctx {
   declarations: HostDeclarations;
   /** Set by a dialect that resolves tags through Marko's taglib lookup. */
   lookup?: { getTag(name: string): { taglibId?: string } | undefined };
+  /** Custom tags already discovered and loaded by the calling integration. */
+  customTags?: Readonly<Record<string, CustomTag>>;
+  /** Current source nesting, used to cap recursive custom-tag expansion. */
+  customTagDepth?: number;
+  /** Per-file serial for hygienic names minted by custom tags. */
+  customTagGensym?: number;
 }
 
 export function fail(message: string, node: Node): never {

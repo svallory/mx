@@ -37,6 +37,22 @@ export {
   TranslateError,
   VOID_TAGS,
 } from "./core.ts";
+export type {
+  AnalyzeContext,
+  CustomTag,
+  CustomTagAttribute,
+  CustomTagAttributeTag,
+  CustomTagParseOptions,
+  FinalizeContext,
+  IrBuilders,
+  TagCall,
+  TagStore,
+  TransformContext,
+} from "./custom-tags.ts";
+export {
+  MAX_EXPANSION_DEPTH,
+  MAX_EXPANSION_NODES,
+} from "./custom-tags.ts";
 export type { HostDeclarations, Policy } from "./declarations.ts";
 export { drive, type Emitter, emit } from "./emit.ts";
 export { escape } from "./escape.ts";
