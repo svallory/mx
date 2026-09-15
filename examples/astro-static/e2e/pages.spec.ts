@@ -109,7 +109,7 @@ describe("astro-static", () => {
     expect(html).toContain('<span class="badge">footer slot</span>');
   });
 
-  it("/composed renders one MX component through another, .marko alias included", async () => {
+  it("/composed renders one MX component through another", async () => {
     const response = await page.goto(`${baseUrl}/composed`, {
       waitUntil: "networkidle",
     });
