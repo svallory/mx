@@ -86,3 +86,22 @@ export {
   replaceMapped,
   type SourceSpan,
 } from "./mapping.ts";
+export {
+  checkParseOptions,
+  type DiscoveredTag,
+  loadSidecar,
+  type MxTagsEntry,
+  normalizeMxTags,
+  readParseOptions,
+  type ScanDiagnostic,
+  type ScanOptions,
+  type ScanResult,
+  scanCustomTags,
+} from "./scan.ts";
+export {
+  clearScanCache,
+  evictTaglibCaches,
+  getCustomTags,
+  liveTagMapCount,
+  scanCached,
+} from "./scan-cache.ts";
