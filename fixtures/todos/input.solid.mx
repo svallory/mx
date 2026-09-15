@@ -20,9 +20,9 @@ export function Todos() {
       <button onClick=addTodo>Add</button>
       <if=(todos().length > 0)>
         <ul>
-          <!-- index-keyed: item is an accessor, index a stable number -->
-          <for|todo, i| of=todos()><li>${i}: ${todo().text}</li></for>
-          <!-- identity-keyed (For's default): item is the raw row value -->
+          <!-- default keyed form (no by=): item is the raw row value, index an accessor -->
+          <for|todo, i| of=todos()><li>${i()}: ${todo.text}</li></for>
+          <!-- identity-keyed (by=identity, same lowering as the default above) -->
           <for|todo, i| of=todos() by=identity><li>${todo.text}</li></for>
         </ul>
       </if>
