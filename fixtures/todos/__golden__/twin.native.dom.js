@@ -43,14 +43,13 @@ export function Todos() {
  get each() {
  return todos();
  },
- keyed: false,
  children: (todo, i) => (() => {
  var _el$8 = _tmpl$4();
  var _el$9 = _el$8.firstChild;
  var _el$10 = _el$9.nextSibling;
  _$insert(_el$8, i, _el$9);
  _$insert(_el$8, () => {
- return todo().text;
+ return todo.text;
  }, _el$10);
  return _el$8;
  })()

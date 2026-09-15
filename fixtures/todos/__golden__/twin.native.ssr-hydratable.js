@@ -1,3 +1,4 @@
+import { scope as _$scope } from "@solidjs/web";
 import { escape as _$escape } from "@solidjs/web";
 import { ssr as _$ssr } from "@solidjs/web";
 import { ssrHydrationKey as _$ssrHydrationKey } from "@solidjs/web";
@@ -53,11 +54,12 @@ export function Todos() {
  get each() {
  return todos();
  },
- keyed: false,
  children: (todo, i) => {
  var _v$8, _v$9, _v$10;
- return _v$8 = _$ssrHydrationKey(), _v$9 = _$escape(i), _v$10 = () => {
- return _$escape(todo().text);
+ return _v$8 = _$ssrHydrationKey(), _v$9 = _$scope(() => {
+ return _$escape(i());
+ }), _v$10 = () => {
+ return _$escape(todo.text);
  }, _$ssr(_tmpl$4, _v$8, _v$9, _v$10);
  }
  })), _v$5 = _$escape(_$For({
