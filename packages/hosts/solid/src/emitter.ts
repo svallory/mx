@@ -63,40 +63,13 @@ export const solidDeclarations: HostDeclarations = {
   isElement: (name) => !/^[A-Z]/.test(name),
   isComponent: (name) => /^[A-Z]/.test(name),
   claimsTag: (name) => name === "try",
+  // `<try>` is a core-owned custom tag (`packages/core/src/builtin-tags.ts`):
+  // the shape checks that used to live here — no params, no `/var`, one
+  // `<@catch>`, one `<@placeholder>` with no params of its own — are the
+  // core's `attributeTags` declaration and the tag's own `transform`. This
+  // host only decides how the claimed primitive renders.
   resolveHostTag(name, node): TryData {
     if (name !== "try") rawFail(`unknown Solid host tag ${name}`, node);
-    if (node.body?.params?.length) {
-      rawFail("tag params (`|a, b|`) on `<try>`", node);
-    }
-    if (node.var) rawFail("tag variable (`/name`) on `<try>`", node);
-    if (node.arguments) rawFail("tag arguments `(...)` on `<try>`", node);
-    if ((node.attributes ?? []).length > 0) {
-      rawFail("attributes on `<try>` are not supported", node.attributes[0]);
-    }
-
-    const seen = new Set<string>();
-    for (const tag of node.attributeTags ?? []) {
-      const tagName = String(tag.name?.value ?? "").replace(/^@/, "");
-      if (tagName !== "catch" && tagName !== "placeholder") {
-        rawFail(`attribute tag \`<@${tagName}>\` inside \`<try>\``, tag);
-      }
-      if (seen.has(tagName)) {
-        rawFail(
-          `attribute tag \`@${tagName}\` given twice (repeatable attribute tags are not supported)`,
-          tag,
-        );
-      }
-      seen.add(tagName);
-      if ((tag.attributes ?? []).length > 0) {
-        rawFail(
-          "attribute tags take params or a body, not attributes (v1)",
-          tag,
-        );
-      }
-      if (tagName === "placeholder" && tag.body?.params?.length) {
-        rawFail("tag params (`|a, b|`) on `<@placeholder>`", tag);
-      }
-    }
     return { kind: "try" };
   },
   resolveModifier(attr) {

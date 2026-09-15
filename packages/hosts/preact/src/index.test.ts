@@ -468,7 +468,7 @@ describe("<try>", () => {
       errorOf(
         'import Body from "./body.mx"\n<try><Body/><@other>x</@other></try>',
       ),
-    ).toContain("attribute tag `<@other>` inside `<try>`");
+    ).toContain("unknown attribute tag `<@other>`");
   });
 
   it("rejects a repeated attribute tag inside `<try>`", () => {
@@ -476,7 +476,7 @@ describe("<try>", () => {
       errorOf(
         'import Body from "./body.mx"\n<try><Body/><@catch>a</@catch><@catch>b</@catch></try>',
       ),
-    ).toContain("given twice");
+    ).toContain("may not be repeated");
   });
 });
 

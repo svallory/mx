@@ -264,6 +264,20 @@ describe("<try> without a placeholder is a plain try/catch", () => {
     expect(code).toContain("try {");
     expect(code).toContain("} catch (e) {");
   });
+
+  // Round 1 item 1 regression: a whitespace-only `<try>` body must still
+  // reach the emitter, matching `lowerHostTag`'s old unconditional lowering
+  // rather than being dropped by the `hasContent` gate an ordinary custom
+  // tag's body uses.
+  it("preserves a whitespace-only body", () => {
+    const { code } = compile(src("<try>  </try>"), file);
+    expect(code).toContain('out += " ";');
+  });
+
+  it("preserves markup mixed with text in the body", () => {
+    const { code } = compile(src("<try>a <b>c</b></try>"), file);
+    expect(code).toContain('out += "a <b>c</b>";');
+  });
 });
 
 describe("class and style take Marko's structured values", () => {
