@@ -7,9 +7,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CustomTag, TemplateBackedTag } from "@mxlang/core";
 import { clearScanCache } from "@mxlang/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { diagnoseDocument } from "./diagnose.ts";
+import { diagnoseDocument, type RelatedDiagnostics } from "./diagnose.ts";
 
 describe("diagnoseDocument", () => {
   it("reports one Error diagnostic for <let> under a strict policy", () => {
@@ -317,13 +318,130 @@ describe("the Hono host", () => {
 
       writeFileSync(join(dir, "tags", "added.mx"), "<em>new</em>\n");
 
-      // Discovered, so the call reports P1's template-expansion gate rather
-      // than an unknown tag: an added file invalidates the cached scan.
-      const diagnostics = diagnoseDocument("<added/>\n", caller, {
+      // Discovered and expanded, so the call is clean: an added file
+      // invalidates the cached scan. Before P3 this asserted the
+      // template-expansion gate instead, which is what a hookless discovered
+      // tag used to report; now a template tag is complete on its own.
+      expect(diagnoseDocument("<added/>\n", caller, { host: "html" })).toEqual(
+        [],
+      );
+
+      // The negative half the old assertion carried: an *undiscovered* name is
+      // still an error, so the clean result above is the scan working rather
+      // than every unknown tag being accepted.
+      const unknown = diagnoseDocument("<missing/>\n", caller, {
         host: "html",
       });
-      expect(diagnostics).toHaveLength(1);
-      expect(diagnostics[0]?.message).toContain("has no transform");
+      expect(unknown).toHaveLength(1);
+      expect(unknown[0]?.message).toContain("missing");
     });
+  });
+});
+
+describe("custom tag template positions", () => {
+  const template = (source: string): Record<string, CustomTag> => {
+    const box: TemplateBackedTag = {
+      template: { filename: "/tags/box.mx", source },
+    };
+    return { box };
+  };
+
+  it("reports a diagnostic inside a tag template against that template", () => {
+    const diagnostics = diagnoseDocument(
+      "<div>\n  <box/>\n</div>\n",
+      "file:///app/page.mx",
+      { host: "html" },
+      undefined,
+      "",
+      // `<else>` with no preceding `<if>`: raised on the template's line 3.
+      template("<div>\n</div>\n<else>oops</else>\n"),
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    const [diagnostic] = diagnostics as [(typeof diagnostics)[number]];
+    // The message names the template, so the author knows which file to open.
+    expect(diagnostic.message).toContain("`<else>` without a preceding `<if>`");
+    expect(diagnostic.message).toContain("/tags/box.mx");
+    // And it is *not* placed on the template's line 3 within this document,
+    // which is a different file's line and would underline unrelated markup.
+    expect(diagnostic.range.start.line).toBe(0);
+  });
+
+  it("publishes the template's diagnostic against the template's own URI", () => {
+    const related: RelatedDiagnostics[] = [];
+    diagnoseDocument(
+      "<div>\n  <box/>\n</div>\n",
+      "file:///app/page.mx",
+      { host: "html" },
+      undefined,
+      "",
+      template("<div>\n</div>\n<else>oops</else>\n"),
+      related,
+    );
+
+    expect(related).toHaveLength(1);
+    const [entry] = related as [(typeof related)[number]];
+    expect(entry.uri).toBe("file:///tags/box.mx");
+    // At the template's real position -- line 3, one-based, is LSP line 2.
+    expect(entry.diagnostics[0]?.range.start.line).toBe(2);
+    expect(entry.diagnostics[0]?.message).toContain(
+      "`<else>` without a preceding `<if>`",
+    );
+  });
+
+  it("reports a dropped body as a warning on the calling document", () => {
+    const related: RelatedDiagnostics[] = [];
+    const diagnostics = diagnoseDocument(
+      "<div>\n  <box>dropped</box>\n</div>\n",
+      "file:///app/page.mx",
+      { host: "html" },
+      undefined,
+      "",
+      // No `<${input.content}/>`: the body the caller wrote goes nowhere.
+      template("<div>no slot</div>"),
+      related,
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    const [diagnostic] = diagnostics as [(typeof diagnostics)[number]];
+    expect(diagnostic.severity).toBe(2); // DiagnosticSeverity.Warning
+    expect(diagnostic.message).toContain("body content was dropped");
+    // On the call, which is the line the author can act on.
+    expect(diagnostic.range.start.line).toBe(1);
+  });
+
+  it("keeps a call-site diagnostic on the caller's own position", () => {
+    const box: TemplateBackedTag = {
+      template: { filename: "/tags/box.mx", source: "<div>ok</div>" },
+      attributes: { good: { type: "string" } },
+    };
+    const declared: Record<string, CustomTag> = { box };
+    const diagnostics = diagnoseDocument(
+      "<div>\n  <box bad=1/>\n</div>\n",
+      "file:///app/page.mx",
+      { host: "html" },
+      undefined,
+      "",
+      declared,
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    const [diagnostic] = diagnostics as [(typeof diagnostics)[number]];
+    expect(diagnostic.message).toContain("unknown attribute `bad`");
+    // Source line 2 (1-based) is LSP line 1 (0-based): the call itself.
+    expect(diagnostic.range.start.line).toBe(1);
+  });
+
+  it("reports nothing for a template that compiles", () => {
+    expect(
+      diagnoseDocument(
+        "<div><box/></div>\n",
+        "file:///app/page.mx",
+        { host: "html" },
+        undefined,
+        "",
+        template("<span>fine</span>"),
+      ),
+    ).toEqual([]);
   });
 });
