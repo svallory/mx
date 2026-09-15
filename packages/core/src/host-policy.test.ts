@@ -11,7 +11,7 @@ const FIXTURES = join(import.meta.dirname, "fixtures/host-policy");
  * file is the drift a second copy of these cases would invite.
  */
 describe("resolveHostPolicy", () => {
-  it("uses the package.json#mxlang field when present, walking up past a subdirectory with no package.json of its own", () => {
+  it("uses the package.json#mx field when present, walking up past a subdirectory with no package.json of its own", () => {
     const filePath = join(FIXTURES, "explicit-field/nested/App.mx");
 
     expect(resolveHostPolicy(filePath)).toEqual({
@@ -20,7 +20,7 @@ describe("resolveHostPolicy", () => {
     });
   });
 
-  it("falls back to the sole @mxlang/* host dependency when no #mxlang field is present", () => {
+  it("falls back to the sole @mxlang/* host dependency when no #mx field is present", () => {
     const filePath = join(FIXTURES, "single-dependency/App.mx");
 
     expect(resolveHostPolicy(filePath)).toEqual({ host: "html" });
@@ -44,13 +44,13 @@ describe("resolveHostPolicy", () => {
 
     expect(resolveHostPolicy(filePath)).toEqual({ host: "html" });
     expect(warnSpy).toHaveBeenCalledWith(
-      "Warning: The 'translator' mxlang.host alias is deprecated and will be removed in a future release. Use 'html' instead.",
+      "Warning: The 'translator' mx.host alias is deprecated and will be removed in a future release. Use 'html' instead.",
     );
 
     warnSpy.mockRestore();
   });
 
-  it("resolves the Preact host from an explicit mxlang.host field", () => {
+  it("resolves the Preact host from an explicit mx.host field", () => {
     // Branch 1 of the resolver, with this host's own name. The code path is
     // generic, but "preact is a host the field accepts" is the fact worth
     // pinning — `isKnownHost` is an explicit list, and a name missing from it
@@ -69,7 +69,7 @@ describe("resolveHostPolicy", () => {
     expect(resolveHostPolicy(filePath)).toEqual({ host: "preact" });
   });
 
-  it("resolves the React host from an explicit mxlang.host field", () => {
+  it("resolves the React host from an explicit mx.host field", () => {
     const filePath = join(FIXTURES, "react-explicit/App.mx");
 
     expect(resolveHostPolicy(filePath)).toEqual({
@@ -84,7 +84,7 @@ describe("resolveHostPolicy", () => {
     expect(resolveHostPolicy(filePath)).toEqual({ host: "react" });
   });
 
-  it("resolves the Hono host from an explicit mxlang.host field", () => {
+  it("resolves the Hono host from an explicit mx.host field", () => {
     const filePath = join(FIXTURES, "hono-explicit/App.mx");
 
     expect(resolveHostPolicy(filePath)).toEqual({
@@ -102,7 +102,7 @@ describe("resolveHostPolicy", () => {
   it("falls back to the default policy when two host dependencies are present", () => {
     // Ambiguous on purpose: a project depending on both hosts has not said
     // which one owns this file, so the dependency signal cannot answer and the
-    // default applies. An explicit `mxlang.host` is the way to disambiguate.
+    // default applies. An explicit `mx.host` is the way to disambiguate.
     const filePath = join(FIXTURES, "two-dependencies/App.mx");
 
     expect(resolveHostPolicy(filePath)).toEqual({ host: "html" });

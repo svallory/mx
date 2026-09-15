@@ -1,6 +1,6 @@
 {
   "name": "explicit-field-fixture",
-  "mxlang": {
+  "mx": {
     "host": "astro",
     "strict": true
   }
