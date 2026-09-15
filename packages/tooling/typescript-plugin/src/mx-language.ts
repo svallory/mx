@@ -4,6 +4,7 @@ import {
   type CustomTag,
   type Expr,
   type GeneratedMapping,
+  getCustomTags,
   type HostDeclarations,
   type Ir,
   type IrNode,
@@ -13,6 +14,7 @@ import {
   newCtx,
   parseFragment,
   resolveHostPolicy,
+  scanCached,
 } from "@mxlang/core";
 import { compileHonoMx, honoDeclarations } from "@mxlang/hono";
 import { compile, policy, strictPolicy, translator } from "@mxlang/html";
@@ -43,7 +45,16 @@ export interface MxLanguagePlugin extends LanguagePlugin<string> {
 }
 
 export interface MxLanguagePluginOptions {
-  /** Custom tags already discovered and loaded by the calling integration. */
+  /**
+   * Custom tags supplied directly, merged over whatever the scan discovers
+   * for each file.
+   *
+   * Discovery is per file and needs no configuration (spec §4), which is what
+   * lets `mx-tsc` and the tsserver plugin construct this plugin identically
+   * and still resolve the tags each file can actually call — neither has a
+   * tag map to hand over at construction time, and a project's tags are a
+   * property of its directories rather than of its tooling.
+   */
   customTags?: Record<string, CustomTag>;
 }
 
@@ -52,6 +63,41 @@ export function createMxLanguagePlugin(
   options: MxLanguagePluginOptions = {},
 ): MxLanguagePlugin {
   const syntaxErrors = new Map<string, MxSyntaxError>();
+
+  /**
+   * The tags callable from one file: everything discovered around it, with an
+   * explicitly supplied definition winning over a discovered one of the same
+   * name. Returns `undefined` when there are none, so a project using no
+   * custom tags registers no taglib at all.
+   */
+  /**
+   * Scan diagnostics already warned about, so an editor re-checking a file on
+   * every keystroke does not repeat one misconfigured `package.json` forever.
+   */
+  const reported = new Set<string>();
+
+  const tagsFor = (fileName: string): Record<string, CustomTag> | undefined => {
+    // A misconfigured `mx.tags` is not fatal — the local `tags/` directories
+    // still resolve — but silence is worse than a warning here: a tag simply
+    // fails to resolve with nothing saying why. There is no diagnostic
+    // channel for a problem in a *different* file than the one being checked,
+    // so this goes to the log, which is tsserver's own log in an editor and
+    // stderr under `mx-tsc`.
+    for (const diagnostic of scanCached(fileName).diagnostics) {
+      const key = `${diagnostic.file}\u0000${diagnostic.message}`;
+      if (reported.has(key)) continue;
+      reported.add(key);
+      console.warn(
+        `@mxlang/typescript-plugin: ${diagnostic.file}: ${diagnostic.message}`,
+      );
+    }
+
+    const discovered = getCustomTags(fileName);
+    const merged = options.customTags
+      ? { ...discovered, ...options.customTags }
+      : discovered;
+    return Object.keys(merged).length > 0 ? merged : undefined;
+  };
 
   return {
     getLanguageId(fileName) {
@@ -64,29 +110,32 @@ export function createMxLanguagePlugin(
       const source = snapshot.getText(0, snapshot.getLength());
       try {
         const hostPolicy = resolveHostPolicy(fileName);
+        // Resolved once and threaded through both the compile and the second
+        // lowering below: P1's same-map rule, now fed by discovery.
+        const customTags = tagsFor(fileName);
         const strict =
           hostPolicy.host === "astro" || hostPolicy.strict === true;
         const compiled =
           hostPolicy.host === "solid"
             ? compileSolidMx(source, {
                 filename: fileName,
-                customTags: options.customTags,
+                customTags,
               })
             : hostPolicy.host === "preact"
               ? compilePreactMx(source, fileName, {
-                  customTags: options.customTags,
+                  customTags,
                 })
               : hostPolicy.host === "react"
                 ? compileReactMx(source, fileName, {
-                    customTags: options.customTags,
+                    customTags,
                   })
                 : hostPolicy.host === "hono"
                   ? compileHonoMx(source, fileName, {
-                      customTags: options.customTags,
+                      customTags,
                     })
                   : compile(source, fileName, {
                       strict,
-                      customTags: options.customTags,
+                      customTags,
                     });
         const generated =
           hostPolicy.host === "astro"
@@ -120,7 +169,7 @@ export function createMxLanguagePlugin(
                       ? honoDeclarations
                       : undefined,
                 compiled.mappings,
-                options.customTags,
+                customTags,
               );
         syntaxErrors.delete(fileName);
         return createVirtualCode(typescript, generated, mappings);

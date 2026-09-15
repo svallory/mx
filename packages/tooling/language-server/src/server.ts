@@ -82,9 +82,16 @@ export function startServer(
       }
 
       const hostPolicy = resolveHostPolicy(filePath);
+      // `filePath`, not `uri`: everything `diagnoseDocument` does with this
+      // argument is filesystem work — resolving the host, and walking upward
+      // for `tags/` directories. `resolve("file:///a/page.mx")` yields
+      // `<cwd>/file:/a/page.mx`, a path that exists nowhere, so passing the
+      // raw URI made the scan find no tags for any real document while every
+      // test that called `diagnoseDocument` with a plain path passed. The URI
+      // is still what diagnostics are published against, below.
       const diagnostics: Diagnostic[] = diagnoseDocument(
         text,
-        uri,
+        filePath,
         hostPolicy,
         (error) =>
           connection.console.error(

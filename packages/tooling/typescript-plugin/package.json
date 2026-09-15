@@ -1,6 +1,10 @@
 {
   "name": "@mxlang/typescript-plugin",
   "version": "0.0.0",
+  "engines": {
+    "node": ">=22.18",
+    "bun": ">=1.3"
+  },
   "private": true,
   "type": "module",
   "main": "dist/index.cjs",

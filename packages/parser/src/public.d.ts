@@ -12,6 +12,15 @@ declare module "@mxlang/parser" {
   export interface MxParseOptions {
     sourceType?: "script" | "module" | "unambiguous";
     plugins?: unknown[];
+    /**
+     * Custom tags, carried across the parser boundary to the Solid host.
+     *
+     * Declared explicitly despite the index signature below: this is the only
+     * channel the in-tokenizer MX bridge has to the caller, and a misspelling
+     * would otherwise be accepted and silently never read — the exact failure
+     * the P1 review hit when the option was first added.
+     */
+    mxCustomTags?: Record<string, unknown>;
     [option: string]: unknown;
   }
 

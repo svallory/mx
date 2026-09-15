@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import type { CustomTag } from "@mxlang/core";
+import { dirname } from "node:path";
+import { type CustomTag, getCustomTags, scanCached } from "@mxlang/core";
 import { print } from "@mxlang/parser";
 import type { Plugin } from "vite";
 
@@ -102,7 +103,17 @@ export interface MxPluginOptions {
    * through the translator at all.
    */
   strict?: boolean;
-  /** Preloaded custom tags for whole-file `.mx` compilation. */
+  /**
+   * Custom tags supplied directly by the caller, merged over whatever the
+   * scan discovers for each compiled file.
+   *
+   * Discovery (spec §4) is the ordinary route and needs no configuration: a
+   * `tags/icon.tag.ts` beside a template is callable as `<icon>` with no
+   * import. This option remains for a caller that builds a tag map itself —
+   * a test, or a tool generating tags — and it wins over a discovered tag of
+   * the same name, since an explicitly supplied definition is the more
+   * specific statement of intent.
+   */
   customTags?: Record<string, CustomTag>;
 }
 
@@ -290,6 +301,101 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
     FOREIGN_EXTENSIONS.some(
       (ext) => file.endsWith(ext) && !extensions.includes(ext),
     );
+  /**
+   * Which MX modules depend on which tag *locations*, so an edit to a tag can
+   * invalidate the callers that used it.
+   *
+   * A custom tag is an input to compilation that appears nowhere in the
+   * importing module's text, so Vite's own module graph has no edge to
+   * follow. This records the missing one as each file is transformed.
+   *
+   * Keyed by **directory as well as file**. Keying by file alone only covers
+   * tags that already existed when the scan ran, so creating
+   * `tags/new.tag.ts` matched nothing — and `handleHotUpdate` then fell
+   * through to `matchExt`, which is undefined for `.tag.ts` — leaving callers
+   * serving stale output until a restart. A new file's *directory* is one the
+   * scan already recorded, which is what makes the creation observable.
+   */
+  const tagSources = new Map<string, Set<string>>();
+
+  /** The locations one caller's last scan consulted, so they can be pruned. */
+  const scannedFor = new Map<string, Set<string>>();
+
+  /**
+   * The tags callable from one MX file: everything discovered around it, with
+   * any caller-supplied definition layered on top.
+   *
+   * Called per transform rather than once per build, because two files in one
+   * project can sit under different `tags/` directories. The scan itself is
+   * cached and invalidated by mtime, so this costs one filesystem walk per
+   * directory per change, not one per file.
+   */
+  /**
+   * Scan diagnostics already reported, so a rebuild does not repeat them.
+   *
+   * Keyed by the offending file plus its message: the same misconfigured
+   * `package.json` is re-read on every transform in that package, and warning
+   * once per compiled file would bury the build log in one typo.
+   */
+  const reported = new Set<string>();
+
+  const tagsFor = (
+    file: string,
+    warn: (message: string) => void,
+  ): Record<string, CustomTag> | undefined => {
+    const scan = scanCached(file);
+
+    // A misconfigured `mx.tags` is not fatal — the local `tags/` directories
+    // still work — but it is silent without this, which is worse: an author
+    // sees a tag simply not resolve, with nothing saying why.
+    for (const diagnostic of scan.diagnostics) {
+      const key = `${diagnostic.file}\u0000${diagnostic.message}`;
+      if (reported.has(key)) continue;
+      reported.add(key);
+      warn(`${diagnostic.file}: ${diagnostic.message}`);
+    }
+    const locations = new Set<string>([
+      ...scan.directories,
+      ...scan.files.map((entry) => entry.path),
+      ...scan.packageFiles,
+    ]);
+
+    // Drop this caller from locations its previous scan used and this one
+    // does not, so a long-lived dev server's map tracks the project rather
+    // than every state the project has ever been in.
+    for (const stale of scannedFor.get(file) ?? []) {
+      if (locations.has(stale)) continue;
+      const dependents = tagSources.get(stale);
+      if (!dependents) continue;
+      dependents.delete(file);
+      if (dependents.size === 0) tagSources.delete(stale);
+    }
+    scannedFor.set(file, locations);
+
+    for (const location of locations) {
+      const dependents = tagSources.get(location) ?? new Set<string>();
+      dependents.add(file);
+      tagSources.set(location, dependents);
+    }
+
+    const discovered = getCustomTags(file);
+    if (!options.customTags) {
+      return Object.keys(discovered).length > 0 ? discovered : undefined;
+    }
+    return { ...discovered, ...options.customTags };
+  };
+
+  /** Forgets a caller entirely: it was deleted, or is no longer ours. */
+  const forgetCaller = (file: string): void => {
+    for (const location of scannedFor.get(file) ?? []) {
+      const dependents = tagSources.get(location);
+      if (!dependents) continue;
+      dependents.delete(file);
+      if (dependents.size === 0) tagSources.delete(location);
+    }
+    scannedFor.delete(file);
+  };
+
   const matchExt = (file: string): string | undefined =>
     isForeign(file) ? undefined : extensions.find((ext) => file.endsWith(ext));
   const isMxModule = (file: string): string | undefined =>
@@ -357,10 +463,39 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
      */
     handleHotUpdate(ctx) {
       const [file] = splitId(ctx.file);
+      const graph = ctx.server.moduleGraph;
+
+      // A caller that no longer exists should not keep its edges alive.
+      if (matchExt(file) !== undefined && !existsSync(file)) forgetCaller(file);
+
+      // An edited, created or deleted tag file — or a `package.json` carrying
+      // `mx.tags` — is not itself a module, but every MX file whose scan read
+      // it now compiles differently. Invalidate those, so a saved tag reaches
+      // the page without a manual reload.
+      //
+      // Matched by the file *and* by its directory: a newly created
+      // `tags/new.tag.ts` was in no scan's file list, so only the directory
+      // entry can connect it to the callers that scanned there.
+      const dependents = new Set([
+        ...(tagSources.get(file) ?? []),
+        ...(tagSources.get(dirname(file)) ?? []),
+      ]);
+      if (dependents.size > 0) {
+        const stale = [...dependents]
+          .map((dependent) => {
+            const dependentExt = matchExt(dependent);
+            return dependentExt === undefined
+              ? undefined
+              : graph.getModuleById(dependent + suffixFor(dependentExt));
+          })
+          .filter((mod) => mod !== undefined && mod !== null);
+        for (const mod of stale) graph.invalidateModule(mod);
+        if (stale.length > 0) return [...ctx.modules, ...stale];
+      }
+
       const ext = matchExt(file);
       if (ext === undefined) return;
 
-      const graph = ctx.server.moduleGraph;
       const mod = graph.getModuleById(file + suffixFor(ext));
       if (!mod) return;
 
@@ -372,6 +507,16 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
       const [path] = splitId(id);
       const ext = isMxModule(path);
       if (ext === undefined) return null;
+
+      // Rollup's own warning channel, so a misconfigured `mx.tags` reaches the
+      // build log and the dev-server overlay the way any other plugin warning
+      // does. `this` is the plugin context here; captured because `tagsFor`
+      // runs below inside a `try`.
+      const context = this as unknown as { warn?: (message: string) => void };
+      const warn = (message: string): void => {
+        if (context.warn) context.warn(`@mxlang/vite-plugin: ${message}`);
+        else console.warn(`@mxlang/vite-plugin: ${message}`);
+      };
 
       // Print/compile against the real MX path so the source map and any
       // error position name the file the user actually wrote.
@@ -386,7 +531,7 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
             code,
             source,
             options.strict ?? false,
-            options.customTags,
+            tagsFor(source, warn),
           );
           return { code: compiled, map: null };
         }
@@ -395,7 +540,7 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
         // MX region with `compileSolidMx`; the registered tags have to travel
         // with it or a tag registered here is unknown inside a `.solid.mx`.
         const { code: printed, map } = print(code, source, {
-          customTags: options.customTags,
+          customTags: tagsFor(source, warn),
         });
         return { code: printed, map };
       } catch (err) {

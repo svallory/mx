@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { getCustomTags } from "@mxlang/preact";
 import type { BunPlugin } from "bun";
 import { compileHonoMx } from "./index.ts";
 
@@ -17,6 +18,10 @@ import { compileHonoMx } from "./index.ts";
  * kind (TSX with MX regions, handled by `@mxlang/vite-plugin`) and must not
  * match here, hence the negative lookbehind despite it also ending in
  * `.mx`.
+ *
+ * Custom tags are discovered per loaded file (spec §4), the same as
+ * `@mxlang/html/bun`: which tags a template may call follows from where the
+ * template lives, not from plugin configuration.
  */
 const MX_FILTER = /(?<!\.solid)\.mx$/;
 
@@ -25,7 +30,9 @@ const honoPlugin: BunPlugin = {
   setup(build) {
     build.onLoad({ filter: MX_FILTER }, ({ path }) => {
       const source = readFileSync(path, "utf8");
-      const { code } = compileHonoMx(source, path);
+      const { code } = compileHonoMx(source, path, {
+        customTags: getCustomTags(path),
+      });
       return { contents: code, loader: "tsx" };
     });
   },

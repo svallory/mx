@@ -6,7 +6,14 @@
  * tested directly, as the brief requires, without spawning a process.
  */
 
-import { type HostPolicy, TranslateError } from "@mxlang/core";
+import { fileURLToPath } from "node:url";
+import {
+  getCustomTags,
+  type HostPolicy,
+  type ScanDiagnostic,
+  scanCached,
+  TranslateError,
+} from "@mxlang/core";
 import { compileHonoMx } from "@mxlang/hono";
 import { compile } from "@mxlang/html";
 import { parse } from "@mxlang/parser";
@@ -69,7 +76,24 @@ function errorPosition(
  * diagnostic; a successful run returns `[]`, which clears any previous
  * diagnostics; a locationless exception is reported via `onUnexpectedError`
  * and also returns `[]`.
+ *
+ * Custom tags are discovered from the document's own path (spec §4), so a
+ * `<icon>` a `vite build` compiles is a `<icon>` the editor knows about too.
+ * A sidecar that is broken — unparseable `parseOptions`, or a module that
+ * throws while loading — fails the scan with a positioned `TranslateError`
+ * naming that file, which lands here as an ordinary diagnostic rather than
+ * taking the server down. That is why the scan is inside the `try`.
  */
+/** A filesystem path for `uri`, which may already be one. */
+function documentPath(uri: string): string {
+  if (!uri.startsWith("file://")) return uri;
+  try {
+    return fileURLToPath(uri);
+  } catch {
+    return uri;
+  }
+}
+
 export function diagnoseDocument(
   text: string,
   uri: string,
@@ -77,35 +101,55 @@ export function diagnoseDocument(
   onUnexpectedError?: (error: unknown) => void,
   languageId = "",
 ): Diagnostic[] {
+  // Configuration problems the scan found. They are not fatal — a typo'd
+  // `mx.tags` leaves the local `tags/` directories perfectly usable — so they
+  // are collected here and returned alongside whatever the compile produces,
+  // rather than replacing it.
+  let scanWarnings: Diagnostic[] = [];
+
   try {
+    // Tag discovery is filesystem work, so it needs a path. `startServer`
+    // already converts before calling, but this function is public and an
+    // editor integration may hand it a `file://` URI directly — and
+    // `resolve("file:///a/page.mx")` yields `<cwd>/file:/a/page.mx`, which
+    // exists nowhere and silently discovers nothing. An untitled buffer has
+    // no path at all; the walk then finds no `package.json` and returns an
+    // empty map, which is correct.
+    const path = documentPath(uri);
+    const scan = scanCached(path);
+    scanWarnings = scan.diagnostics.map(scanDiagnosticToLsp);
+    const discovered = getCustomTags(path);
+    const customTags =
+      Object.keys(discovered).length > 0 ? discovered : undefined;
+
     if (isSolidMxDocument(uri, languageId)) {
       // `parse` is the Vite path's whole-file parser and the cheapest public
       // entry that discovers every MX region. A language id can identify an
       // untitled/mis-suffixed buffer, so give that case the suffix that turns
       // the parser's opt-in MX bridge on.
       const filename = uri.endsWith(".solid.mx") ? uri : `${uri}.solid.mx`;
-      parse(text, filename);
+      parse(text, filename, { mxCustomTags: customTags });
     } else if (hostPolicy.host === "solid") {
       // A whole-file `.mx` document routed to the Solid host uses the same
       // fixed Solid profile as an embedded region. Its declarations reject
       // stateful Marko tags; there is no looser Solid policy to select.
-      compileSolidMx(text, { filename: uri });
+      compileSolidMx(text, { filename: uri, customTags });
     } else if (hostPolicy.host === "preact") {
       // A whole-file `.mx` document routed to the Preact host. Its
       // declarations reject Marko's stateful tags outright, so like Solid's
       // there is no looser policy to select — the `strict` flag has no
       // meaning for this host and is not consulted.
-      compilePreactMx(text, uri);
+      compilePreactMx(text, uri, { customTags });
     } else if (hostPolicy.host === "react") {
-      compileReactMx(text, uri);
+      compileReactMx(text, uri, { customTags });
     } else if (hostPolicy.host === "hono") {
-      compileHonoMx(text, uri);
+      compileHonoMx(text, uri, { customTags });
     } else {
       // Through `@mxlang/html`'s own front door, not `compileSource`
       // directly: this registers the host taglib and compiles via the IR.
-      compile(text, uri, { strict: resolveStrict(hostPolicy) });
+      compile(text, uri, { strict: resolveStrict(hostPolicy), customTags });
     }
-    return [];
+    return scanWarnings;
   } catch (error) {
     const position = errorPosition(error);
     if (position) {
@@ -127,10 +171,33 @@ export function diagnoseDocument(
           end: { line, character: column + 1 },
         },
       };
-      return [diagnostic];
+      return [...scanWarnings, diagnostic];
     }
 
     onUnexpectedError?.(error);
-    return [];
+    return scanWarnings;
   }
+}
+
+/**
+ * Turns one scan diagnostic into an LSP one against the *open* document.
+ *
+ * The problem is in a `package.json`, not in the file the author is editing,
+ * and LSP publishes diagnostics per document — so the message names the file
+ * rather than the range pointing at it. A warning rather than an error,
+ * because the scan carried on and everything else in the package still
+ * compiles; the author has a misconfigured entry, not a broken file.
+ */
+function scanDiagnosticToLsp(diagnostic: ScanDiagnostic): Diagnostic {
+  const line = Math.max(0, diagnostic.line - 1);
+  const column = Math.max(0, diagnostic.column);
+  return {
+    severity: DiagnosticSeverity.Warning,
+    source: "mxlang",
+    message: `${diagnostic.file}: ${diagnostic.message}`,
+    range: {
+      start: { line, character: column },
+      end: { line, character: column + 1 },
+    },
+  };
 }

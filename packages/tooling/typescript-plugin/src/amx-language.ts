@@ -3,6 +3,7 @@ import {
   type AstroTemplateMapping,
   lowerAstroMx,
 } from "@mxlang/astro/template";
+import { getCustomTags } from "@mxlang/core";
 import type { RawSourceMap } from "@mxlang/parser";
 import type {
   CodeMapping,
@@ -37,7 +38,18 @@ export function createAmxLanguagePlugin(
 
       const source = snapshot.getText(0, snapshot.getLength());
       try {
-        const lowered = lowerAstroMx(source, fileName);
+        // The same tags `@mxlang/astro`'s own Vite plugin discovers for this
+        // file. Without them a tag that compiles under `astro build` is an
+        // unknown tag in the editor and under `mx-tsc --astro` — the
+        // asymmetry already closed for `.solid.mx`.
+        const discovered = getCustomTags(fileName);
+        const lowered = lowerAstroMx(
+          source,
+          fileName,
+          Object.keys(discovered).length > 0
+            ? { customTags: discovered }
+            : undefined,
+        );
         const converted = convertToTSX(lowered.code, {
           filename: fileName,
           sourcemap: "external",

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { getCustomTags } from "@mxlang/core";
 import type { BunPlugin } from "bun";
 import { compile } from "./index.ts";
 
@@ -21,6 +22,12 @@ import { compile } from "./index.ts";
  * not have. `.solid.mx` is a different file kind (TSX with MX regions,
  * handled by `@mxlang/vite-plugin`) and must not match here — the negative
  * lookbehind excludes it despite ending in `.mx`.
+ *
+ * Custom tags are discovered per loaded file (spec §4) rather than configured
+ * on the plugin: which tags a template may call is a property of where that
+ * template lives, so a loader that asked the caller to list them would put the
+ * answer in the wrong place. The scan is cached, so the repeated `onLoad`
+ * calls a build makes over one directory cost one filesystem walk.
  */
 const MX_FILTER = /(?<!\.solid)\.mx$/;
 
@@ -29,7 +36,9 @@ const markoPlugin: BunPlugin = {
   setup(build) {
     build.onLoad({ filter: MX_FILTER }, ({ path }) => {
       const source = readFileSync(path, "utf8");
-      const { code } = compile(source, path);
+      const { code } = compile(source, path, {
+        customTags: getCustomTags(path),
+      });
       return { contents: code, loader: "ts" };
     });
   },
