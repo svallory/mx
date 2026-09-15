@@ -198,6 +198,19 @@ describe("mxTemplates()", () => {
       expect(code).toContain("<h1>{title}</h1>");
     });
 
+    it("passes registered custom tags into .amx lowering", () => {
+      const path = writeAmx("Custom.amx", "<icon/>");
+      const load = loadOf(
+        mxTemplates({
+          icon: {
+            transform: (_call, ctx) => [ctx.build.element("svg")],
+          },
+        }),
+      );
+
+      expect(load.call({}, path + ASTRO_SUFFIX)).toBe("<svg></svg>");
+    });
+
     it("does not shadow a real .amx.astro file on disk", () => {
       // `Shadow.amx.astro` exists but `Shadow.amx` does not: the id belongs to
       // the real file, so the hook must decline and let Vite read it.

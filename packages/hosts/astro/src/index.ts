@@ -16,6 +16,7 @@
  */
 
 import { createRequire } from "node:module";
+import type { CustomTag } from "@mxlang/core";
 import mx from "@mxlang/vite-plugin";
 import { mxPages } from "./vite-pages.ts";
 import { mxTemplates } from "./vite-templates.ts";
@@ -58,6 +59,8 @@ export interface MxIntegrationOptions {
    * silently claim support it does not have.
    */
   extensions?: string[];
+  /** Custom tags already discovered and loaded for `.mx` and `.amx` files. */
+  customTags?: Record<string, CustomTag>;
 }
 
 const DEFAULT_EXTENSIONS = [".mx"];
@@ -163,8 +166,12 @@ export default function mxAstro(
               // to Astro's own compiler (decision 76c). `mx()` declines the
               // extension itself, so the order is documentation rather than a
               // tie-break.
-              mxTemplates(),
-              mx({ extensions, strict: true }),
+              mxTemplates(options.customTags),
+              mx({
+                extensions,
+                strict: true,
+                customTags: options.customTags,
+              }),
               mxPages(config.srcDir),
             ],
           },

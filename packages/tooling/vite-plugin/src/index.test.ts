@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
+import type { CustomTag } from "@mxlang/core";
 import { describe, expect, it } from "vitest";
 import mx, { MX_SUFFIX } from "./index";
 
@@ -454,6 +455,42 @@ describe("mx()", () => {
       await expect(
         transform.call({}, STATEFUL, path + MX_SUFFIX),
       ).rejects.toThrow(/`<let>` is reactive state/);
+    });
+
+    it("expands a registered custom tag inside a .solid.mx file", async () => {
+      // `.solid.mx` reaches its host through `print()`, a different boundary
+      // from the `.mx` branch's `compile()`. A tag registered here has to
+      // cross that boundary too, or it stays unknown in exactly the file kind
+      // this plugin exists to handle.
+      const BADGE: CustomTag = {
+        attributes: { label: { type: "string", required: true } },
+        transform(call, ctx) {
+          const label = call.attrs.find(
+            (attr) => attr.kind === "static" && attr.name === "label",
+          );
+          if (label?.kind !== "static") throw ctx.fail("needs a static label");
+          return [
+            ctx.build.element(
+              "span",
+              [ctx.build.attr("class", "badge")],
+              [ctx.build.text(label.value)],
+            ),
+          ];
+        },
+      };
+      const SOURCE = `export function A() {
+  return (
+    <div><badge label="new"/></div>
+  );
+}
+`;
+      const path = writeMx("Badge.solid.mx", SOURCE);
+      const transform = transformOf(mx({ customTags: { badge: BADGE } }));
+
+      const result = await transform.call({}, SOURCE, path + MX_SUFFIX);
+
+      expect(result?.code).toContain('<span class="badge">new</span>');
+      expect(result?.code).not.toContain("<badge");
     });
 
     it("renders <let>'s initial value when `strict` is not set", async () => {

@@ -78,6 +78,10 @@ export function mxParseElementAt(
       baseOffset: start,
       baseLine: startLoc.line - 1,
       baseColumn: startLoc.column,
+      // Registered custom tags reach the Solid host only through here: the
+      // bridge runs inside the tokenizer, so the parser options are the one
+      // channel an integration has to the region being lowered.
+      customTags: parser.options?.mxCustomTags,
     });
     node = parseExpression(code, {
       ...mxSubParseOptions(parser.options),

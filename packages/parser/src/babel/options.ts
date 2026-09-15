@@ -102,6 +102,15 @@ export interface Options {
    */
   mx?: boolean;
 
+  /**
+   * MX FORK: custom tag definitions the MX bridge hands to `compileSolidMx`
+   * when lowering each MX region. Carried on the parser options because the
+   * bridge runs inside the tokenizer and has no other channel to the caller.
+   * Opaque here — the parser never inspects it.
+   */
+  // biome-ignore lint/suspicious/noExplicitAny: `@mxlang/core`'s CustomTag would be a cycle
+  mxCustomTags?: Record<string, any>;
+
   startIndex?: number;
 
   /**
@@ -172,7 +181,7 @@ export const enum OptionFlags {
   AnnexB = 1 << 13,
 }
 
-type KeepOptionalKeys = "sourceFilename" | "strictMode";
+type KeepOptionalKeys = "sourceFilename" | "strictMode" | "mxCustomTags";
 export type OptionsWithDefaults = Omit<Required<Options>, KeepOptionalKeys> &
   Pick<Options, KeepOptionalKeys>;
 
@@ -186,6 +195,11 @@ function createDefaultOptions(): OptionsWithDefaults {
     // integration with other tools.
     // MX FORK: opt-in MX element parsing; false means upstream JSX behavior.
     mx: false,
+    // MX FORK: custom tags the MX bridge forwards to the host. Present here
+    // as `undefined` rather than left out, because `getOptions` copies the
+    // caller's values by iterating over *this* object's keys — a key with no
+    // default entry is silently never read.
+    mxCustomTags: undefined,
     startIndex: 0,
     // Column (0-based) from which to start counting source. Useful for
     // integration with other tools.

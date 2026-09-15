@@ -6,7 +6,7 @@ import {
 } from "./babel/index.ts";
 
 export type { ParseError, ParseResult, ParserOptions } from "./babel/index.ts";
-export type { PrintResult, RawSourceMap } from "./mx/print.ts";
+export type { PrintOptions, PrintResult, RawSourceMap } from "./mx/print.ts";
 export { print, printAst } from "./mx/print.ts";
 export type {
   MxAttr,

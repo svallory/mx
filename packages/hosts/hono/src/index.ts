@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
+  type CompilePreactOptions,
   type CompilePreactResult,
   type CompileResult,
   compilePreactMx,
@@ -15,14 +16,19 @@ export type { CompileResult, RawSourceMap };
 export function compileHonoMx(
   source: string,
   filename: string,
+  options: Pick<CompilePreactOptions, "customTags"> = {},
 ): CompilePreactResult {
   return compilePreactMx(source, filename, {
     target: honoTarget,
     declarations: honoDeclarations,
+    customTags: options.customTags,
   });
 }
 
 /** `compileHonoMx()` over a file on disk. */
-export function compileHonoFile(filename: string): CompileResult {
-  return compileHonoMx(readFileSync(filename, "utf8"), filename);
+export function compileHonoFile(
+  filename: string,
+  options: Pick<CompilePreactOptions, "customTags"> = {},
+): CompileResult {
+  return compileHonoMx(readFileSync(filename, "utf8"), filename, options);
 }

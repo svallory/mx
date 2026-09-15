@@ -45,6 +45,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
+import type { CustomTag } from "@mxlang/core";
 import type { Plugin } from "vite";
 import { AstroTemplateError, lowerAstroMx } from "./astro-template.ts";
 
@@ -119,7 +120,7 @@ export function codeFrame(
  * never contend: this one owns `.amx`, and hands Astro an id ending in
  * `.astro`, which is the only thing Astro's plugin looks at.
  */
-export function mxTemplates(): Plugin {
+export function mxTemplates(customTags?: Record<string, CustomTag>): Plugin {
   return {
     name: "mx-astro-templates",
     enforce: "pre",
@@ -184,7 +185,7 @@ export function mxTemplates(): Plugin {
 
       const source = readFileSync(real, "utf8");
       try {
-        return lowerAstroMx(source, real).code;
+        return lowerAstroMx(source, real, { customTags }).code;
       } catch (error) {
         if (!(error instanceof AstroTemplateError)) throw error;
 

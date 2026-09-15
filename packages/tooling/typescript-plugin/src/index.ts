@@ -150,5 +150,6 @@ export {
   createAstroTypeSurface,
   createHtmlMappings,
   createMxLanguagePlugin,
+  type MxLanguagePluginOptions,
 } from "./mx-language.ts";
 export default pluginFactory;
