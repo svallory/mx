@@ -45,7 +45,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import type { CustomTag } from "@mxlang/core";
+import { type CustomTag, getCustomTags } from "@mxlang/core";
 import type { Plugin } from "vite";
 import { AstroTemplateError, lowerAstroMx } from "./astro-template.ts";
 
@@ -121,6 +121,21 @@ export function codeFrame(
  * `.astro`, which is the only thing Astro's plugin looks at.
  */
 export function mxTemplates(customTags?: Record<string, CustomTag>): Plugin {
+  /**
+   * The tags callable from one `.amx` file: everything discovered around it
+   * (spec §4), with a caller-supplied definition winning over a discovered
+   * one of the same name.
+   *
+   * `.mx` gets the same treatment one plugin over, inside
+   * `@mxlang/vite-plugin`; doing it here keeps the two file kinds consistent
+   * rather than leaving `.amx` the one place a `tags/` directory is invisible.
+   */
+  const tagsFor = (file: string): Record<string, CustomTag> | undefined => {
+    const discovered = getCustomTags(file);
+    const merged = customTags ? { ...discovered, ...customTags } : discovered;
+    return Object.keys(merged).length > 0 ? merged : undefined;
+  };
+
   return {
     name: "mx-astro-templates",
     enforce: "pre",
@@ -185,7 +200,7 @@ export function mxTemplates(customTags?: Record<string, CustomTag>): Plugin {
 
       const source = readFileSync(real, "utf8");
       try {
-        return lowerAstroMx(source, real, { customTags }).code;
+        return lowerAstroMx(source, real, { customTags: tagsFor(real) }).code;
       } catch (error) {
         if (!(error instanceof AstroTemplateError)) throw error;
 

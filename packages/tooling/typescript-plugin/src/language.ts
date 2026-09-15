@@ -1,4 +1,5 @@
 import { decode } from "@jridgewell/sourcemap-codec";
+import { getCustomTags } from "@mxlang/core";
 import { print, type RawSourceMap } from "@mxlang/parser";
 import type {
   CodeInformation,
@@ -47,7 +48,19 @@ export function createSolidMxLanguagePlugin(
 
       const source = snapshot.getText(0, snapshot.getLength());
       try {
-        const printed = print(source, fileName);
+        // The tags this file can call, discovered the same way every other
+        // integration discovers them. Without this the editor would know
+        // nothing of a registered tag inside a `.solid.mx` region while a
+        // `vite build` of the same file compiled it fine — the gap the P1
+        // review recorded against this path.
+        const discovered = getCustomTags(fileName);
+        const printed = print(
+          source,
+          fileName,
+          Object.keys(discovered).length > 0
+            ? { customTags: discovered }
+            : undefined,
+        );
         syntaxErrors.delete(fileName);
         return createVirtualCode(typescript, printed.code, source, printed.map);
       } catch (cause) {
