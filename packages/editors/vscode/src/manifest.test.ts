@@ -17,7 +17,9 @@ describe("Manifest", () => {
       (l: { id: string }) => l.id === "mx",
     );
     expect(mx.extensions).toContain(".mx");
-    expect(mx.extensions).toContain(".marko");
+    // MX only supports the MX 1.0 subset of Marko syntax, so a real .marko
+    // file is not registered as this language's own extension.
+    expect(mx.extensions).not.toContain(".marko");
   });
 
   it("orders solidmx before mx in language contributions", () => {

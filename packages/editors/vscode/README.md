@@ -1,6 +1,6 @@
 # `@mxlang/vscode`
 
-The official VS Code extension for MX. It provides syntax highlighting, language server integration, and TypeScript diagnostics for MX (`.mx`, `.marko`), SolidMX (`.solid.mx`), and AstroMX (`.amx`).
+The official VS Code extension for MX. It provides syntax highlighting, language server integration, and TypeScript diagnostics for MX (`.mx`), SolidMX (`.solid.mx`), and AstroMX (`.amx`).
 
 ## Installation
 

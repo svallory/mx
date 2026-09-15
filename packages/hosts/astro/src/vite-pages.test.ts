@@ -177,4 +177,26 @@ export default render;
     expect(result).not.toBeNull();
     expect(result.code).toContain("__mxRenderPage");
   });
+
+  it("declines .marko.tsx", () => {
+    // MX only supports the MX 1.0 subset of Marko syntax, so a real .marko
+    // file is never treated as a page here, even under src/pages and even
+    // with a .tsx virtual suffix that would otherwise pass every other
+    // check. Regression for a regex that used to accept
+    // /\.(?:mx|marko)\.tsx?$/ — a caller-supplied `extensions: [".marko"]`
+    // on `mx()`/the Astro integration would have resurrected the .marko
+    // page path despite neither loader claiming that extension any more.
+    const plugin = mxPages(new URL("file:///proj/src/"));
+    // biome-ignore lint/suspicious/noExplicitAny: testing untyped plugin return
+    const transform = plugin.transform as (code: string, id: string) => any;
+
+    const id = "/proj/src/pages/posts/slug.marko.tsx";
+    const validCode = `function render(input) {}
+Object.defineProperty(render, Symbol.for("mx.component"), { value: true });
+export default render;
+`;
+
+    const result = transform.call({}, validCode, id);
+    expect(result).toBeNull();
+  });
 });

@@ -2,9 +2,10 @@
 
 MX (Markup eXtended) is a template language born from Marko: it takes Marko's
 syntax and brings it to wherever JSX lives today, MX 1.0 being a strict subset
-of Marko so every borrowed Marko tool keeps working by aliasing alone. `.mx` is
-MX's official extension; `.marko` is accepted everywhere with identical
-treatment, so porting a Marko component is a rename or nothing.
+of Marko so every borrowed Marko tool keeps working. `.mx` is MX's only
+extension — MX supports only the MX 1.0 subset of Marko syntax, so a real
+`.marko` file is not treated as MX; porting a Marko component that stays
+within the subset is a rename.
 
 `@mxlang/astro` is **the Astro host**: it renders `.mx` components inside an
 Astro project as static markup at build time. An MX component compiles to a
@@ -92,8 +93,7 @@ rather than to MX:
 
 **Supported**: MX's structural core — `<if>` / `<else if>` / `<else>`, every
 `<for>` form, attribute tags, tag params, `<define>`, `<const>`, `static`,
-`import` — props, slots, and one MX component calling another. `.marko` files
-work identically to `.mx` ones.
+`import` — props, slots, and one MX component calling another.
 
 **Not supported, by design**: the stateful tags. `<let>`, `<effect>`,
 `<lifecycle>`, `<script>`, `client` blocks and `<id>` are **compile errors**
@@ -134,10 +134,9 @@ This integration relies on Astro's undocumented and non-semver `addPageExtension
 
 Decision 76b: an `.mx` file directly under `src/pages` is a **page**, not a
 component. The integration calls Astro's `addPageExtension(".mx")`, so
-`src/pages/about.mx` routes to `/about` the way `about.astro` would.
-`.marko` is **not** registered as a page extension — it stays a
-component-only alias, so a `.marko` file placed under `src/pages` is invisible
-to Astro's router rather than half-page, half-component.
+`src/pages/about.mx` routes to `/about` the way `about.astro` would. `.marko`
+is not an extension this integration registers at all, so a `.marko` file
+anywhere in the project is simply not MX's.
 
 ```mx
 // src/pages/hello.mx
@@ -339,7 +338,7 @@ resolver returns and `load` returns the lowered source, the same shape
 
 ## Typing `.mx` imports and `.amx` templates
 
-Use `@mxlang/typescript-plugin`; it compiles each `.mx`/`.marko` file to a
+Use `@mxlang/typescript-plugin`; it compiles each `.mx` file to a
 virtual TypeScript module and derives component props from that file's real
 `Input` interface. Because Astro and MX both use Volar, they must be composed
 inside one tsserver plugin:
@@ -369,8 +368,8 @@ plain `tsc` does not load tsserver plugins.
 ## Example
 
 `examples/astro-static` is an Astro site built from `.mx`: components (props,
-a default slot, a named slot, a `.marko` alias import, one component composed
-from another) and pages (a layout page with a `static`-block and
+a default slot, a named slot, one component composed from another) and pages
+(a layout page with a `static`-block and
 `<if>`/`<for>`, a page with no layout, and a dynamic `posts/[slug].mx` with
 `getStaticPaths`). Its e2e suite asserts the rendered HTML for every page and,
 separately, that both expected-to-fail builds fail for the right reason.

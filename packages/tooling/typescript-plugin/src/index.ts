@@ -50,7 +50,6 @@ const pluginFactory: ts.server.PluginModuleFactory = (modules) => {
         (fileName) =>
           fileName.endsWith(".solid.mx") ||
           fileName.endsWith(".mx") ||
-          fileName.endsWith(".marko") ||
           fileName.endsWith(".amx") ||
           fileName.endsWith(".astro"),
       );

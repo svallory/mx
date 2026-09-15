@@ -6,33 +6,32 @@ import markoPlugin from "./bun.ts";
 
 /**
  * Runs under `bun test`, not vitest: it exercises `Bun.plugin` and Bun's
- * dynamic `import()` of a `.marko` module, both Bun-runtime-only.
+ * dynamic `import()` of a `.mx` module, both Bun-runtime-only.
  */
 describe("@mxlang/html/bun", () => {
-  test("Bun.plugin registers an onLoad for .marko that compile()s and runs", async () => {
+  test("does not claim a .marko path", async () => {
     Bun.plugin(markoPlugin);
 
+    // MX only supports the MX 1.0 subset of Marko syntax, so a real .marko
+    // file is not treated as MX by this loader — even one of this host's
+    // own oracle fixtures, which stays a real .marko file on disk. Bun's
+    // default loader for an unrecognized extension returns the file's own
+    // path as the module's default export, not a compiled function -
+    // exactly what "the onLoad hook declined this path" looks like from the
+    // caller's side.
     const fixtureDir = join(
       import.meta.dirname,
       "..",
       "fixtures-marko",
       "attributes",
     );
-    const input = JSON.parse(
-      readFileSync(join(fixtureDir, "input.json"), "utf8"),
-    ) as { value: string };
+    const path = join(fixtureDir, "input.marko");
 
-    const mod = await import(join(fixtureDir, "input.marko"));
-    const render = mod.default as (input: unknown) => string;
-
-    // Exact HTML parity with real Marko is `oracle:marko`'s job (semantic
-    // comparison, quote-style-insensitive) — this test only exercises the
-    // loader wiring: the plugin claims `.marko`, compiles it, and the
-    // dynamically imported module runs and renders the given input.
-    expect(render(input)).toContain(input.value);
+    const mod = await import(path);
+    expect(mod.default).toEndWith("input.marko");
   });
 
-  test("Bun.plugin also claims .mx, the official extension (decision 72)", async () => {
+  test("Bun.plugin claims .mx, the only extension this loader accepts", async () => {
     Bun.plugin(markoPlugin);
 
     const fixtureDir = join(

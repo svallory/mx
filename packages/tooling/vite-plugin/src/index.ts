@@ -3,12 +3,12 @@ import { print } from "@mxlang/parser";
 import type { Plugin } from "vite";
 
 /**
- * Lazily imported, and only inside `transform`'s `.marko` branch:
+ * Lazily imported, and only inside `transform`'s `.mx` branch:
  * `@mxlang/html` pulls in `@marko/compiler`, a large dependency whose
  * transitive code uses TypeScript parameter-property syntax. A static
  * top-level import here would load that dependency the moment
  * `vite.config.ts` imports this plugin — including for a `.solid.mx`-only
- * project like `examples/counter-app` that never touches `.marko` at all —
+ * project like `examples/counter-app` that never touches `.mx` at all —
  * and break config loading, since Vite's own config loader reads
  * `vite.config.ts` through Node's native strip-only TS mode, which rejects
  * that syntax outright.
@@ -68,12 +68,11 @@ async function compileMarko(
 
 export interface MxPluginOptions {
   /**
-   * File extensions handled by the plugin. Defaults to `.solid.mx`, `.mx`,
-   * and `.marko`.
+   * File extensions handled by the plugin. Defaults to `.solid.mx` and `.mx`.
    */
   extensions?: string[];
   /**
-   * Selects `@mxlang/html`'s `strictPolicy` for `.mx`/`.marko` files:
+   * Selects `@mxlang/html`'s `strictPolicy` for `.mx` files:
    * reactive constructs (`<let>`, `<effect>`, `<lifecycle>`, `<script>`,
    * `client` blocks, `<id>`) become compile errors naming the construct
    * instead of rendering their initial value or compiling away as inert.
@@ -88,7 +87,7 @@ export interface MxPluginOptions {
   strict?: boolean;
 }
 
-const DEFAULT_EXTENSIONS = [".solid.mx", ".mx", ".marko"];
+const DEFAULT_EXTENSIONS = [".solid.mx", ".mx"];
 
 /**
  * Multi-dot MX extensions that are *not* this plugin's to compile, but which
@@ -188,7 +187,7 @@ export function codeFrame(
 }
 
 /**
- * Compiles `.solid.mx` and `.marko` ahead of the rest of the pipeline.
+ * Compiles `.solid.mx` and `.mx` ahead of the rest of the pipeline.
  *
  * `.solid.mx` prints to JSX source text (`print()`, from `@mxlang/parser`)
  * ahead of `@solidjs/vite-plugin`. Ordering: this plugin is `enforce: "pre"`,
@@ -199,15 +198,18 @@ export function codeFrame(
  * and Babel backends consume source text, so neither needs special-casing
  * here.
  *
- * `.marko` compiles to a plain `(input) => string` module via `compile()`
- * from `@mxlang/html` — the same whole-file translator
- * `examples/mx-site` and `@mxlang/html/bun` use, so a `.marko` template
- * behaves identically whether it is loaded by Vite or by Bun. `compile()`'s
- * returned map is presently an identity placeholder (see its own doc comment
- * — the translator builds text directly, not from a printed AST), so this
- * plugin has no real source map to hand Vite yet for that extension;
- * `transform` returns `map: null` for it rather than a placeholder Vite would
- * treat as real.
+ * `.mx` compiles to a plain `(input) => string` module (or a JSX component
+ * module, per the resolved host) via `compileMarko()` — the same whole-file
+ * translator `examples/mx-site` and `@mxlang/html/bun` use, so a `.mx`
+ * template behaves identically whether it is loaded by Vite or by Bun.
+ * `compile()`'s returned map is presently an identity placeholder (see its
+ * own doc comment — the translator builds text directly, not from a printed
+ * AST), so this plugin has no real source map to hand Vite yet for that
+ * extension; `transform` returns `map: null` for it rather than a
+ * placeholder Vite would treat as real. `.marko` is deliberately not
+ * accepted here: MX only supports the MX 1.0 subset of Marko syntax, so
+ * treating a real `.marko` file as MX would silently claim support it does
+ * not have.
  *
  * Why `resolveId` rewrites the id to `<path><ext>.tsx`/`.ts` rather than just
  * returning the resolved path — three separate parts of the pipeline dispatch
@@ -242,6 +244,16 @@ export function codeFrame(
  * specifiers at all.
  */
 export default function mx(options: MxPluginOptions = {}): Plugin {
+  // MX only supports the MX 1.0 subset of Marko syntax, so a caller cannot
+  // opt back into `.marko` through `extensions` — that would silently claim
+  // support this plugin does not have. Rejected eagerly, at plugin
+  // construction, rather than left to surface later as a confusing runtime
+  // mismatch.
+  if (options.extensions?.some((ext) => ext.endsWith(".marko"))) {
+    throw new Error(
+      "@mxlang/vite-plugin: '.marko' is not a supported extension — MX only compiles the MX 1.0 subset of Marko syntax under '.mx'.",
+    );
+  }
   // Longest first: `.mx` is a string suffix of `.solid.mx`, so a caller-
   // supplied `extensions` in the other order must not silently misroute a
   // `.solid.mx` file through the `.mx` (compile()/HTML) branch instead of
@@ -347,7 +359,7 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
       const source = sourcePath(path, ext);
 
       try {
-        if (ext === ".marko" || ext === ".mx") {
+        if (ext === ".mx") {
           // `compile()`'s map is presently an identity placeholder (no AST
           // is printed on this path), so there is nothing real to hand Vite
           // — returning it would claim a mapping that does not exist.

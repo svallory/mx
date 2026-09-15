@@ -1,6 +1,6 @@
 # `@mxlang/hono`
 
-MX's Hono host compiles a `.mx` (or `.marko`) template to a Hono JSX component
+MX's Hono host compiles a `.mx` template to a Hono JSX component
 module: TSX with `/** @jsxImportSource hono/jsx */`, the author's imports and
 `static` blocks at module scope, and `export interface Input` as the component
 props type.
@@ -123,7 +123,7 @@ imports no helper.
 
 ## Bun loader
 
-`@mxlang/hono/bun` registers a Bun plugin loading `.mx`/`.marko` files as
+`@mxlang/hono/bun` registers a Bun plugin loading `.mx` files as
 `loader: "tsx"` — the same shape as `@mxlang/html/bun`'s Bun loader, but
 `"tsx"` instead of `"ts"` since this host's compiled output contains JSX. Bun
 honors the emitted `/** @jsxImportSource hono/jsx */` pragma per file, so no

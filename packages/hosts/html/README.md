@@ -2,13 +2,13 @@
 
 MX (Markup eXtended) is a template language born from Marko: it takes
 Marko's syntax and brings it to wherever JSX lives today, MX 1.0 being a
-strict subset of Marko so every borrowed Marko tool keeps working by
-aliasing alone. `.mx` is MX's official extension; `.marko` is accepted
-everywhere with identical treatment, so porting a Marko component is a
-rename or nothing.
+strict subset of Marko so every borrowed Marko tool keeps working. `.mx` is
+MX's only extension — MX only supports the MX 1.0 subset of Marko syntax, so
+a real `.marko` file is not treated as MX; porting a Marko component that
+stays within the subset is a rename.
 
 `@mxlang/html` is **the vanilla host on `@mxlang/core`**: it compiles an
-MX (`.mx`, or its `.marko` alias) template to a pure function — a JS/TS module
+MX (`.mx`) template to a pure function — a JS/TS module
 whose default export is `(input) => string`, with no runtime beyond an `escape`
 helper. No scheduler, no signals, no hydration, no resume markers.
 
@@ -22,11 +22,11 @@ loader, the `escape` runtime the emitted modules import, and the taglib.
 ```ts
 import { compile } from "@mxlang/html";
 
-const { code } = compile(source, "greeting.marko");
+const { code } = compile(source, "greeting.mx");
 ```
 
 ```marko
-// greeting.marko
+// greeting.mx
 <h1 class={greeting: true}>Hello, ${input.name}!</h1>
 ```
 
@@ -100,21 +100,20 @@ Decision 68 retired the old `.mx` dialect (required explicit imports,
 dialect stays dead. Decision 72 re-establishes `.mx` as MX's own *identity*,
 not a revival of the dialect: MX 1.0 is a strict subset of Marko syntax with
 no conventions of its own layered on top, so every `.mx` file is also a
-valid `.marko` file with the same meaning. This package is the vanilla host:
-it compiles both extensions identically, through the same `compile()`/
-`compileFile()`/`build()` entry points and the same policy table below.
-`packages/mx-html` no longer exists. Its lowering core and its `escape`
-runtime passed through this package and now live in
+valid `.marko` file with the same meaning — but the reverse is not true, and
+this package accepts only `.mx`: MX only supports the MX 1.0 subset, so
+treating an arbitrary `.marko` file as MX would silently claim support it
+does not have. `packages/mx-html` no longer exists. Its lowering core and its
+`escape` runtime passed through this package and now live in
 [`@mxlang/core`](../core/README.md), which every MX host shares; this package
 is the policy plus the HTML integrations.
 
 ## Loaders
 
-Two loaders make `import page from "./page.mx"` (or `"./page.marko"`)
-resolve, one per runtime:
+Two loaders make `import page from "./page.mx"` resolve, one per runtime:
 
 - **Bun**: `@mxlang/html/bun` is a `BunPlugin` that intercepts `.mx`
-  and `.marko` imports and compiles them on the fly (`.solid.mx` is excluded
+  imports and compiles them on the fly (`.solid.mx` is excluded
   — a different file kind, handled by `@mxlang/vite-plugin`). Register it
   once via `bunfig.toml`:
 
@@ -131,16 +130,16 @@ resolve, one per runtime:
 
   See `examples/mx-site` for a full app built this way.
 
-- **Vite**: `@mxlang/vite-plugin`'s `mx()` plugin handles `.mx` and `.marko`
+- **Vite**: `@mxlang/vite-plugin`'s `mx()` plugin handles `.mx`
   alongside `.solid.mx` (which keeps precedence regardless of extension
-  order) — add it to `plugins` and import `.mx`/`.marko` files as usual. See
+  order) — add it to `plugins` and import `.mx` files as usual. See
   `examples/mx-vite`.
 
-`import page from "./x.mx"` (or `"./x.marko"`) typechecks against the
-ambient declarations in `types/marko.d.ts` (`declare module "*.mx"` and
-`declare module "*.marko"`, both typed `(input: any) => string` — per-file
-`Input` typing needs a virtual-file projection, the phase-3 language
-server's job, not something these ambient declarations can derive).
+`import page from "./x.mx"` typechecks against the
+ambient declaration in `types/marko.d.ts` (`declare module "*.mx"`, typed
+`(input: any) => string` — per-file `Input` typing needs a virtual-file
+projection, the phase-3 language server's job, not something this ambient
+declaration can derive).
 Reference the file from a consumer's `tsconfig.json` `include` (both
 loaders' example apps do this).
 
@@ -209,7 +208,7 @@ error rather than silently accepted:
 ```ts
 import { compile } from "@mxlang/html";
 
-const { code } = compile(source, "greeting.marko", { strict: true });
+const { code } = compile(source, "greeting.mx", { strict: true });
 ```
 
 `compileFile` and `build` take the same `{ strict?: boolean }` option.

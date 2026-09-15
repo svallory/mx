@@ -18,7 +18,7 @@ declare module "@mxlang/parser" {
   /**
    * Parses a `.solid.mx` file into a Babel `File` of standard node types.
    *
-   * Whole-file `.marko` templates are not parsed here: `@mxlang/html`
+   * Whole-file `.mx` templates are not parsed here: `@mxlang/html`
    * drives `@marko/compiler` with its own translator instead (ADR 0001).
    */
   export function parse(

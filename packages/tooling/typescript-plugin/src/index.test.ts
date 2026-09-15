@@ -224,7 +224,7 @@ describe("SolidMX language plugin", () => {
 });
 
 describe("MX language plugin", () => {
-  it("recognizes .mx and .marko and exposes a TypeScript service script", () => {
+  it("recognizes .mx and exposes a TypeScript service script", () => {
     const plugin = createMxLanguagePlugin(ts);
     const source = [
       "export interface Input { title: string }",
@@ -239,7 +239,7 @@ describe("MX language plugin", () => {
     );
 
     expect(plugin.getLanguageId("/src/card.mx")).toBe("mx");
-    expect(plugin.getLanguageId("/src/card.marko")).toBe("mx");
+    expect(plugin.getLanguageId("/src/card.marko")).toBeUndefined();
     expect(plugin.getLanguageId("/src/card.solid.mx")).toBeUndefined();
     expect(plugin.getLanguageId("/src/card.ts")).toBeUndefined();
     if (!virtual) throw new Error("Expected MX virtual code");
@@ -259,11 +259,6 @@ describe("MX language plugin", () => {
     expect(plugin.typescript?.extraFileExtensions).toEqual([
       {
         extension: "mx",
-        isMixedContent: false,
-        scriptKind: ts.ScriptKind.TSX,
-      },
-      {
-        extension: "marko",
         isMixedContent: false,
         scriptKind: ts.ScriptKind.TSX,
       },

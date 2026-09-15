@@ -1,7 +1,7 @@
 # `@mxlang/typescript-plugin`
 
 A [Volar](https://volarjs.dev) language plugin and tsserver plugin that types
-`.solid.mx`, whole-file `.mx` and its `.marko` alias, plus AstroMX `.amx`
+`.solid.mx`, whole-file `.mx`, plus AstroMX `.amx`
 when Astro composition is enabled. Editors report errors inside templates and
 type imports from the file's real exported `Input` interface.
 
@@ -15,7 +15,7 @@ whether a file compiles.
 | Source file | Enabled by | Virtual service script |
 | --- | --- | --- |
 | `.solid.mx` | always | Solid JSX as TSX |
-| `.mx` / `.marko` | always | host-selected generated TypeScript |
+| `.mx` | always | host-selected generated TypeScript |
 | `.astro` | `astro: true` | Astro's TSX |
 | `.amx` | `astro: true` | MX-to-Astro output composed into Astro's TSX |
 
@@ -30,8 +30,8 @@ whether a file compiles.
   `{ isMixedContent: false, scriptKind: TSX }`, and `getServiceScript` serves
   the virtual code as `.tsx`.
 
-`createMxLanguagePlugin(ts)` does the same job for whole-file `.mx` and
-`.marko` templates. It resolves the host with `@mxlang/core`'s
+`createMxLanguagePlugin(ts)` does the same job for whole-file `.mx`
+templates. It resolves the host with `@mxlang/core`'s
 `resolveHostPolicy` — the same resolver `@mxlang/language-server` uses, so an
 editor, this plugin and a `tsc` run cannot disagree about which host owns a
 file — applying the nearest `package.json`'s `mxlang.host` (`html`, `astro`, or
@@ -90,7 +90,7 @@ export const el = <button onClick() { setCount(count() + "x") }>x</button>;
 
 ### What is mapped, and what happens when something is not
 
-Whole-file `.mx`/`.marko` mapping covers two shapes:
+Whole-file `.mx` mapping covers two shapes:
 
 - **Per expression**, exactly. Every `Expr` in the IR carries its original
   Babel node, so a placeholder, an attribute value, an `<if>` condition, a
@@ -156,7 +156,7 @@ needed — and adding one is actively harmful, since it replaces each file's rea
 exported types with whatever the shim asserts. `examples/counter-app` and
 `examples/todomvc` both dropped theirs.
 
-The same rule applies to `*.mx` and `*.marko`: do not add a wildcard shim.
+The same rule applies to `*.mx`: do not add a wildcard shim.
 
 ### Astro projects
 

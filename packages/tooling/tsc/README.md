@@ -1,6 +1,6 @@
 # `@mxlang/tsc`
 
-`mx-tsc` — `tsc` with `.solid.mx`, `.mx`, and `.marko` files type-checked as
+`mx-tsc` — `tsc` with `.solid.mx` and `.mx` files type-checked as
 the TypeScript they lower to. `--astro` additionally composes Astro's language
 plugin and the AstroMX plugin, so `.astro` and `.amx` files and their MX
 imports are checked together.
@@ -71,7 +71,7 @@ amx-wrong.amx(9,27): error TS2345: Argument of type 'string' is not assignable t
 
 ## How it works
 
-`runMxTsc()` calls `runTsc` with `.solid.mx`, `.mx`, and `.marko`; `--astro`
+`runMxTsc()` calls `runTsc` with `.solid.mx` and `.mx`; `--astro`
 adds `.astro`, `.amx`, Astro's language plugin, and the AstroMX language
 plugin:
 

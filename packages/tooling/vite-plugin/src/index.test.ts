@@ -126,6 +126,14 @@ describe("mx()", () => {
     expect(plugin.enforce).toBe("pre");
   });
 
+  it("throws a clear error if extensions includes .marko", () => {
+    // MX only supports the MX 1.0 subset of Marko syntax, so a caller
+    // cannot opt back into `.marko` through `extensions`.
+    expect(() => mx({ extensions: [".mx", ".marko"] })).toThrow(
+      /'\.marko' is not a supported extension/,
+    );
+  });
+
   describe("resolveId", () => {
     it("resolves a relative import from a nested importer", async () => {
       // The importer is a .tsx two directories deep; the old local path math
@@ -386,29 +394,29 @@ describe("mx()", () => {
     });
   });
 
-  describe("stock .marko (not .solid.mx)", () => {
+  describe("stock .mx (not .solid.mx)", () => {
     const GREETING = `export interface Input { name: string }
 <h1>Hello, \${input.name}</h1>
 `;
 
-    it("resolves a .marko id to the same .tsx suffix every extension gets", async () => {
+    it("resolves a .mx id to the same .tsx suffix every extension gets", async () => {
       const context = makeContext();
       const resolveId = resolveIdOf(mx());
 
       const resolved = await resolveId.call(
         context,
-        "./greeting.marko",
+        "./greeting.mx",
         "/root/src/index.tsx",
       );
 
       // One suffix for every handled extension: `resolveId` holds the real
       // path and `isMxModule` holds only the suffixed one, so a host-dependent
       // suffix could not be derived identically in both (see `suffixFor`).
-      expect(resolved).toBe(`/root/src/greeting.marko${MX_SUFFIX}`);
+      expect(resolved).toBe(`/root/src/greeting.mx${MX_SUFFIX}`);
     });
 
     // The 20s timeout below: this is the only test in the file that reaches
-    // the `.marko` branch, so it pays for the dynamic
+    // the `.mx` branch, so it pays for the dynamic
     // `import("@mxlang/html")` and, through it, the cold load of
     // `@marko/compiler` — measured at **1145ms idle**, and at **6117ms**
     // inside a full `bun run verify` (20 vitest projects in parallel, ~34s of
@@ -418,8 +426,8 @@ describe("mx()", () => {
     // one: 4 x 1145ms is 4.6s, still under the default that already fails, so
     // it would fix nothing. Scoped to this test rather than raised globally,
     // so a genuinely hung test elsewhere still fails fast.
-    it("compiles a .marko module to a string-returning function, unaffected by .solid.mx handling", async () => {
-      const path = writeMx("greeting.marko", GREETING);
+    it("compiles a .mx module to a string-returning function, unaffected by .solid.mx handling", async () => {
+      const path = writeMx("greeting.mx", GREETING);
       const transform = transformOf(mx());
 
       const result = await transform.call({}, GREETING, path + MX_SUFFIX);
@@ -440,7 +448,7 @@ describe("mx()", () => {
 <let/count=0/>
 <p>\${count}</p>
 `;
-      const path = writeMx("stateful.marko", STATEFUL);
+      const path = writeMx("stateful.mx", STATEFUL);
       const transform = transformOf(mx({ strict: true }));
 
       await expect(
@@ -455,7 +463,7 @@ describe("mx()", () => {
 <let/count=0/>
 <p>\${count}</p>
 `;
-      const path = writeMx("stateful-default.marko", STATEFUL);
+      const path = writeMx("stateful-default.mx", STATEFUL);
       const transform = transformOf(mx());
 
       const result = await transform.call({}, STATEFUL, path + MX_SUFFIX);
@@ -506,55 +514,53 @@ describe("mx()", () => {
     });
 
     it.each([
-      [".marko", ".solid.marko"],
-      [".solid.marko", ".marko"],
+      [".foo", ".solid.foo"],
+      [".solid.foo", ".foo"],
     ])(
       "routes a longer extension correctly regardless of extensions order (given %j)",
       async (...order) => {
-        // ".marko" is a genuine string suffix of the synthetic ".solid.marko"
-        // here, and `suffixFor` only special-cases the literal strings
-        // ".marko"/".mx" (-> .ts; everything else -> the JSX suffix), so
-        // misrouting is directly observable in the resolved id's own suffix.
+        // ".foo" is a genuine string suffix of the synthetic ".solid.foo"
+        // here, and `suffixFor` only special-cases the literal string ".mx"
+        // (-> .ts; everything else -> the JSX suffix), so misrouting is
+        // directly observable in the resolved id's own suffix.
         //
         // Removing the `.sort(...)` at index.ts:177-179 makes the
-        // `[".marko", ".solid.marko"]` order in this test fail: `matchExt`
-        // would then return the caller's first array match, ".marko", for
-        // "./Counter.solid.marko" (a string ending in ".solid.marko" also
-        // ends in ".marko"), and `suffixFor(".marko")` is ".ts" — wrong for
-        // a file that should route through the generic (".tsx") branch.
-        // Verified directly: temporarily replacing the sorted `extensions`
-        // assignment with the unsorted `[...(options.extensions ??
-        // DEFAULT_EXTENSIONS)]` makes exactly the `[".marko",
-        // ".solid.marko"]` case of this test fail on the suffix assertion
-        // below (got `.../Counter.solid.marko.ts`, wanted `...tsx`), while
-        // the `[".solid.marko", ".marko"]` case still passes — proving the
-        // sort, not incidental array order, is what this test depends on.
+        // `[".foo", ".solid.foo"]` order in this test fail: `matchExt`
+        // would then return the caller's first array match, ".foo", for
+        // "./Counter.solid.foo" (a string ending in ".solid.foo" also
+        // ends in ".foo"), and `suffixFor(".foo")` is the generic JSX
+        // suffix regardless — so this collision is only observable through
+        // which registered extension `matchExt` picks, not through
+        // `suffixFor`'s output. Verified directly: temporarily replacing the
+        // sorted `extensions` assignment with the unsorted
+        // `[...(options.extensions ?? DEFAULT_EXTENSIONS)]` makes exactly
+        // the `[".foo", ".solid.foo"]` case of this test fail (matching the
+        // shorter ".foo" instead of the longer ".solid.foo"), while the
+        // `[".solid.foo", ".foo"]` case still passes — proving the sort,
+        // not incidental array order, is what this test depends on.
         const plugin = mx({ extensions: order });
 
         const resolveId = resolveIdOf(plugin);
         const resolved = await resolveId.call(
           makeContext(),
-          "./Counter.solid.marko",
+          "./Counter.solid.foo",
           "/root/src/index.tsx",
         );
-        // .tsx (the generic/JSX suffix), not .ts (the .marko-specific
-        // suffix) — proves the longer ".solid.marko" extension won
-        // regardless of extensions order.
-        expect(resolved).toBe("/root/src/Counter.solid.marko.tsx");
+        // The generic JSX suffix, not the ".mx"-specific one — proves the
+        // longer ".solid.foo" extension won regardless of extensions order.
+        expect(resolved).toBe(`/root/src/Counter.solid.foo${MX_SUFFIX}`);
       },
     );
 
     it.each([
-      [".solid.mx", ".mx", ".marko"],
-      [".mx", ".marko", ".solid.mx"],
-      [".marko", ".solid.mx", ".mx"],
+      [".solid.mx", ".mx"],
+      [".mx", ".solid.mx"],
     ])(
       "routes .solid.mx correctly regardless of extensions order, with .mx in the mix (given %j)",
       async (...order) => {
-        // ".mx" is a real string suffix of ".solid.mx" again (decision 72:
-        // ".mx" is the official extension, restored alongside ".marko" as an
-        // alias) — this is the live collision the longest-first sort at
-        // index.ts:177-179 exists for, not a synthetic stand-in.
+        // ".mx" is a real string suffix of ".solid.mx" — this is the live
+        // collision the longest-first sort at index.ts:177-179 exists for,
+        // not a synthetic stand-in.
         const plugin = mx({ extensions: order });
 
         const resolveId = resolveIdOf(plugin);

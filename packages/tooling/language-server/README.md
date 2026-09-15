@@ -4,11 +4,11 @@ A small, diagnostics-only LSP server for MX hosts (decision 71/72).
 
 ## What it does
 
-Watches `.mx`, `.marko`, and `.solid.mx` documents an editor opens or edits
+Watches `.mx` and `.solid.mx` documents an editor opens or edits
 and publishes one LSP `Diagnostic` for a positioned compile error. A
 successful compile clears any previous diagnostics for that file.
 
-- `.mx`/`.marko` compile as whole-file templates under the resolved host
+- `.mx` compiles as a whole-file template under the resolved host
   policy. The HTML and Astro hosts use `@mxlang/html`; a file routed to
   `host: "solid"` uses `@mxlang/solid`'s fixed profile, where stateful Marko
   tags such as `<let>` are errors.
@@ -23,8 +23,9 @@ successful compile clears any previous diagnostics for that file.
 
 **Everything else.** No completion, no hover, no go-to-definition, no
 formatting, no semantic tokens — Marko's own language server
-(`marko-js/language-server`) already provides all of that for `.marko`/`.mx`
-files, and this server is designed to run *alongside* it, not replace it
+(`marko-js/language-server`) already provides all of that for `.marko`
+files (and would for `.mx`, since MX 1.0 is a strict Marko subset), and
+this server is designed to run *alongside* it, not replace it
 (`notes/research/host-diagnostics.md` §2: both VS Code and Zed support
 multiple language servers registered against one language).
 
@@ -32,7 +33,7 @@ The reason a second server exists at all: Marko's own server compiles with a
 hardcoded config that carries no host policy (`host-diagnostics.md` §1), so
 `<let>` — valid Marko syntax — is invisible to it even when a host's
 `strictPolicy` forbids it. `tsserver` can't fill the gap either: it never
-opens `.marko`/`.mx` files in the first place (`host-diagnostics.md` §4).
+opens `.mx` files in the first place (`host-diagnostics.md` §4).
 
 ## Why decisions 71/72 require this
 
@@ -58,7 +59,7 @@ this by walking upward from the file, looking for the nearest `package.json`:
 
 `@mxlang/astro` always compiles under its strict policy (it ships no stateful
 tags), whatever `strict` says. The Solid host also has a fixed profile:
-`host: "solid"` routes whole-file `.mx`/`.marko` templates through
+`host: "solid"` routes whole-file `.mx` templates through
 `compileSolidMx`, so stateful Marko tags are rejected. A `.solid.mx` suffix or
 `solidmx`/`SolidMX` language id takes precedence over package policy because
 that suffix identifies a different file format: TypeScript/TSX with MX
