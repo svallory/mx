@@ -2,6 +2,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -9,7 +10,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CustomTag } from "@mxlang/core";
+import type { CustomTag, TemplateBackedTag } from "@mxlang/core";
 import { compileHonoMx } from "@mxlang/hono";
 import { compile as compileHtml } from "@mxlang/html";
 import { compilePreactMx } from "@mxlang/preact";
@@ -21,19 +22,74 @@ import icon from "./icon/icon.tag.ts";
 
 const require = createRequire(import.meta.url);
 const here = dirname(fileURLToPath(import.meta.url));
-const fixture = join(here, "icon");
-const source = readFileSync(join(fixture, "input.mx"), "utf8");
-const input = JSON.parse(readFileSync(join(fixture, "input.json"), "utf8"));
-const expected = readFileSync(join(fixture, "expected.html"), "utf8");
-const customTags: Record<string, CustomTag> = { icon };
+
+export type CustomTagHost =
+  | "html"
+  | "astro"
+  | "preact"
+  | "react"
+  | "hono"
+  | "solid";
 
 export interface CustomTagFixtureRow {
-  host: "html" | "astro" | "preact" | "react" | "hono" | "solid";
+  fixture: string;
+  host: CustomTagHost;
   status: "pass" | "fail";
   detail?: string;
 }
 
-const EXPECTED_HOSTS = 6;
+/**
+ * One fixture: an MX file, its input, its expected HTML, and its tag map.
+ *
+ * The two fixtures are the same markup and the same expected bytes through two
+ * different definitions of `<icon>` — an L2 sidecar that builds IR, and an L1
+ * template inlined from `tags/icon.mx`. That they produce identical output on
+ * all six hosts is the point of the gate: a template tag reaches the host as
+ * ordinary IR, so no host learns which layer authored it.
+ */
+interface Fixture {
+  name: string;
+  source: string;
+  input: unknown;
+  expected: string;
+  customTags: Record<string, CustomTag>;
+  /** The path compiled *as*, so a host resolves the fixture's own directory. */
+  filename: string;
+}
+
+function load(name: string, customTags: Record<string, CustomTag>): Fixture {
+  const directory = join(here, name);
+  return {
+    name,
+    source: readFileSync(join(directory, "input.mx"), "utf8"),
+    input: JSON.parse(readFileSync(join(directory, "input.json"), "utf8")),
+    expected: readFileSync(join(directory, "expected.html"), "utf8"),
+    customTags,
+    filename: join(directory, "input.mx"),
+  };
+}
+
+/** The L1 tag: `tags/icon.mx`, registered by path as P2's scan later will. */
+function templateIcon(): Record<string, CustomTag> {
+  const filename = join(here, "icon-template", "tags", "icon.mx");
+  return {
+    icon: {
+      template: {
+        filename,
+        source: readFileSync(filename, "utf8"),
+        mtimeMs: statSync(filename).mtimeMs,
+      },
+    } satisfies TemplateBackedTag,
+  };
+}
+
+const FIXTURES: Fixture[] = [
+  load("icon", { icon }),
+  load("icon-template", templateIcon()),
+];
+
+const HOSTS = 6;
+const EXPECTED_ROWS = FIXTURES.length * HOSTS;
 
 async function loadModule(
   code: string,
@@ -80,30 +136,32 @@ async function loadModule(
 }
 
 function compared(
-  host: CustomTagFixtureRow["host"],
+  fixture: Fixture,
+  host: CustomTagHost,
   html: string,
 ): CustomTagFixtureRow {
-  return html.trimEnd() === expected.trimEnd()
-    ? { host, status: "pass" }
+  return html.trimEnd() === fixture.expected.trimEnd()
+    ? { fixture: fixture.name, host, status: "pass" }
     : {
+        fixture: fixture.name,
         host,
         status: "fail",
-        detail: `got ${normalizeHtml(html)}; want ${normalizeHtml(expected)}`,
+        detail: `got ${normalizeHtml(html)}; want ${normalizeHtml(fixture.expected)}`,
       };
 }
 
-async function runHtml(strict: boolean): Promise<string> {
-  const { code } = compileHtml(source, join(fixture, "input.mx"), {
-    customTags,
+async function runHtml(fixture: Fixture, strict: boolean): Promise<string> {
+  const { code } = compileHtml(fixture.source, fixture.filename, {
+    customTags: fixture.customTags,
     strict,
   });
   const mod = await loadModule(code, "ts");
-  return String(mod.default(input));
+  return String(mod.default(fixture.input));
 }
 
-async function runPreact(): Promise<string> {
-  const { code } = compilePreactMx(source, join(fixture, "input.mx"), {
-    customTags,
+async function runPreact(fixture: Fixture): Promise<string> {
+  const { code } = compilePreactMx(fixture.source, fixture.filename, {
+    customTags: fixture.customTags,
   });
   const mod = await loadModule(code, "tsx", "preact");
   const { render } = (await import("preact-render-to-string")) as {
@@ -112,12 +170,12 @@ async function runPreact(): Promise<string> {
   const { h } = (await import("preact")) as {
     h: (type: unknown, props: unknown) => unknown;
   };
-  return render(h(mod.default, input));
+  return render(h(mod.default, fixture.input));
 }
 
-async function runReact(): Promise<string> {
-  const { code } = compileReactMx(source, join(fixture, "input.mx"), {
-    customTags,
+async function runReact(fixture: Fixture): Promise<string> {
+  const { code } = compileReactMx(fixture.source, fixture.filename, {
+    customTags: fixture.customTags,
   });
   const mod = await loadModule(code, "tsx", "react");
   const { createElement } = (await import("react")) as {
@@ -127,13 +185,13 @@ async function runReact(): Promise<string> {
     renderToStaticMarkup: (node: unknown) => string;
   };
   return renderToStaticMarkup(
-    createElement(mod.default as never, input as never),
+    createElement(mod.default as never, fixture.input as never),
   );
 }
 
-async function runHono(): Promise<string> {
-  const { code } = compileHonoMx(source, join(fixture, "input.mx"), {
-    customTags,
+async function runHono(fixture: Fixture): Promise<string> {
+  const { code } = compileHonoMx(fixture.source, fixture.filename, {
+    customTags: fixture.customTags,
   });
   const mod = await loadModule(code, "tsx", "hono/jsx");
   const { jsx } = (await import("hono/jsx")) as {
@@ -143,7 +201,7 @@ async function runHono(): Promise<string> {
     ) => { toString(): string | Promise<string> };
   };
   return String(
-    await jsx(mod.default, input as Record<string, unknown>).toString(),
+    await jsx(mod.default, fixture.input as Record<string, unknown>).toString(),
   );
 }
 
@@ -157,15 +215,15 @@ async function runHono(): Promise<string> {
  * so Solid emits no hydration markers and the bytes can be compared directly
  * against `expected.html`.
  */
-async function runSolid(): Promise<string> {
-  const { code } = compileSolidMx(source, {
-    filename: join(fixture, "input.solid.mx"),
-    customTags,
+async function runSolid(fixture: Fixture): Promise<string> {
+  const { code } = compileSolidMx(fixture.source, {
+    filename: fixture.filename.replace(/\.mx$/, ".solid.mx"),
+    customTags: fixture.customTags,
   });
   const wrapped = `import { For, Show } from "solid-js";
 export default function Fixture(input) { return <>${code}</>; }`;
   const compiled = nativeTransform(wrapped, {
-    filename: join(fixture, "fixture.tsx"),
+    filename: join(here, "fixture.tsx"),
     generate: "ssr",
     hydratable: false,
   });
@@ -193,17 +251,19 @@ export default function Fixture(input) { return <>${code}</>; }`;
   const { renderToString } = (await import("@solidjs/web")) as {
     renderToString: (fn: () => unknown) => string;
   };
-  return renderToString(() => mod.default(input));
+  return renderToString(() => mod.default(fixture.input));
 }
 
 async function attempt(
-  host: CustomTagFixtureRow["host"],
+  fixture: Fixture,
+  host: CustomTagHost,
   run: () => string | Promise<string>,
 ): Promise<CustomTagFixtureRow> {
   try {
-    return compared(host, await run());
+    return compared(fixture, host, await run());
   } catch (error) {
     return {
+      fixture: fixture.name,
       host,
       status: "fail",
       detail: error instanceof Error ? error.message : String(error),
@@ -212,18 +272,23 @@ async function attempt(
 }
 
 export async function runCustomTagFixtures(): Promise<CustomTagFixtureRow[]> {
-  const rows = [
-    await attempt("html", () => runHtml(false)),
-    await attempt("astro", () => runHtml(true)),
-    await attempt("preact", runPreact),
-    await attempt("react", runReact),
-    await attempt("hono", runHono),
-    await attempt("solid", runSolid),
-  ];
+  const rows: CustomTagFixtureRow[] = [];
+  for (const fixture of FIXTURES) {
+    rows.push(
+      await attempt(fixture, "html", () => runHtml(fixture, false)),
+      await attempt(fixture, "astro", () => runHtml(fixture, true)),
+      await attempt(fixture, "preact", () => runPreact(fixture)),
+      await attempt(fixture, "react", () => runReact(fixture)),
+      await attempt(fixture, "hono", () => runHono(fixture)),
+      await attempt(fixture, "solid", () => runSolid(fixture)),
+    );
+  }
 
-  if (rows.length !== EXPECTED_HOSTS) {
+  // Decision 55: a gate must assert it did the work, not only that nothing
+  // failed. A fixture that silently stopped running is a failure here.
+  if (rows.length !== EXPECTED_ROWS) {
     throw new Error(
-      `custom-tag count gate: ran ${rows.length} hosts, expected ${EXPECTED_HOSTS}`,
+      `custom-tag count gate: ran ${rows.length} rows, expected ${EXPECTED_ROWS} (${FIXTURES.length} fixtures x ${HOSTS} hosts)`,
     );
   }
   return rows;
@@ -231,13 +296,13 @@ export async function runCustomTagFixtures(): Promise<CustomTagFixtureRow[]> {
 
 if (import.meta.main) {
   const rows = await runCustomTagFixtures();
-  console.log("custom-tags: icon fixture");
+  console.log("custom-tags: icon fixtures");
   for (const row of rows) {
     console.log(
-      `${row.host.padEnd(8)} ${row.status}${row.detail ? ` — ${row.detail}` : ""}`,
+      `${row.fixture.padEnd(14)} ${row.host.padEnd(8)} ${row.status}${row.detail ? ` — ${row.detail}` : ""}`,
     );
   }
   const passed = rows.filter((row) => row.status === "pass").length;
-  console.log(`${passed}/${EXPECTED_HOSTS} hosts passed`);
-  if (passed !== EXPECTED_HOSTS) process.exitCode = 1;
+  console.log(`${passed}/${EXPECTED_ROWS} rows passed`);
+  if (passed !== EXPECTED_ROWS) process.exitCode = 1;
 }

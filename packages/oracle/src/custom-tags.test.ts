@@ -5,7 +5,18 @@ import { expect, it } from "vitest";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 
-it("runs the icon custom tag through all six hosts", () => {
+const HOSTS = ["html", "astro", "preact", "react", "hono", "solid"] as const;
+
+/**
+ * The two fixtures are the same `<icon>` written two ways: an L2 sidecar that
+ * builds IR with the tag builders, and an L1 template inlined from
+ * `tags/icon.mx`. Asserting every row of both is what proves a template tag
+ * reaches a host as ordinary IR — no host emitter knows which layer authored
+ * the markup it rendered.
+ */
+const FIXTURES = ["icon", "icon-template"] as const;
+
+it("runs both icon custom tag fixtures through all six hosts", () => {
   const result = spawnSync(
     "bun",
     [
@@ -17,8 +28,14 @@ it("runs the icon custom tag through all six hosts", () => {
   );
 
   expect(result.status).toBe(0);
-  expect(result.stdout).toContain("6/6 hosts passed");
-  for (const host of ["html", "astro", "preact", "react", "hono", "solid"]) {
-    expect(result.stdout).toMatch(new RegExp(`^${host}\\s+pass$`, "m"));
+  // Decision 55: assert the count, so a fixture or a host that silently
+  // stopped running is a failure rather than an unnoticed absence.
+  expect(result.stdout).toContain("12/12 rows passed");
+  for (const fixture of FIXTURES) {
+    for (const host of HOSTS) {
+      expect(result.stdout).toMatch(
+        new RegExp(`^${fixture}\\s+${host}\\s+pass$`, "m"),
+      );
+    }
   }
 });
