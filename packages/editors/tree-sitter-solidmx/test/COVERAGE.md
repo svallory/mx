@@ -354,30 +354,30 @@ This checklist covers every distinct syntactic construct in SolidMX (MX for Soli
 ### 39. `<for>` with `of=` and no `by=` (unkeyed)
 - **Name**: `<for>` unkeyed iteration
 - **Valid in**: `.solid.mx`, expression-position
-- **Spec quote (section 5.2)**: `<for|it, i| of=xs()>` → `<For each={xs()} keyed={false}>{(it, i) => …}</For>`
-- **Example**: `<for|item, i| of=items()><li>${item().name}</li></for>`
-- **Notes**: `keyed={false}`. Param types: `it: Accessor<T>`, `i: number`.
+- **Spec quote (section 5.2)**: `<for|it, i| of=xs()>` → `<For each={xs()}>{(it, i) => …}</For>`
+- **Example**: `<for|item, i| of=items()><li>${item.name}</li></for>`
+- **Notes**: No `keyed` prop (Solid's default keyed-by-reference form; see `packages/hosts/solid/README.md` "`<for>` binds the row as a value, not an accessor" — decision `solid-for-accessor`, 2026-09-15). Param types: `it: T`, `i: Accessor<number>`.
 
 ### 40. `<for>` with `of=` and `by=` (identity-keyed)
 - **Name**: `<for>` identity-keyed iteration
 - **Valid in**: `.solid.mx`, expression-position
 - **Spec quote (section 5.2)**: `<for|it, i| of=xs() by=identity>` → `<For each={xs()}>{(it, i) => …}</For>`
 - **Example**: `<for|item, i| of=items() by=identity><li>${item.id}</li></for>`
-- **Notes**: `keyed` defaults to `true`. Param types: `it: T`, `i: Accessor<number>`.
+- **Notes**: Identical lowering to row 39 (no `keyed` prop); `by=identity` names the same default explicitly. Param types: `it: T`, `i: Accessor<number>`.
 
 ### 41. `<for>` with `of=` and `by="fieldname"` (property-keyed)
 - **Name**: `<for>` property-keyed iteration
 - **Valid in**: `.solid.mx`, expression-position
 - **Spec quote (section 5.2)**: `<for|it, i| of=xs() by="id">` / `by=(x => x.id)` → `<For each={xs()} keyed={x => x.id}>{(it, i) => …}</For>`
 - **Example**: `<for|item, i| of=items() by="id"><li>${item().name}</li></for>`
-- **Notes**: String shorthand for property access (`x.id`). Param types: `it: Accessor<T>`, `i: Accessor<number>`.
+- **Notes**: String shorthand for property access (`x.id`). Solid's `keyed={fn}` overload hands both args as accessors (unlike the default/`by=identity` forms above), so the body must call `item()`. Param types: `it: Accessor<T>`, `i: Accessor<number>`.
 
 ### 42. `<for>` with `of=` and `by=function` (custom keying)
 - **Name**: `<for>` custom-keyed iteration
 - **Valid in**: `.solid.mx`, expression-position
 - **Spec quote (section 5.2)**: "`by=(x => x.id)`" version of above
 - **Example**: `<for|item, i| of=items() by=item => item.userId><li>${item().userId}</li></for>`
-- **Notes**: Function expression for key selection.
+- **Notes**: Function expression for key selection; `item` is an accessor, same as row 41. Param types: `it: Accessor<T>`, `i: Accessor<number>`.
 
 ### 43. `<for>` with `from=` and `to=` (inclusive range)
 - **Name**: `<for>` inclusive range

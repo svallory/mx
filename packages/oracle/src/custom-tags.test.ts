@@ -24,14 +24,12 @@ const FIXTURES = ["icon", "icon-template", "icon-sprite", "table-of"] as const;
 /**
  * Rows deliberately not compared, each with the reason the runner prints.
  *
- * One entry today, and it is not a custom-tag result: `@mxlang/solid` binds a
- * `keyed={false}` `<for>` row as a plain value where Solid 2 passes an
- * accessor, so any `<for>` body reading a property of its row renders empty —
- * reproducible with no custom tag in the file. See `run.ts` for the full note.
+ * Empty: the `table-of`/`solid` row that used to be skipped here (the
+ * `@mxlang/solid` `<for>` accessor/value bug — see task `solid-for-accessor`)
+ * is fixed; every fixture now compares on every host. See `run.ts` for the
+ * fixture definitions.
  */
-const SKIPPED: ReadonlyArray<readonly [string, string]> = [
-  ["table-of", "solid"],
-];
+const SKIPPED: ReadonlyArray<readonly [string, string]> = [];
 
 function isSkipped(fixture: string, host: string): boolean {
   return SKIPPED.some(([f, h]) => f === fixture && h === host);

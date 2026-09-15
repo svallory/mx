@@ -37,6 +37,33 @@ occupied, so diagnostics and the eventual source map stay anchored to
 covered by `reports a host/expression parse error past the enclosing region
 base` in `src/index.test.ts`.
 
+## `<for>` binds the row as a value, not an accessor (default form)
+
+MX templates are host-agnostic: `${p.name}` inside a plain `<for|p|
+of=...>` (no `by=`) must work identically on every host, so that default
+form binds the row as a **plain value**, never as an `Accessor<T>`. With no
+`by=`, the emitter omits Solid 2's `keyed` prop entirely rather than
+passing `keyed={false}` — Solid's own default (no `keyed` prop) already
+hands the child callback the raw row value and a stable index accessor,
+which is what a body reading `p.name` needs; `keyed={false}` is the *other*
+shape (`item` an accessor, `index` a stable number) and reading `p.name` on
+that accessor renders empty. This matches `by=identity`'s existing lowering
+(also no `keyed` prop) — the two are now the same emitted form.
+
+`by="field"` and `by=(fn)` are unaffected: they select Solid's
+`keyed={fn}` overload, which hands the callback `Accessor<T>` for *both*
+the item and the index regardless of MX's own value-binding stance above —
+that overload is Solid's own shape, not something this host controls.
+
+The tradeoff, stated once here rather than repeated per row: rows re-render
+by reference-identity change (Solid's own keyed semantics), not through
+per-field fine-grained accessor updates. A body mutating `p.name` in place on
+an existing row object will not re-render that row; replacing the row (or
+its containing array) will. MX accepts this so `<for>` bodies read the same
+way — a value, not a function call — across all six hosts, rather than giving
+Solid uniquely finer-grained (but host-specific) update semantics that no
+other target can express.
+
 ## Lowering table (IR kind → Solid JSX)
 
 | IR kind / construct | Solid JSX |
@@ -50,7 +77,7 @@ base` in `src/index.test.ts`.
 | `on:` / `oncapture:` / `attr:` / `bool:` / `use:` namespaces | Rejected, each with Solid 2's own replacement in the message (`on:x=fn` → `onX=fn`; `oncapture:` → a `ref` callback with `{ capture: true }`; `attr:`/`bool:` → the plain attribute; `use:foo=opts` → `ref=foo(opts)`) |
 | `IfChain`, 1–2 conditioned branches | `<Show when={cond} fallback={...}>` |
 | `IfChain`, 3+ conditioned branches | `<Switch fallback={...}><Match when={cond}>...</Match></Switch>` |
-| `For`, `of=` | `<For each={list} keyed={...}>{(item, i) => body}</For>`; `keyed={false}` with no `by=`, `keyed={x => x.field}` for a string `by=`, the raw expression otherwise |
+| `For`, `of=` | `<For each={list} keyed={...}>{(item, i) => body}</For>`; no `keyed` prop (Solid's default keyed-by-reference form) with no `by=`, `keyed={x => x.field}` for a string `by=`, the raw expression otherwise |
 | `For`, `in=` | `<For each={Object.entries(obj)} keyed={e => e[0]}>{([k, v]) => body}</For>` |
 | `For`, `range` (`from`/`to`/`until`, no `step`) | `<Repeat count={N} from={from}>{(i) => body}</Repeat>`, `N` folded at compile time when both bounds are literal |
 | `For`, `range` with `step` | `<Repeat count={N}>{(mxIndex) => { const i = (from) + mxIndex * (step); return body; }}</Repeat>`; `N` clamped through `Number.isFinite(...) ? Math.max(0, ...) : 0` when not fully literal, so a runtime `step` of `0` renders zero rows instead of an infinite `Repeat` |

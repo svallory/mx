@@ -108,27 +108,7 @@ const FIXTURES: Fixture[] = [
   // `table-of` is L2 without that pair, showing `staticOnly` plus the
   // structural builders on their own.
   load("icon-sprite", { icon: spriteIcon }),
-  load(
-    "table-of",
-    { "table-of": tableOf },
-    {
-      // Not a custom-tag result, and not this tag's to fix. Per SolidMX's own
-      // spec (section 5.2, and `tree-sitter-solidmx/test/COVERAGE.md`), a
-      // `<for>` with no `by=` lowers to `<For ... keyed={false}>`, and Solid 2
-      // documents that form as handing the row in as an **accessor**
-      // (`solid-js/types/client/flow.d.ts`: "`keyed={false}` receives
-      // `(item, index)` where `item` is an accessor"). MX binds the row as a
-      // plain value, so any `<for>` body that reads a *property* of the row
-      // renders empty under Solid SSR — measured with a hand-written
-      // `<for|p| of=input.people><li>${p.name}</li></for>` and no custom tag
-      // anywhere, which fails identically. `<icon>`'s own `<for>` passes only
-      // because it interpolates the bare param. Reconciling the two is a
-      // `@mxlang/solid` change with its own oracle and twin consequences, so it
-      // is filed rather than smuggled into this task.
-      solid:
-        "@mxlang/solid binds a `keyed={false}` row as a value, but Solid 2 passes an accessor, so `row.column` reads empty",
-    },
-  ),
+  load("table-of", { "table-of": tableOf }),
 ];
 
 const HOSTS = 6;
