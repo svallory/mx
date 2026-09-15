@@ -748,6 +748,41 @@ Five facts worth knowing before editing it:
   language plugin — because which tags a template may call follows from where
   the template lives. An explicitly passed `customTags` still wins over a
   discovered tag of the same name.
+- **Precedence order (spec §4; ref `custom-tags-import-precedence`):
+  core structural tags, then built-in custom tags (`try`, never shadowable),
+  then a *PascalCase* name the file itself binds (`import`, `<define>`),
+  then a registered custom tag, then a host claim
+  (`ctx.declarations.claimsTag`), then components/elements.** `lower.ts`'s
+  tag-name switch checks `/^[A-Z]/.test(name) && (ctx.defines.has(name) ||
+  ctx.imports.has(name))` directly — a *core* rule inline in `lower.ts`, not
+  a call into a host's own `isComponent` (Solid's and Astro's `isComponent`
+  are casing-only and never consult `ctx.imports`/`ctx.defines` at all, so
+  there is no shared "file-local half" of `isComponent` to call into) —
+  before ever consulting `ctx.customTags` or `claimsTag`, so
+  `import Panel from "./panel.mx"` in a package that also has a
+  `tags/Panel.mx` or a registered `Panel` custom tag resolves to the
+  import, not the custom tag. This was previously backwards (`ctx.customTags`
+  was checked first) with no test covering the order.
+  **The casing guard is load-bearing, not incidental**: Marko's own rule
+  (matched by every host's `isComponent` — html `translate.ts`, preact
+  `emitter.ts`) is that a *lowercase* local variable is never resolved as a
+  component call — `import panel from "./panel.mx"` then `<panel/>` is a
+  parse-time Marko error ("Local variables must be in a dynamic tag unless
+  they are PascalCase"), not a component reference. An earlier version of
+  this fix checked `ctx.defines`/`ctx.imports` with no casing gate, which
+  regressed every lowercase-named custom tag or host claim (e.g. `<style>`)
+  sharing a name with an unrelated lowercase import in the same file — the
+  binding existed but was never meant to route as a component, so it must
+  not shadow the custom tag or host claim either.
+  **Known gap, pre-existing and unaffected by this fix**: only `import` and
+  `<define>` populate `ctx.imports`/`ctx.defines`. A component name bound by
+  `<const>` (`<const/Panel=() => null/>`), or bound as a `<for>`/`<define>`
+  *tag param*, is not in either set and still loses to a registered custom
+  tag of the same name — measured: `<const/Panel=() => null/>` followed by
+  `<Panel/>`, with a registered `Panel` custom tag, still expands the custom
+  tag on `main` and after this fix alike. Spec §4 only names "explicit
+  import" and local `tags/`/`mx.tags`; extending the file-local check to
+  `<const>` and tag params is unscoped follow-up, not part of this fix.
 - **The scan is synchronous, and that is load-bearing.** Bun's `onLoad`,
   Volar's `createVirtualCode`, `diagnoseDocument` and `mx-tsc` all call from
   positions that cannot await; only the Vite plugin could. One synchronous

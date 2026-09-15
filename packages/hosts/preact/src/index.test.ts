@@ -9,6 +9,7 @@
  * a `<try>` pulls in.
  */
 
+import type { CustomTag } from "@mxlang/core";
 import { describe, expect, it } from "vitest";
 import { compilePreactMx } from "./index.ts";
 
@@ -512,5 +513,36 @@ describe("stateful Marko tags are errors naming the Preact equivalent", () => {
     expect(errorOf("<!doctype html>\n<p>x</p>")).toContain(
       "cannot appear in a Preact component",
     );
+  });
+});
+
+// Ref custom-tags-import-precedence: spec §4's precedence (explicit import >
+// local tags/ > mx.tags), on the second real JSX host the round 1 review
+// asked for.
+describe("import precedence over registered custom tags", () => {
+  const marker: CustomTag = {
+    transform: (_call, ctx) => [ctx.build.element("mx-marker", [], [])],
+  };
+
+  it("resolves an imported PascalCase component over a registered custom tag of the same name", () => {
+    const code = compilePreactMx(
+      'import Panel from "./panel.marko"\n<Panel/>\n',
+      "/fixtures/test.mx",
+      { customTags: { Panel: marker } },
+    ).code;
+    expect(code).not.toContain("mx-marker");
+    expect(code).toMatch(/<Panel\s*\/>/);
+  });
+
+  // Round 1 regression: a lowercase import must not shadow a registered
+  // custom tag either — Preact's own `isComponentName` (emitter.ts) never
+  // treats a lowercase name as a component, imported or not.
+  it("does not let a lowercase import shadow a registered custom tag of the same name", () => {
+    const code = compilePreactMx(
+      'import panel from "./panel.marko"\n<panel/>\n',
+      "/fixtures/test.mx",
+      { customTags: { panel: marker } },
+    ).code;
+    expect(code).toContain("mx-marker");
   });
 });

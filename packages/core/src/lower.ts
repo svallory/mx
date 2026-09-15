@@ -823,16 +823,39 @@ function lowerTag(ctx: Ctx, node: Node): IrNode | IrNode[] {
     return lowerCustomTag(ctx, node, name, builtinTag, true);
   }
 
+  // A name the file itself binds — an `import`, or a `<define>` — wins over
+  // a registered custom tag of the same name (spec §4: explicit import >
+  // local `tags/` > `mx.tags`). This is a core rule, checked directly on
+  // `ctx.imports`/`ctx.defines` rather than by calling a host's own
+  // `isComponent` (which also matches taglib-discovered names with no
+  // file-local binding, and which Solid's and Astro's implementations never
+  // consult at all — both decide purely by case), so a shadowed name routes
+  // to the component it names instead of the custom tag before
+  // `ctx.customTags` is ever consulted.
+  //
+  // Gated on PascalCase: Marko's own rule (matched by every host's own
+  // `isComponent`, e.g. html `translate.ts`, preact `emitter.ts`) is that a
+  // *lowercase* local variable is never resolved as a component tag — only
+  // taglib/`tags/` discovery or a built-in element can claim a lowercase
+  // name. An ungated check regressed `import panel from "./p.mx"` +
+  // `<panel/>` (a registered `panel` custom tag, or a host-claimed
+  // `<style>`): the file-local binding existed but was never meant to be a
+  // component call, so it must not shadow the custom tag or the host claim
+  // either.
+  const fileLocalBinding =
+    /^[A-Z]/.test(name) && (ctx.defines.has(name) || ctx.imports.has(name));
+
   // Registered custom tags take precedence over host claims so a shared tag
   // may be expressed in terms of `ctx.build.hostTag(...)`. Structural tags
-  // above remain core-owned and cannot be shadowed.
+  // above remain core-owned and cannot be shadowed; a file-local binding
+  // (checked above) outranks a custom tag of the same name.
   const customTag =
-    ctx.customTags && Object.hasOwn(ctx.customTags, name)
+    !fileLocalBinding && ctx.customTags && Object.hasOwn(ctx.customTags, name)
       ? ctx.customTags[name]
       : undefined;
   if (customTag) return lowerCustomTag(ctx, node, name, customTag);
 
-  if (ctx.declarations.claimsTag?.(name, ctx)) {
+  if (!fileLocalBinding && ctx.declarations.claimsTag?.(name, ctx)) {
     return lowerHostTag(ctx, node, name);
   }
 
