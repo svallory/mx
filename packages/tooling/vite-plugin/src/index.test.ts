@@ -702,12 +702,20 @@ describe("mx()", () => {
       const when = new Date(Date.now() + 10_000);
       utimesSync(tagFile, when, when);
 
-      // The new tag is discovered, and reports P1's template-expansion gate
-      // rather than "unknown tag" — which is exactly what a rescan produces
-      // in P2, since L1 inlining is P3's job.
+      // The new tag is discovered and its template inlined, so the compile
+      // succeeds and the second tag's own markup is in the output. Before P3
+      // this asserted the template-expansion gate instead, which is what a
+      // discovered template tag used to report; the rescan being tested is
+      // the same either way.
+      const rescanned = await transform.call({}, "<marker/><extra/>\n", id);
+      expect(rescanned?.code).toContain("a second tag");
+
+      // The negative half the old assertion carried: a name the rescan did
+      // *not* find is still an error, so the success above is discovery
+      // working rather than unknown tags being waved through.
       await expect(
-        transform.call({}, "<marker/><extra/>\n", id),
-      ).rejects.toThrow(/`<extra>`: custom tag has no transform/);
+        transform.call({}, "<marker/><absent/>\n", id),
+      ).rejects.toThrow(/absent/);
     });
 
     it("warns once about a misconfigured mx.tags", async () => {

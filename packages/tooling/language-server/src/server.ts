@@ -21,7 +21,11 @@ import {
   TextDocuments,
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { diagnoseDocument, isSolidMxDocument } from "./diagnose.ts";
+import {
+  diagnoseDocument,
+  isSolidMxDocument,
+  type RelatedDiagnostics,
+} from "./diagnose.ts";
 
 /** Milliseconds to wait after the last edit before compiling (brief §3). */
 const DEBOUNCE_MS = 150;
@@ -57,6 +61,12 @@ export function startServer(
   // compiles for the same document.
   const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
+  // Template URIs each open document last published diagnostics against, so
+  // they can be cleared when that document stops reporting them. Keyed by the
+  // *caller*: a template is not itself open, so nothing else would ever clear
+  // its diagnostics.
+  const templateDiagnostics = new Map<string, Set<string>>();
+
   function scheduleDiagnostics(uri: string, languageId: string, text: string) {
     if (!isMxDocument(uri, languageId)) return;
 
@@ -82,6 +92,9 @@ export function startServer(
       }
 
       const hostPolicy = resolveHostPolicy(filePath);
+      // Diagnostics raised inside a tag template belong to that file, not to
+      // this one, and are published against its own URI below.
+      const related: RelatedDiagnostics[] = [];
       // `filePath`, not `uri`: everything `diagnoseDocument` does with this
       // argument is filesystem work — resolving the host, and walking upward
       // for `tags/` directories. `resolve("file:///a/page.mx")` yields
@@ -98,8 +111,29 @@ export function startServer(
             `@mxlang/language-server: unexpected error compiling ${uri}: ${String(error)}`,
           ),
         languageId,
+        undefined,
+        related,
       );
       connection.sendDiagnostics({ uri, diagnostics });
+
+      // Clear whatever this document published against a template last time
+      // before publishing what it found now, so a fixed template's diagnostic
+      // does not linger once the caller compiles clean.
+      const previous = templateDiagnostics.get(uri) ?? new Set<string>();
+      const current = new Set(related.map((entry) => entry.uri));
+      for (const templateUri of previous) {
+        if (!current.has(templateUri)) {
+          connection.sendDiagnostics({ uri: templateUri, diagnostics: [] });
+        }
+      }
+      for (const entry of related) {
+        connection.sendDiagnostics({
+          uri: entry.uri,
+          diagnostics: entry.diagnostics,
+        });
+      }
+      if (current.size > 0) templateDiagnostics.set(uri, current);
+      else templateDiagnostics.delete(uri);
     }, DEBOUNCE_MS);
 
     pending.set(uri, timer);
@@ -142,6 +176,11 @@ export function startServer(
       pending.delete(event.document.uri);
     }
     connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
+    for (const templateUri of templateDiagnostics.get(event.document.uri) ??
+      []) {
+      connection.sendDiagnostics({ uri: templateUri, diagnostics: [] });
+    }
+    templateDiagnostics.delete(event.document.uri);
   });
 
   documents.listen(connection);

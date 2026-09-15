@@ -6,10 +6,12 @@
  * tested directly, as the brief requires, without spawning a process.
  */
 
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
+  type CustomTag,
   getCustomTags,
   type HostPolicy,
+  type MxWarning,
   type ScanDiagnostic,
   scanCached,
   TranslateError,
@@ -33,6 +35,69 @@ export function isSolidMxDocument(uri: string, languageId = ""): boolean {
   return uri.endsWith(".solid.mx") || SOLID_MX_LANGUAGE_IDS.has(languageId);
 }
 
+/** The filesystem path a document URI names, for comparing with a `TranslateError`'s file. */
+function filePathOf(uri: string): string {
+  return uri.startsWith("file://") ? fileURLToPath(uri) : uri;
+}
+
+/** The URI a diagnostic measured in a tag template is published against. */
+function uriOf(filePath: string): string {
+  return filePath.startsWith("file://")
+    ? filePath
+    : pathToFileURL(filePath).href;
+}
+
+/**
+ * Diagnostics belonging to a file other than the one compiled.
+ *
+ * A tag template is compiled as part of its *caller*, so an error inside one
+ * is measured in the template and has no honest position in the document the
+ * editor asked about. `diagnoseDocument` collects those here so the server can
+ * publish them against the template's own URI.
+ */
+export interface RelatedDiagnostics {
+  uri: string;
+  diagnostics: Diagnostic[];
+}
+
+/**
+ * Turns collected warnings into diagnostics, routing each to its own file.
+ *
+ * A warning raised inside a tag template is measured there, exactly as an
+ * error is, so it follows the same third-position rule: published against the
+ * template's URI rather than at a meaningless line of the open document.
+ */
+function warningDiagnostics(
+  warnings: readonly MxWarning[],
+  uri: string,
+  related?: RelatedDiagnostics[],
+): Diagnostic[] {
+  const own: Diagnostic[] = [];
+  for (const warning of warnings) {
+    const diagnostic: Diagnostic = {
+      severity: DiagnosticSeverity.Warning,
+      source: "mxlang",
+      message: warning.message,
+      range: {
+        start: {
+          line: Math.max(0, warning.line - 1),
+          character: Math.max(0, warning.column),
+        },
+        end: {
+          line: Math.max(0, warning.line - 1),
+          character: Math.max(0, warning.column) + 1,
+        },
+      },
+    };
+    if (warning.file && warning.file !== filePathOf(uri)) {
+      related?.push({ uri: uriOf(warning.file), diagnostics: [diagnostic] });
+      continue;
+    }
+    own.push(diagnostic);
+  }
+  return own;
+}
+
 /**
  * Resolves a `HostPolicy` to the `strict` flag the translator compiles under.
  *
@@ -47,9 +112,9 @@ function resolveStrict(hostPolicy: HostPolicy): boolean {
 
 function errorPosition(
   error: unknown,
-): { line: number; column: number } | null {
+): { line: number; column: number; file?: string } | null {
   if (error instanceof TranslateError) {
-    return { line: error.line, column: error.column };
+    return { line: error.line, column: error.column, file: error.file };
   }
   if (!error || typeof error !== "object") return null;
 
@@ -100,12 +165,28 @@ export function diagnoseDocument(
   hostPolicy: HostPolicy,
   onUnexpectedError?: (error: unknown) => void,
   languageId = "",
+  /**
+   * Custom tags to use instead of scanning for them. Normally omitted: the
+   * scan below is how a real document gets its tags.
+   */
+  explicitTags?: Record<string, CustomTag>,
+  /**
+   * Receives diagnostics that belong to a tag template rather than to `uri`.
+   * Optional, so every existing caller is unchanged; the server passes one and
+   * publishes whatever lands in it.
+   */
+  related?: RelatedDiagnostics[],
 ): Diagnostic[] {
   // Configuration problems the scan found. They are not fatal — a typo'd
   // `mx.tags` leaves the local `tags/` directories perfectly usable — so they
   // are collected here and returned alongside whatever the compile produces,
   // rather than replacing it.
   let scanWarnings: Diagnostic[] = [];
+  // Positioned warnings the *compile* raised: content a tag template never
+  // placed, an attribute tag a transform never read. A different source from
+  // the scan's configuration warnings above, and routed per file below, since
+  // one raised inside a template belongs to that template.
+  const warnings: MxWarning[] = [];
 
   try {
     // Tag discovery is filesystem work, so it needs a path. `startServer`
@@ -118,7 +199,12 @@ export function diagnoseDocument(
     const path = documentPath(uri);
     const scan = scanCached(path);
     scanWarnings = scan.diagnostics.map(scanDiagnosticToLsp);
-    const discovered = getCustomTags(path);
+    // Tags the caller supplied win over the scan's. Normally nothing is
+    // supplied and discovery is the whole story; a caller that does pass a map
+    // (a test, or an integration that scanned once for a batch of documents)
+    // has already decided what this file sees, and re-scanning would either
+    // overwrite that or silently merge two answers to one question.
+    const discovered = explicitTags ?? getCustomTags(path);
     const customTags =
       Object.keys(discovered).length > 0 ? discovered : undefined;
 
@@ -147,9 +233,17 @@ export function diagnoseDocument(
     } else {
       // Through `@mxlang/html`'s own front door, not `compileSource`
       // directly: this registers the host taglib and compiles via the IR.
-      compile(text, uri, { strict: resolveStrict(hostPolicy), customTags });
+      compile(text, uri, {
+        strict: resolveStrict(hostPolicy),
+        customTags,
+        warnings,
+      });
     }
-    return scanWarnings;
+    // A compile that succeeded may still have dropped something the author
+    // wrote. Those are Warnings rather than Errors, and they are the reason
+    // the core collects them instead of printing: a build's stdout is not
+    // where an author is looking.
+    return [...scanWarnings, ...warningDiagnostics(warnings, uri, related)];
   } catch (error) {
     const position = errorPosition(error);
     if (position) {
@@ -159,18 +253,43 @@ export function diagnoseDocument(
       const column = Math.max(0, position.column);
       // These errors carry only a start position, not a span, so synthesize a
       // one-character range that marks where the error occurred.
+      const message =
+        error instanceof Error
+          ? error.message
+          : String((error as { message?: unknown }).message ?? error);
       const diagnostic: Diagnostic = {
         severity: DiagnosticSeverity.Error,
         source: "mxlang",
-        message:
-          error instanceof Error
-            ? error.message
-            : String((error as { message?: unknown }).message ?? error),
+        message,
         range: {
           start: { line, character: column },
           end: { line, character: column + 1 },
         },
       };
+      // The third position rule (custom tags spec §2): an error raised inside
+      // an inlined tag template is measured in *that* file, so publishing it
+      // against the open document would underline whatever the caller happens
+      // to have on that line. It is published against the template's own URI
+      // at its real position (through `related`), and the open document gets a
+      // pointer at its head so an author is not left with a compile that fails
+      // for no visible reason.
+      if (position.file && position.file !== filePathOf(uri)) {
+        related?.push({
+          uri: uriOf(position.file),
+          diagnostics: [diagnostic],
+        });
+        return [
+          ...scanWarnings,
+          {
+            ...diagnostic,
+            range: {
+              start: { line: 0, character: 0 },
+              end: { line: 0, character: 1 },
+            },
+            message: `${message} (in ${position.file})`,
+          },
+        ];
+      }
       return [...scanWarnings, diagnostic];
     }
 

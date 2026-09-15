@@ -425,11 +425,50 @@ function isPositionedCode(
   );
 }
 
+/**
+ * Whether a lowered item came from a file other than the one being mapped.
+ *
+ * The third position rule (spec §2): material inlined from a tag template
+ * carries that template's own line and column, tagged with its file. This
+ * virtual code's `source` *is* the caller, so a template-originated span has
+ * nothing here to map to — its offsets index a different file's text.
+ *
+ * **Decision: drop it cleanly.** Volar's `CodeMapping` addresses exactly one
+ * source, so representing a second file would mean a second `VirtualCode` per
+ * template per caller, which is P3 scope this task does not carry. Mapping it
+ * anyway is the option that must not be taken: the offsets would land on
+ * whatever the caller happens to have at those numbers, so a diagnostic about
+ * `tags/icon.mx` would be underlined on an unrelated line of the caller —
+ * worse than no mapping, which merely means the diagnostic is not surfaced
+ * against this file. The template's own diagnostics reach the author through
+ * the language server, which reports them against the template's own URI.
+ *
+ * **This check is defensive, not load-bearing, and that was measured.** Two
+ * existing mechanisms already reject a template-originated span today: the
+ * text comparison below (a template offset rarely indexes identical text in
+ * the caller), and `generatedCodeCursors`, which gives each distinct code
+ * string one forward cursor, so a second identical occurrence — which is
+ * exactly what an expansion of the same expression produces — finds no
+ * remaining position and is skipped. Disabling this check leaves the tests in
+ * `index.test.ts` green.
+ *
+ * It is kept because both of those hold for reasons unrelated to files: they
+ * are about text and about order, and neither would notice a template whose
+ * span happened to line up. Relying on them would make correctness here a
+ * property of two unrelated heuristics agreeing, which is the kind of guard
+ * that stops holding silently when either is tuned.
+ */
+function isForeignFile(item: PositionedCode): boolean {
+  if (isExpression(item)) return typeof item.file === "string";
+  return typeof item.loc.file === "string";
+}
+
 function locateSourceCode(
   item: PositionedCode,
   source: string,
   sourceLines: number[],
 ): { offset: number; length: number } | undefined {
+  if (isForeignFile(item)) return undefined;
   if (isExpression(item)) {
     const loc = item.node?.loc;
     if (!loc?.start || !loc.end) return undefined;

@@ -5,7 +5,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { convertToTSX } from "@astrojs/compiler/sync";
 import { decode } from "@jridgewell/sourcemap-codec";
-import { type CustomTag, clearScanCache } from "@mxlang/core";
+import {
+  type CustomTag,
+  clearScanCache,
+  type TemplateBackedTag,
+} from "@mxlang/core";
 import { print } from "@mxlang/parser";
 import ts from "typescript";
 import { afterEach, describe, expect, it } from "vitest";
@@ -1288,3 +1292,98 @@ function createPluginService(
 
   return pluginFactory({ typescript: ts }).create(info);
 }
+
+describe("custom tag template mappings", () => {
+  /**
+   * The template's expression is byte-identical to one the caller writes, and
+   * both survive into the generated module — `helper` is a `static` binding
+   * the template reads, not an `input` read that substitution would replace.
+   * So the generated text contains `helper.count` twice while the caller's
+   * source contains it once, which is the case a mapping pass must not get
+   * wrong by mapping the expansion's copy onto the caller's text.
+   */
+  const CALLER = [
+    "static const helper = { count: 1 };",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
+    "<p>${helper.count}</p>",
+    "<box/>",
+  ].join("\n");
+
+  const box: TemplateBackedTag = {
+    template: {
+      filename: "/tags/box.mx",
+      source:
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax
+        "<span>${helper.count}</span>",
+    },
+  };
+  const customTags: Record<string, CustomTag> = { box };
+
+  function mappingsFor(source: string, tags?: Record<string, CustomTag>) {
+    const plugin = createMxLanguagePlugin(ts, { customTags: tags });
+    const virtual = plugin.createVirtualCode?.(
+      "/src/caller.mx",
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+    if (!virtual) throw new Error("Expected MX virtual code");
+    const generated = virtual.snapshot.getText(0, virtual.snapshot.getLength());
+    return {
+      generated,
+      mappings: createHtmlMappings(
+        source,
+        "/src/caller.mx",
+        generated,
+        false,
+        undefined,
+        [],
+        tags,
+      ),
+    };
+  }
+
+  it("expands the template into the generated module", () => {
+    const { generated } = mappingsFor(CALLER, customTags);
+    // The premise of the two tests below: the expansion really is there, and
+    // really does repeat the caller's own expression text.
+    expect(generated.split("helper.count")).toHaveLength(3);
+  });
+
+  it("keeps exactly the caller's own expression mapped", () => {
+    const { mappings } = mappingsFor(CALLER, customTags);
+    const own = mappings.filter(
+      (mapping) =>
+        CALLER.slice(
+          mapping.sourceOffsets[0],
+          (mapping.sourceOffsets[0] ?? 0) + (mapping.lengths[0] ?? 0),
+        ) === "helper.count",
+    );
+    // One, because the caller wrote it once. The template's identical copy
+    // must not add a second mapping onto the caller's own text.
+    expect(own).toHaveLength(1);
+    const [mapping] = own as [(typeof own)[number]];
+    expect(mapping.sourceOffsets[0]).toBe(CALLER.indexOf("helper.count"));
+  });
+
+  it("maps no span outside the caller's own text", () => {
+    const { mappings } = mappingsFor(CALLER, customTags);
+    for (const mapping of mappings) {
+      const start = mapping.sourceOffsets[0] ?? 0;
+      expect(start + (mapping.lengths[0] ?? 0)).toBeLessThanOrEqual(
+        CALLER.length,
+      );
+    }
+  });
+
+  it("does not cost the file its ordinary mappings", () => {
+    // The double-resolve class: a file that calls a custom tag must still get
+    // mappings at all. Compared against the same file with no call.
+    const withTag = mappingsFor(CALLER, customTags).mappings;
+    const withoutTag = mappingsFor(
+      CALLER.replace("<box/>", "<span>plain</span>"),
+    ).mappings;
+    expect(withTag.length).toBe(withoutTag.length);
+    expect(withTag.length).toBeGreaterThan(0);
+  });
+});
