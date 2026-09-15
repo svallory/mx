@@ -3,7 +3,13 @@
   "private": true,
   "mx": {
     "tags": [
-      { "dir": "shared", "prefix": "ui-", "parseOptions": { "text": true } }
+      {
+        "dir": "shared",
+        "prefix": "ui-",
+        "parseOptions": {
+          "text": true
+        }
+      }
     ]
   }
 }

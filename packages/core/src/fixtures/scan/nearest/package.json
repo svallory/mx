@@ -1,1 +1,4 @@
-{ "name": "scan-nearest", "private": true }
+{
+  "name": "scan-nearest",
+  "private": true
+}

@@ -2,5 +2,7 @@
   "name": "mx-tsc-discovered-tag",
   "private": true,
   "version": "0.0.0",
-  "mx": { "host": "html" }
+  "mx": {
+    "host": "html"
+  }
 }

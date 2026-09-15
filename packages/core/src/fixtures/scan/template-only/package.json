@@ -1,1 +1,4 @@
-{ "name": "scan-template-only", "private": true }
+{
+  "name": "scan-template-only",
+  "private": true
+}
