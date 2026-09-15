@@ -1,0 +1,3 @@
+<h2>${input.title}</h2>
+<table-of=input.products columns=["name", "price"] class="products"/>
+<table-of=input.people columns=["name"]/>

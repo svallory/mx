@@ -1,0 +1,8 @@
+{
+  "title": "Catalog",
+  "products": [
+    { "name": "Widget", "price": "9.00" },
+    { "name": "Gadget", "price": "12.50" }
+  ],
+  "people": [{ "name": "Ada" }, { "name": "Grace" }]
+}
