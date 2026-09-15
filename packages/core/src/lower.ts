@@ -41,6 +41,12 @@ import {
   sliceLoc,
   VOID_TAGS,
 } from "./core.ts";
+import {
+  type CustomTag,
+  MAX_EXPANSION_DEPTH,
+  type TagCall,
+  transformCustomTag,
+} from "./custom-tags.ts";
 import type { HostDeclarations } from "./declarations.ts";
 import type {
   Attr,
@@ -297,6 +303,41 @@ function lowerAttributeTags(ctx: Ctx, node: Node): AttributeTag[] {
     });
   }
   return tags;
+}
+
+/** Validates the generic attribute-tag shape shared by components and tags. */
+function validateAttributeTagShape(node: Node): void {
+  const parentAttrs = new Set(
+    (node.attributes ?? [])
+      .filter((attr: Node) => attr.type !== "MarkoSpreadAttribute")
+      .map((attr: Node) => attr.name),
+  );
+  for (const tag of node.attributeTags ?? []) {
+    const name = String(tag.name?.value ?? "").replace(/^@/, "");
+    if (parentAttrs.has(name)) {
+      fail(
+        `attribute tag \`@${name}\` collides with attribute \`${name}\``,
+        tag,
+      );
+    }
+    if (name === "children" && hasContent(node.body?.body ?? [])) {
+      fail(
+        "attribute tag `@children` collides with the parent's ordinary children",
+        tag,
+      );
+    }
+    if ((tag.attributes ?? []).length > 0) {
+      fail("attribute tags take params or a body, not attributes (v1)", tag);
+    }
+    if ((tag.attributeTags ?? []).length > 0) {
+      const inner = tag.attributeTags[0];
+      const innerName = String(inner.name?.value ?? "");
+      fail(
+        `attribute tag \`<${innerName}>\` inside attribute tag \`<@${name}>\``,
+        inner,
+      );
+    }
+  }
 }
 
 /**
@@ -600,6 +641,46 @@ function lowerHostTag(ctx: Ctx, node: Node, name: string): IrNode {
   };
 }
 
+/** Lowers one registered custom tag call and splices its ordinary IR roots. */
+function lowerCustomTag(
+  ctx: Ctx,
+  node: Node,
+  name: string,
+  definition: CustomTag,
+): IrNode[] {
+  const depth = (ctx.customTagDepth ?? 0) + 1;
+  if (depth > MAX_EXPANSION_DEPTH) {
+    fail(
+      `\`<${name}>\`: custom tag expansion exceeded ${MAX_EXPANSION_DEPTH} nested invocations`,
+      node,
+    );
+  }
+
+  ctx.customTagDepth = depth;
+  try {
+    rejectUnsupportedFields(ctx, node, `\`<${name}>\``, {
+      attributeTags: true,
+      params: true,
+      var: true,
+    });
+    validateAttributeTagShape(node);
+
+    const children = node.body?.body ?? [];
+    const call: TagCall = {
+      name,
+      loc: posOf(node),
+      attrs: lowerAttrs(ctx, node, name, "component"),
+      content: hasContent(children) ? lowerBlock(ctx, node) : null,
+      attributeTags: lowerAttributeTags(ctx, node),
+      params: paramsOf(ctx, node),
+      var: node.var ? declName(ctx, node.var) : null,
+    };
+    return transformCustomTag(ctx, definition, call, node);
+  } finally {
+    ctx.customTagDepth = depth - 1;
+  }
+}
+
 /** A component call, with its props, children and attribute tags. */
 function lowerComponent(ctx: Ctx, node: Node, target: ComponentTarget): IrNode {
   // The host gets first refusal, before any `Component` node exists: a call it
@@ -614,39 +695,7 @@ function lowerComponent(ctx: Ctx, node: Node, target: ComponentTarget): IrNode {
     params: true,
   });
 
-  const parentAttrs = new Set(
-    (node.attributes ?? [])
-      .filter((attr: Node) => attr.type !== "MarkoSpreadAttribute")
-      .map((attr: Node) => attr.name),
-  );
-  const seenTags = new Set<string>();
-  for (const tag of node.attributeTags ?? []) {
-    const name = String(tag.name?.value ?? "").replace(/^@/, "");
-    if (parentAttrs.has(name)) {
-      fail(
-        `attribute tag \`@${name}\` collides with attribute \`${name}\``,
-        tag,
-      );
-    }
-    if (name === "children" && hasContent(node.body?.body ?? [])) {
-      fail(
-        "attribute tag `@children` collides with the parent's ordinary children",
-        tag,
-      );
-    }
-    seenTags.add(name);
-    if ((tag.attributes ?? []).length > 0) {
-      fail("attribute tags take params or a body, not attributes (v1)", tag);
-    }
-    if ((tag.attributeTags ?? []).length > 0) {
-      const inner = tag.attributeTags[0];
-      const innerName = String(inner.name?.value ?? "");
-      fail(
-        `attribute tag \`<${innerName}>\` inside attribute tag \`<@${name}>\``,
-        inner,
-      );
-    }
-  }
+  validateAttributeTagShape(node);
 
   const children = node.body?.body ?? [];
   return {
@@ -668,7 +717,7 @@ function targetName(target: ComponentTarget): string {
   return target.kind === "dynamic" ? "dynamic tag" : target.name;
 }
 
-function lowerTag(ctx: Ctx, node: Node): IrNode {
+function lowerTag(ctx: Ctx, node: Node): IrNode | IrNode[] {
   // A bare `${expr}` on its own line parses as a tag whose *name* is the
   // expression, with no attributes and no body — Marko's concise mode has no
   // other shape for it. Treated as the escaped placeholder the author wrote.
@@ -716,15 +765,24 @@ function lowerTag(ctx: Ctx, node: Node): IrNode {
       return fail(`\`<${name}>\` without a preceding \`<if>\``, node);
   }
 
-  if (ctx.declarations.claimsTag?.(name, ctx)) {
-    return lowerHostTag(ctx, node, name);
-  }
-
   if (name.startsWith("@")) {
     fail(
       `attribute tag \`<${name}>\` is only valid directly inside a component call`,
       node,
     );
+  }
+
+  // Registered custom tags take precedence over host claims so a shared tag
+  // may be expressed in terms of `ctx.build.hostTag(...)`. Structural tags
+  // above remain core-owned and cannot be shadowed.
+  const customTag =
+    ctx.customTags && Object.hasOwn(ctx.customTags, name)
+      ? ctx.customTags[name]
+      : undefined;
+  if (customTag) return lowerCustomTag(ctx, node, name, customTag);
+
+  if (ctx.declarations.claimsTag?.(name, ctx)) {
+    return lowerHostTag(ctx, node, name);
   }
 
   if (ctx.declarations.isComponent(name, ctx)) {
@@ -807,15 +865,18 @@ export function lowerChildren(ctx: Ctx, children: Node[]): IrNode[] {
           loc: posOf(child),
         });
         break;
-      case "MarkoTag":
+      case "MarkoTag": {
         // A statement the host hoisted stays on `ctx.prelude` and is drained
         // by the enclosing *function* — `lowerDefine`, or `lower` for the
         // render function — never here. Draining it at every child list would
         // trap a hoist from inside an `<if>` in that branch, which is the one
         // thing decision 70's hoist hook exists to prevent: the declaration
         // has to outlive the block it was written in.
-        out.push(lowerTag(ctx, child));
+        const lowered = lowerTag(ctx, child);
+        if (Array.isArray(lowered)) out.push(...lowered);
+        else out.push(lowered);
         break;
+      }
       case "MarkoDocumentType":
         out.push({
           kind: "DocumentType",
