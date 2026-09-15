@@ -22,6 +22,16 @@ export interface PrintResult {
   map: RawSourceMap;
 }
 
+export interface PrintOptions {
+  /**
+   * Custom tags already discovered and loaded by the calling integration.
+   * Forwarded through the parser to `compileSolidMx`, which lowers each MX
+   * region; without it a registered tag is an unknown tag inside `.solid.mx`.
+   */
+  // biome-ignore lint/suspicious/noExplicitAny: `@mxlang/core`'s CustomTag would be a cycle
+  customTags?: Record<string, any>;
+}
+
 /**
  * `@babel/generator` ships as CJS with an interop default; under
  * `esModuleInterop` the namespace can arrive as either the function itself or
@@ -78,6 +88,13 @@ export function printAst(ast: File, filename: string): PrintResult {
  * `jsescOption.minimal` stops non-ASCII text from being escaped into `\uXXXX`
  * noise that would not match the hand-written twins.
  */
-export function print(source: string, filename: string): PrintResult {
-  return printAst(parse(source, filename), filename);
+export function print(
+  source: string,
+  filename: string,
+  options: PrintOptions = {},
+): PrintResult {
+  return printAst(
+    parse(source, filename, { mxCustomTags: options.customTags }),
+    filename,
+  );
 }

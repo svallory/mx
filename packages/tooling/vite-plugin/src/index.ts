@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import type { CustomTag } from "@mxlang/core";
 import { print } from "@mxlang/parser";
 import type { Plugin } from "vite";
 
@@ -32,6 +33,7 @@ async function compileMarko(
   source: string,
   filename: string,
   strict: boolean,
+  customTags: Record<string, CustomTag> | undefined,
 ): Promise<{ code: string }> {
   // Which host owns this file is the nearest `package.json`'s answer, the
   // same resolver the language server and `mx-tsc` use — so an editor, a
@@ -40,30 +42,45 @@ async function compileMarko(
   const host = resolveHostPolicy(filename).host;
   if (host === "preact") {
     const { compilePreactMx } = (await import("@mxlang/preact")) as {
-      compilePreactMx: (source: string, filename: string) => { code: string };
+      compilePreactMx: (
+        source: string,
+        filename: string,
+        options?: { customTags?: Record<string, CustomTag> },
+      ) => { code: string };
     };
-    return compilePreactMx(source, filename);
+    return compilePreactMx(source, filename, { customTags });
   }
   if (host === "react") {
     const { compileReactMx } = (await import("@mxlang/react")) as {
-      compileReactMx: (source: string, filename: string) => { code: string };
+      compileReactMx: (
+        source: string,
+        filename: string,
+        options?: { customTags?: Record<string, CustomTag> },
+      ) => { code: string };
     };
-    return compileReactMx(source, filename);
+    return compileReactMx(source, filename, { customTags });
   }
   if (host === "hono") {
     const { compileHonoMx } = (await import("@mxlang/hono")) as {
-      compileHonoMx: (source: string, filename: string) => { code: string };
+      compileHonoMx: (
+        source: string,
+        filename: string,
+        options?: { customTags?: Record<string, CustomTag> },
+      ) => { code: string };
     };
-    return compileHonoMx(source, filename);
+    return compileHonoMx(source, filename, { customTags });
   }
   const { compile } = (await import("@mxlang/html")) as {
     compile: (
       source: string,
       filename: string,
-      options?: { strict?: boolean },
+      options?: {
+        strict?: boolean;
+        customTags?: Record<string, CustomTag>;
+      },
     ) => { code: string };
   };
-  return compile(source, filename, { strict });
+  return compile(source, filename, { strict, customTags });
 }
 
 export interface MxPluginOptions {
@@ -85,6 +102,8 @@ export interface MxPluginOptions {
    * through the translator at all.
    */
   strict?: boolean;
+  /** Preloaded custom tags for whole-file `.mx` compilation. */
+  customTags?: Record<string, CustomTag>;
 }
 
 const DEFAULT_EXTENSIONS = [".solid.mx", ".mx"];
@@ -367,11 +386,17 @@ export default function mx(options: MxPluginOptions = {}): Plugin {
             code,
             source,
             options.strict ?? false,
+            options.customTags,
           );
           return { code: compiled, map: null };
         }
 
-        const { code: printed, map } = print(code, source);
+        // `.solid.mx` reaches its host through the parser, which lowers each
+        // MX region with `compileSolidMx`; the registered tags have to travel
+        // with it or a tag registered here is unknown inside a `.solid.mx`.
+        const { code: printed, map } = print(code, source, {
+          customTags: options.customTags,
+        });
         return { code: printed, map };
       } catch (err) {
         if (!isSyntaxError(err) || !err.loc) throw err;

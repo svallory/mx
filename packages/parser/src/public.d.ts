@@ -123,12 +123,25 @@ declare module "@mxlang/parser" {
     map: RawSourceMap;
   }
 
+  export interface PrintOptions {
+    /**
+     * Custom tags already discovered and loaded by the calling integration.
+     * Forwarded through the parser to the Solid host, which lowers each MX
+     * region; without it a registered tag is unknown inside `.solid.mx`.
+     */
+    customTags?: Record<string, unknown>;
+  }
+
   /**
    * Parses `source` and prints it back as JSX source text plus a source map.
    * This is the artifact every consumer receives (spec section 3.2): the
    * native Solid 2 compiler accepts only source text, never an AST.
    */
-  export function print(source: string, filename: string): PrintResult;
+  export function print(
+    source: string,
+    filename: string,
+    options?: PrintOptions,
+  ): PrintResult;
 
   /**
    * Prints an already-parsed MX AST, for callers that must run their own pass

@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import {
+  type CustomTag,
   type Expr,
   type GeneratedMapping,
   type HostDeclarations,
@@ -41,8 +42,14 @@ export interface MxLanguagePlugin extends LanguagePlugin<string> {
   getSyntaxError(fileName: string): MxSyntaxError | undefined;
 }
 
+export interface MxLanguagePluginOptions {
+  /** Custom tags already discovered and loaded by the calling integration. */
+  customTags?: Record<string, CustomTag>;
+}
+
 export function createMxLanguagePlugin(
   typescript: typeof ts,
+  options: MxLanguagePluginOptions = {},
 ): MxLanguagePlugin {
   const syntaxErrors = new Map<string, MxSyntaxError>();
 
@@ -61,14 +68,26 @@ export function createMxLanguagePlugin(
           hostPolicy.host === "astro" || hostPolicy.strict === true;
         const compiled =
           hostPolicy.host === "solid"
-            ? compileSolidMx(source, { filename: fileName })
+            ? compileSolidMx(source, {
+                filename: fileName,
+                customTags: options.customTags,
+              })
             : hostPolicy.host === "preact"
-              ? compilePreactMx(source, fileName)
+              ? compilePreactMx(source, fileName, {
+                  customTags: options.customTags,
+                })
               : hostPolicy.host === "react"
-                ? compileReactMx(source, fileName)
+                ? compileReactMx(source, fileName, {
+                    customTags: options.customTags,
+                  })
                 : hostPolicy.host === "hono"
-                  ? compileHonoMx(source, fileName)
-                  : compile(source, fileName, { strict });
+                  ? compileHonoMx(source, fileName, {
+                      customTags: options.customTags,
+                    })
+                  : compile(source, fileName, {
+                      strict,
+                      customTags: options.customTags,
+                    });
         const generated =
           hostPolicy.host === "astro"
             ? createAstroTypeSurface(compiled.code)
@@ -101,6 +120,7 @@ export function createMxLanguagePlugin(
                       ? honoDeclarations
                       : undefined,
                 compiled.mappings,
+                options.customTags,
               );
         syntaxErrors.delete(fileName);
         return createVirtualCode(typescript, generated, mappings);
@@ -211,6 +231,7 @@ export function createHtmlMappings(
   strict: boolean,
   declarations?: HostDeclarations,
   emittedMappings: GeneratedMapping[] = [],
+  customTags?: Record<string, CustomTag>,
 ): CodeMapping[] {
   const require = createRequire(import.meta.url);
   const compiler = require("@marko/compiler") as {
@@ -221,13 +242,19 @@ export function createHtmlMappings(
   const { generator } = require("@marko/compiler/internal/babel") as {
     generator(node: Node, options: { concise: boolean }): { code: string };
   };
-  const { body } = parseFragment(source, { filename: fileName });
+  const { body } = parseFragment(source, {
+    filename: fileName,
+    customTags,
+  });
   const ctx = newCtx(
     source,
     (node) => generator(node, { concise: true }).code,
     declarations ?? (strict ? strictPolicy : policy),
     compiler.taglib.buildLookup(dirname(fileName), translator),
   );
+  // This is the second lowering of the same source. It must see the same tag
+  // map as compilation or a custom tag can make the entire mapping pass fail.
+  ctx.customTags = customTags;
   const ir = lower(ctx, body);
   const mappedCode = collectMappedCode(ir);
   const sourceLines = lineOffsets(source);

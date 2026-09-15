@@ -1,6 +1,7 @@
 import generate from "@babel/generator";
 import { parse as parseBabel } from "@babel/parser";
 import {
+  type CustomTag,
   type GeneratedMapping,
   lower,
   type Node,
@@ -31,6 +32,8 @@ export interface CompileSolidMxOptions {
   baseOffset?: number;
   baseLine?: number;
   baseColumn?: number;
+  /** Custom tags already discovered and loaded by the calling integration. */
+  customTags?: Record<string, CustomTag>;
 }
 
 export interface RawSourceMap {
@@ -119,6 +122,7 @@ export function compileSolidMx(
     baseOffset,
     baseLine: options.baseLine ?? 0,
     baseColumn: options.baseColumn ?? 0,
+    customTags: options.customTags,
   });
   repairEmbeddedTsx(body);
   // Two position systems read this string: `sliceLoc` (line/column, for
@@ -137,6 +141,7 @@ export function compileSolidMx(
   const baseColumn = options.baseColumn ?? 0;
   const positionedSource = `${"\n".repeat(baseLine)}${" ".repeat(Math.max(baseOffset - baseLine, baseColumn))}${source}`;
   const ctx = newCtx(positionedSource, generateExpression, solidDeclarations);
+  ctx.customTags = options.customTags;
   const ir = lower(ctx, body);
   if (
     ir.imports.length > 0 ||

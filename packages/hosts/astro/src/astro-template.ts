@@ -9,6 +9,7 @@
 
 import {
   type Attr,
+  type CustomTag,
   DYNAMIC_TAG,
   drive,
   type Emitter,
@@ -572,7 +573,14 @@ function emitFence(
 }
 
 /** Splits an `.amx` file, resolves its MX template, and emits Astro syntax. */
-export function lowerAstroMx(source: string, filename: string): LowerResult {
+export function lowerAstroMx(
+  source: string,
+  filename: string,
+  options: {
+    /** Custom tags already discovered and loaded by the calling integration. */
+    customTags?: Record<string, CustomTag>;
+  } = {},
+): LowerResult {
   const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---[^\S\r\n]*\r?\n?/);
   const originalFence = match ? match[0] : "";
   const template = match ? source.slice(originalFence.length) : source;
@@ -584,10 +592,12 @@ export function lowerAstroMx(source: string, filename: string): LowerResult {
     baseOffset,
     baseLine,
     baseColumn: 0,
+    customTags: options.customTags,
   });
 
   try {
     const ctx = newCtx(source, (node) => sourceOf(source, node), declarations);
+    ctx.customTags = options.customTags;
     const ir = lower(ctx, body);
     const statements: HoistedStatement[] = [
       ...ir.imports,

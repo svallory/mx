@@ -11,6 +11,7 @@
 import { readFileSync } from "node:fs";
 import {
   type CompileResult,
+  type CustomTag,
   compileSource,
   createTranslator,
   type GeneratedMapping,
@@ -63,6 +64,8 @@ const host = {
 export const translator = createTranslator(host);
 
 export interface CompileOptions {
+  /** Custom tags already discovered and loaded by the calling integration. */
+  customTags?: Record<string, CustomTag>;
   /**
    * Rejects reactive constructs (`<let>`, `<effect>`, `<lifecycle>`,
    * `<script>`, `client` blocks, `<id>`) by name instead of rendering their
@@ -102,6 +105,7 @@ export function compile(
     options.strict ? strictPolicy : policy,
     {
       ...host,
+      customTags: options.customTags,
       // Decision 79: this host emits from the core's IR. `postEmit` still
       // appends the helpers a template actually calls and brands the default
       // export, both of which are properties of this target rather than of

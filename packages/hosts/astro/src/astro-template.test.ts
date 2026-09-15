@@ -50,6 +50,18 @@ describe("lowerAstroMx", () => {
       "<!--first--><p>a</p><p>b</p>",
     );
   });
+
+  it("lowers registered custom tags before Astro emission", () => {
+    const result = lowerAstroMx("<icon/>", "Test.amx", {
+      customTags: {
+        icon: {
+          transform: (_call, ctx) => [ctx.build.element("svg")],
+        },
+      },
+    });
+
+    expect(result.code).toBe("<svg></svg>");
+  });
 });
 
 describe("source mappings", () => {

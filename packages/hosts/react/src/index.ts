@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
+  type CompilePreactOptions,
   type CompilePreactResult,
   type CompileResult,
   compilePreactMx,
@@ -15,14 +16,19 @@ export type { CompileResult, RawSourceMap };
 export function compileReactMx(
   source: string,
   filename: string,
+  options: Pick<CompilePreactOptions, "customTags"> = {},
 ): CompilePreactResult {
   return compilePreactMx(source, filename, {
     target: reactTarget,
     declarations: reactDeclarations,
+    customTags: options.customTags,
   });
 }
 
 /** `compileReactMx()` over a file on disk. */
-export function compileReactFile(filename: string): CompileResult {
-  return compileReactMx(readFileSync(filename, "utf8"), filename);
+export function compileReactFile(
+  filename: string,
+  options: Pick<CompilePreactOptions, "customTags"> = {},
+): CompileResult {
+  return compileReactMx(readFileSync(filename, "utf8"), filename, options);
 }

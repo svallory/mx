@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { convertToTSX } from "@astrojs/compiler/sync";
 import { decode } from "@jridgewell/sourcemap-codec";
+import type { CustomTag } from "@mxlang/core";
 import { print } from "@mxlang/parser";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -360,6 +361,39 @@ describe("MX language plugin", () => {
             mapping.generatedOffsets[0],
             (mapping.generatedOffsets[0] ?? 0) + (mapping.lengths[0] ?? 0),
           ) === expression,
+      ),
+    ).toBe(true);
+  });
+
+  it("gives the second lowering the same custom tags as compilation", () => {
+    const fileName = "/project/custom.mx";
+    const source = "<icon value=input.answer/>\n";
+    const customTags: Record<string, CustomTag> = {
+      icon: {
+        attributes: { value: {} },
+        transform(call, ctx) {
+          const value = call.attrs.find(
+            (attr) => attr.kind !== "spread" && attr.name === "value",
+          );
+          if (!value) throw ctx.fail("requires `value`");
+          return [ctx.build.element("span", [value])];
+        },
+      },
+    };
+    const plugin = createMxLanguagePlugin(ts, { customTags });
+    const virtual = plugin.createVirtualCode?.(
+      fileName,
+      MX_LANGUAGE_ID,
+      ts.ScriptSnapshot.fromString(source),
+      { getAssociatedScript: () => undefined },
+    );
+    if (!virtual) throw new Error("Expected MX virtual code");
+
+    expect(plugin.getSyntaxError(fileName)).toBeUndefined();
+    expect(
+      virtual.mappings.some(
+        (mapping) =>
+          mapping.sourceOffsets[0] === source.indexOf("input.answer"),
       ),
     ).toBe(true);
   });

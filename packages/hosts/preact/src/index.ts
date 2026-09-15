@@ -50,6 +50,7 @@
 import { readFileSync } from "node:fs";
 import {
   type CompileResult,
+  type CustomTag,
   compileSource,
   concatMapped,
   createTranslator,
@@ -96,6 +97,8 @@ const host = {
 export const translator = createTranslator(host);
 
 export interface CompilePreactOptions {
+  /** Custom tags already discovered and loaded by the calling integration. */
+  customTags?: Record<string, CustomTag>;
   /**
    * The JSX target to emit for. Defaults to Preact; a React package passes its
    * own so it can reuse this emitter rather than fork it.
@@ -268,6 +271,7 @@ export function compilePreactMx(
     options.declarations ?? preactDeclarations,
     {
       ...host,
+      customTags: options.customTags,
       emitIr: (ir) => {
         const emitted = emitModuleWithMappings(ir, target);
         mappings = emitted.mappings;
