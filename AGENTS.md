@@ -638,16 +638,64 @@ Five facts worth knowing before editing it:
   over grows without limit. **Done in P2** (`packages/core/src/scan-cache.ts`):
   the cache interns one tag-map object per tag set, so the derived id is
   stable across compiles, and evicts `taglib.clearCaches()` when the
-  parser-facing set changes. `analyze`, `finalize`, and `ctx.store`
-  are typed but deliberately fail until P5. The TypeScript plugin passes the
+  parser-facing set changes. The TypeScript plugin passes the
   same map to compilation and its
   second lower. `.solid.mx` carries the map across the parser boundary on the
   `mxCustomTags` parser option (`print(source, file, { customTags })`), the
   only channel the in-tokenizer bridge has to the caller.
-  `bun run oracle:custom-tags` is the six-host `<icon>` gate; every row,
-  Solid included, renders and compares against `expected.html`. It runs
-  **two** fixtures — `icon` (an L2 sidecar) and `icon-template` (the same tag
-  as an L1 template) — for a 12-row count gate.
+  `bun run oracle:custom-tags` is the six-host gate; every row renders and
+  compares against `expected.html`. It runs **four** fixtures — `icon` (an L2
+  sidecar), `icon-template` (the same tag as an L1 template), `icon-sprite`
+  (P5's collecting pair) and `table-of` (L2 without that pair) — for a 24-row
+  count gate. One row is a recorded, reasoned skip (`table-of` on Solid, see
+  the P5 bullet below); a skip still runs, still counts, and still prints its
+  reason, so a fixture that stopped running is still a failure.
+- **`analyze` / `finalize` / `ctx.store` are P5 and shipped**
+  (`packages/core/src/custom-tags.ts`; the contract and the worked example are
+  in `packages/core/README.md`). Six invariants worth knowing before touching
+  them:
+  - **Order is by tag name, twice.** Per file: every `analyze`, then every
+    `transform` in source order, then every `finalize`; both hook phases run
+    sorted by tag name, and `finalize`'s nodes are prepended to `Ir.body` in
+    that order. A `finalize` receives no other tag's output and no route to the
+    program, so ordering cannot become semantically load-bearing — decision
+    80's coupling, which this is the obvious back door for.
+  - **A store is per file *and* per tag, keyed on the `Ctx`.** A definition
+    object is a module singleton the scan hands to every file in a package, so
+    keying anywhere else leaks one file's collected state into the next. The
+    same map is shared by reference into a tag template's `Ctx`, which is both
+    the store's scope (a template's `<icon>` joins the caller's sprite sheet)
+    and the hook gate: a non-undefined `ctx.customTagStores` is how the nested
+    `lower()` knows it is not the file root and runs no hooks of its own.
+  - **A file containing a tag that defines `analyze` is lowered twice.** The
+    first walk runs over a scratch `Ctx` (same source, declarations, lookup,
+    tags and stores; its own prelude, bindings, imports, warnings and template
+    imports) that records each call and is then discarded — so `analyze` gets
+    the identical `TagCall` its `transform` will get, while the walk's hoists
+    and warnings are not emitted twice. That scratch walk expands templates
+    far enough to record nested calls without running transforms, and its
+    suppressed-output IR is never cached. No registered `analyze` means one
+    walk, exactly as before.
+  - **Template boundaries and cache state are invisible to the pair.** A
+    file-level `analyze` sees calls nested inside tag templates alongside calls
+    written directly in the file. Every compiled-template cache entry records
+    its transitive call list and used tag names and replays both on a hit, so a
+    template-nested tag is finalized identically on the cache's first use and
+    every later use in the process.
+  - **Only a tag the file actually calls is finalized** (`ctx.customTagsUsed`),
+    and a tag with `analyze` but no calls is skipped rather than analyzed with
+    an empty array. A tag declaring **only** `finalize` is rejected at
+    registration, from both `compile.ts` and `fragment.ts`, beside the
+    built-in-shadowing check.
+  - **`table-of` is skipped on Solid for a non-custom-tag reason.**
+    `@mxlang/solid` lowers a `<for>` with no `by=` to `<For … keyed={false}>`
+    and binds the row as a plain value, but Solid 2 documents that form as
+    passing an **accessor** (`solid-js/types/client/flow.d.ts`), so any `<for>`
+    body reading a *property* of its row renders empty under SSR — reproducible
+    with a hand-written `<for|p| of=input.people><li>${p.name}</li></for>` and
+    no custom tag in the file. `<icon>`'s own `<for>` passes only because it
+    interpolates the bare param. Reconciling the two is a `@mxlang/solid`
+    change with oracle and twin consequences, tracked separately.
 - **`<try>` is a core-owned custom tag (spec §5 P4), not per-host code.**
   `packages/core/src/builtin-tags.ts` exports `BUILTIN_CUSTOM_TAGS`, and a
   name it lists (today, only `try`) cannot be shadowed by a registered
