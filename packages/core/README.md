@@ -291,9 +291,78 @@ as a warning naming the offending `package.json`, and the Vite and TypeScript
 plugins warn once per distinct problem — because a diagnostic nothing reads is
 just silence.
 
-`analyze`, `finalize`, and `ctx.store` are present in the public types so tag
-definitions do not churn between phases, but execution is deliberately gated
-with a clear “not implemented until P5” diagnostic.
+## The collecting pair: `analyze`, `finalize` and `ctx.store`
+
+Most tags need only `transform`: one call in, IR out. The pair exists for the
+tags whose output depends on the *set* of calls in a file rather than on any
+one of them — a sprite sheet that defines each icon once however many times it
+is used, a table of contents, a collected style block. `analyze` sees every
+call before any of them expands, `finalize` contributes output once, and
+`ctx.store` is the only channel between them.
+
+```ts
+const icon: CustomTag = {
+  attributes: { name: { type: "string", required: true, staticOnly: true } },
+  analyze(calls, ctx) {            // every <icon> in this file, before any expands
+    ctx.store.set("used", new Set(calls.map(nameOf)));
+  },
+  transform(call, ctx) {           // each call: a small <use>, not a path tree
+    return [ctx.build.element("svg", [], [useOf(call, ctx)])];
+  },
+  finalize(ctx) {                  // once per file: one <symbol> per distinct name
+    return [spriteSheet(ctx, ctx.store.get<Set<string>>("used"))];
+  },
+};
+```
+
+**Order.** Per file: every `analyze`, then every `transform` in source order,
+then every `finalize`. Both hook phases run **sorted by tag name**, and
+`finalize`'s nodes are prepended to the program body in that order. A
+`finalize` is handed no other tag's output and no route to the program, so
+ordering can never become semantically load-bearing — the coupling decision 80
+rules out, which would otherwise return through this door. The result is
+reproducible: the same file compiles to the same bytes on any machine, whatever
+order its calls appear in.
+
+**Scope.** A store belongs to one tag in one file. It is created with the
+file's `Ctx` and dies with it, so neither another file's compile nor another
+tag in the same file can read it — which matters because a definition object is
+a module-level singleton the scan hands to every file in a package. A tag
+called from *inside* a tag template writes into the same file-level store as
+one called at the top level: a template's `<icon>` contributes to the caller's
+sprite sheet, and the template's own nested lower runs no hooks of its own.
+The file-level `analyze` still sees that template-nested `<icon>` in its call
+array alongside calls written directly in the file.
+
+**What runs, and what does not.** Only a tag actually called in the file is
+finalized; a package may register dozens a given file never mentions. A tag
+with `analyze` but no calls is skipped rather than analyzed with an empty
+array, so "this file uses no icons" leaves the store untouched. A tag that
+declares **only** `finalize` is a registration error, named once before any
+file is parsed: it has no call site and nothing to collect, which is almost
+always a `transform` that was renamed or deleted. `analyze` without `finalize`
+is fine — `transform` reads the same store.
+
+**Failures.** `throw ctx.fail(...)` from `analyze` is positioned at that tag's
+first call in the file, the earliest place an author can start reading. Any
+other exception from either hook is wrapped as ``` `<tag>`: custom tag
+`analyze` threw: … ```, so a tag's bug stays distinguishable from a core bug. A
+`finalize` returning anything but an array is a positioned error.
+
+**Cost.** `analyze` needs every call before any output is fixed, so a file
+containing a tag that defines it is lowered twice: once over a scratch `Ctx`
+that records the calls and discards its hoists, warnings and template imports,
+then once for real. The scratch walk lowers each call exactly as the real walk
+will, which is what lets `analyze` be handed the identical `TagCall` its own
+`transform` later receives. It also expands tag templates far enough to record
+their nested calls, without running any transform hook; that analyze-only IR
+is never admitted to the template cache. A file whose tags define no
+`analyze` is walked once, as before.
+
+**Not detected, by choice.** A tag whose `analyze` writes a store key nothing
+ever reads compiles silently. Detecting it means guessing at intent — the store
+is opaque by design — and a false positive on a legitimate pattern is worse
+than the omission. Read `analyze` and `finalize` as a pair.
 
 ## Template custom tags
 
@@ -365,7 +434,11 @@ surface them as diagnostics in the file being edited; unset, they print as
 before.
 
 The resolved-IR cache is bounded at 256 templates, oldest-inserted evicted,
-because it is process-wide and a language server is long-lived.
+because it is process-wide and a language server is long-lived. Each entry
+also records the template's transitive custom-tag calls and used tag names;
+every cache hit replays those facts into the current file. `analyze` therefore
+sees template-nested calls and `finalize` runs for template-nested tags whether
+the file was the first or the hundredth to use that cached template.
 
 **Composition.** When a tag has both a template and a `transform`, the
 `transform` wins: it may call `ctx.build.template(call)` to expand the template

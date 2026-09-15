@@ -34,7 +34,7 @@
  */
 
 import { createRequire } from "node:module";
-import type { CustomTag } from "./custom-tags.ts";
+import type { CustomTag, TagCall } from "./custom-tags.ts";
 import type { HostDeclarations } from "./declarations.ts";
 
 const require = createRequire(import.meta.url);
@@ -247,6 +247,46 @@ export interface Ctx {
    * (`a.mx -> b.mx -> a.mx`) rather than only as a depth-cap failure.
    */
   templateStack?: string[];
+  /**
+   * Per-file, per-tag stores for `analyze` / `transform` / `finalize`.
+   *
+   * Created by the file-level `lower()` and never by a tag template's nested
+   * lower, which is why it also marks "this `Ctx` is the file root": a
+   * template is expanded *into* a file, so its own lower must not run the
+   * collecting hooks a second time. Cleared with the `Ctx`, so a store can
+   * never leak between files, and shared by reference into a template's `Ctx`
+   * so a tag called from inside a template contributes to the same file's
+   * store as one called at the top level.
+   */
+  customTagStores?: Map<string, Map<string, unknown>>;
+  /**
+   * Set while the analyze pre-pass walks the body.
+   *
+   * The pre-pass is the ordinary walk over a scratch `Ctx`: every custom tag
+   * call is lowered exactly as the real pass lowers it, so `analyze` sees the
+   * identical `TagCall` the matching `transform` will see. Under this flag a
+   * custom tag records its call and expands to nothing, so no hook runs, no
+   * output is produced and nothing the scratch `Ctx` collected is kept.
+   */
+  customTagAnalyzePass?: { calls: Map<string, TagCall[]> };
+  /**
+   * Calls found while compiling one tag template for the process-wide cache.
+   *
+   * Unlike `customTagAnalyzePass`, this collector does not suppress
+   * transforms. It lets a real template compile retain the exact calls that
+   * a later analyze-pass cache hit must replay without walking the template
+   * again. Each nested template gets its own map; cache metadata is replayed
+   * into the enclosing map so the stored result is transitive.
+   */
+  customTagTemplateCalls?: Map<string, TagCall[]>;
+  /**
+   * Names of registered custom tags actually called while lowering this file.
+   *
+   * Only these are finalized. A package's scan registers every tag in every
+   * `tags/` directory above a file, so finalizing the whole registration would
+   * let a tag the file never mentions prepend nodes to it.
+   */
+  customTagsUsed?: Set<string>;
 }
 
 /** One positioned warning: a compile that succeeded while dropping something. */

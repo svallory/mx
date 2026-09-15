@@ -5,6 +5,7 @@ import type { CustomTag, TagCall } from "./custom-tags.ts";
 import { MAX_EXPANSION_DEPTH, MAX_EXPANSION_NODES } from "./custom-tags.ts";
 import type { Policy } from "./declarations.ts";
 import type { Attr, Ir, IrNode } from "./ir.ts";
+import { resetTemplateCache } from "./template-tag.ts";
 
 function fakeDeclarations(overrides: Partial<Policy> = {}): Policy {
   return {
@@ -558,35 +559,350 @@ describe("custom tag declarations", () => {
 });
 
 describe("custom tag phase boundaries", () => {
-  it.each(["analyze", "finalize"] as const)(
-    "rejects %s clearly until P5",
-    (hook) => {
-      const tag = {
-        transform: () => [],
-        [hook]: () => [],
-      } as unknown as CustomTag;
-      expect(() => lowerWithTags("<tag/>\n", { tag })).toThrowError(
-        new RegExp(`${hook}.*not implemented until P5`),
-      );
-    },
-  );
-
-  it("types ctx.store but rejects access clearly until P5", () => {
-    const tag: CustomTag = {
-      transform(_call, ctx) {
-        ctx.store.set("x", 1);
-        return [];
-      },
-    };
-    expect(() => lowerWithTags("<tag/>\n", { tag })).toThrowError(
-      "`<tag>`: ctx.store is not implemented until P5",
-    );
-  });
-
   it("rejects a tag with neither a transform nor a template", () => {
     expect(() => lowerWithTags("<tag/>\n", { tag: {} })).toThrowError(
       "`<tag>`: custom tag has neither a `transform` nor a template file, so a call has nothing to expand to",
     );
+  });
+});
+
+/**
+ * Phase 5: `analyze`, `finalize` and `ctx.store`.
+ *
+ * The invariants these pin are the ones an author cannot check by reading one
+ * file: that every `analyze` sees every call before any `transform` runs, that
+ * `finalize` output is ordered by tag name rather than by the order the calls
+ * happened to appear, and that a store belongs to one tag in one file and
+ * nothing wider — a definition object is a module singleton the scan hands to
+ * every file in a package, so a store keyed anywhere but the file's `Ctx`
+ * would carry one page's collected state into the next.
+ */
+describe("analyze, finalize and the per-file store", () => {
+  function textOf(node: IrNode): string {
+    return node.kind === "Text" ? node.value : "";
+  }
+
+  it("runs analyze over every call before any transform runs", () => {
+    const order: string[] = [];
+    const tag: CustomTag = {
+      analyze(calls) {
+        order.push(`analyze:${calls.length}`);
+      },
+      transform(call) {
+        const name = named(call.attrs, "n");
+        order.push(`transform:${name?.kind === "static" ? name.value : "?"}`);
+        return [];
+      },
+    };
+    lowerWithTags('<tag n="a"/><tag n="b"/><tag n="c"/>\n', { tag });
+    expect(order).toEqual([
+      "analyze:3",
+      "transform:a",
+      "transform:b",
+      "transform:c",
+    ]);
+  });
+
+  it("hands analyze the same TagCall shape transform receives", () => {
+    let analyzed: TagCall | null = null;
+    let transformed: TagCall | null = null;
+    const tag: CustomTag = {
+      attributes: { n: { type: "string" }, size: { default: "24" } },
+      analyze(calls) {
+        analyzed = calls[0] ?? null;
+      },
+      transform(call) {
+        transformed = call;
+        return [];
+      },
+    };
+    lowerWithTags('<tag n="a"><b>body</b></tag>\n', { tag });
+    const seen = analyzed as TagCall | null;
+    const later = transformed as TagCall | null;
+    expect(seen).not.toBeNull();
+    expect(later).not.toBeNull();
+    expect(seen?.name).toBe(later?.name);
+    expect(seen?.loc).toEqual(later?.loc);
+    // Declared defaults are materialized before `analyze` too, so the two
+    // hooks agree about what the call said.
+    expect(named(seen?.attrs ?? [], "size")?.kind).toBe("static");
+    expect(
+      seen?.attrs.map((attr) => attr.kind !== "spread" && attr.name),
+    ).toEqual(later?.attrs.map((attr) => attr.kind !== "spread" && attr.name));
+    expect(seen?.content?.children.length).toBe(
+      later?.content?.children.length,
+    );
+  });
+
+  it("shares one store between analyze, transform and finalize", () => {
+    const tag: CustomTag = {
+      analyze(calls, ctx) {
+        ctx.store.set("count", calls.length);
+      },
+      transform(_call, ctx) {
+        return [ctx.build.text(`saw ${ctx.store.get<number>("count")}`)];
+      },
+      finalize(ctx) {
+        return [ctx.build.text(`total ${ctx.store.get<number>("count")}`)];
+      },
+    };
+    const ir = lowerWithTags("<tag/><tag/>\n", { tag });
+    expect(ir.body.map(textOf)).toEqual(["total 2", "saw 2", "saw 2"]);
+  });
+
+  it("prepends finalize output to the program body", () => {
+    const tag: CustomTag = {
+      transform: (_call, ctx) => [ctx.build.text("call")],
+      analyze: () => {},
+      finalize: (ctx) => [ctx.build.text("sheet")],
+    };
+    const ir = lowerWithTags("<p>before</p><tag/>\n", { tag });
+    expect(textOf(ir.body[0] as IrNode)).toBe("sheet");
+  });
+
+  it("orders finalize by tag name, not by call order", () => {
+    function collecting(label: string): CustomTag {
+      return {
+        analyze: () => {},
+        transform: () => [],
+        finalize: (ctx) => [ctx.build.text(label)],
+      };
+    }
+    const tags = { zebra: collecting("zebra"), alpha: collecting("alpha") };
+    // `<zebra>` is called first and registered first; the prepended block is
+    // still alphabetical, which is the whole point — otherwise output would
+    // depend on the scan's directory listing.
+    const ir = lowerWithTags("<zebra/><alpha/>\n", tags);
+    expect(ir.body.map(textOf)).toEqual(["alpha", "zebra"]);
+  });
+
+  it("produces identical output across two runs and both call orders", () => {
+    const icons: CustomTag = {
+      attributes: {
+        name: { type: "string", required: true, staticOnly: true },
+      },
+      analyze(calls, ctx) {
+        const used = ctx.store.get<Set<string>>("used") ?? new Set<string>();
+        for (const call of calls) {
+          const name = named(call.attrs, "name");
+          if (name?.kind === "static") used.add(name.value);
+        }
+        ctx.store.set("used", used);
+      },
+      transform: () => [],
+      finalize(ctx) {
+        const used = ctx.store.get<Set<string>>("used") ?? new Set<string>();
+        return [ctx.build.text([...used].sort().join(","))];
+      },
+    };
+    const forward = '<i name="b"/><i name="a"/><i name="b"/>\n';
+    const reversed = '<i name="a"/><i name="b"/><i name="a"/>\n';
+    const first = lowerWithTags(forward, { i: icons });
+    const again = lowerWithTags(forward, { i: icons });
+    const other = lowerWithTags(reversed, { i: icons });
+    expect(textOf(first.body[0] as IrNode)).toBe("a,b");
+    expect(textOf(again.body[0] as IrNode)).toBe("a,b");
+    expect(textOf(other.body[0] as IrNode)).toBe("a,b");
+  });
+
+  it("keeps one file's store out of the next file's compile", () => {
+    const tag: CustomTag = {
+      analyze(calls, ctx) {
+        const seen = ctx.store.get<number>("seen") ?? 0;
+        ctx.store.set("seen", seen + calls.length);
+      },
+      transform: () => [],
+      finalize: (ctx) => [ctx.build.text(`seen ${ctx.store.get("seen")}`)],
+    };
+    // The same definition object compiled twice, as the scan hands it to every
+    // file in a package. A store keyed on the definition rather than on the
+    // file's `Ctx` would report 3 the second time.
+    const first = lowerWithTags("<tag/><tag/>\n", { tag });
+    const second = lowerWithTags("<tag/>\n", { tag });
+    expect(textOf(first.body[0] as IrNode)).toBe("seen 2");
+    expect(textOf(second.body[0] as IrNode)).toBe("seen 1");
+  });
+
+  it("does not finalize a registered tag the file never calls", () => {
+    const unused: CustomTag = {
+      analyze: () => {},
+      transform: () => [],
+      finalize: (ctx) => [ctx.build.text("should not appear")],
+    };
+    const ir = lowerWithTags("<p>only markup</p>\n", { unused });
+    expect(ir.body.map(textOf).join("")).not.toContain("should not appear");
+  });
+
+  it("counts a call made from inside a tag template", () => {
+    const inner: CustomTag = {
+      analyze: () => {},
+      transform: (_call, ctx) => [ctx.build.text("inner")],
+      finalize: (ctx) => [ctx.build.text("finalized")],
+    };
+    const outer = {
+      template: { filename: "/tags/outer.mx", source: "<p><inner/></p>\n" },
+    } as unknown as CustomTag;
+    const ir = lowerWithTags("<outer/>\n", { inner, outer });
+    // The template's own lower must not run the hooks itself, but the call it
+    // makes has to reach the caller's file-level store and set.
+    expect(textOf(ir.body[0] as IrNode)).toBe("finalized");
+    expect(ir.body.filter((node) => textOf(node) === "finalized")).toHaveLength(
+      1,
+    );
+  });
+
+  it("hands analyze calls nested in templates and calls at file scope", () => {
+    resetTemplateCache();
+    let analyzed = 0;
+    const inner: CustomTag = {
+      analyze(calls) {
+        analyzed = calls.length;
+      },
+      transform: (_call, ctx) => [ctx.build.text("inner")],
+    };
+    const outer = {
+      template: {
+        filename: "/tags/analyze-outer.mx",
+        source: "<section><inner/><inner/></section>\n",
+      },
+    } as unknown as CustomTag;
+
+    lowerWithTags("<outer/><inner/>\n", { inner, outer });
+
+    expect(analyzed).toBe(3);
+  });
+
+  it("replays template-nested calls and usage on every cache hit", () => {
+    resetTemplateCache();
+    const inner: CustomTag = {
+      analyze(calls, ctx) {
+        ctx.store.set("count", calls.length);
+      },
+      transform: (_call, ctx) => [ctx.build.text("inner")],
+      finalize: (ctx) => [
+        ctx.build.text(`sheet:${ctx.store.get<number>("count")}`),
+      ],
+    };
+    const outer = {
+      template: {
+        filename: "/tags/cached-outer.mx",
+        source: "<section><inner/><inner/></section>\n",
+      },
+    } as unknown as CustomTag;
+    const tags = { inner, outer };
+
+    const first = lowerWithTags("<outer/>\n", tags);
+    const second = lowerWithTags("<outer/>\n", tags);
+
+    expect(first.body).toEqual(second.body);
+    expect(textOf(first.body[0] as IrNode)).toBe("sheet:2");
+    expect(textOf(second.body[0] as IrNode)).toBe("sheet:2");
+  });
+
+  it("positions an analyze failure at the tag's first call", () => {
+    const tag: CustomTag = {
+      analyze(_calls, ctx) {
+        throw ctx.fail("no good");
+      },
+      transform: () => [],
+    };
+    try {
+      lowerWithTags("\n<p>x</p>\n<tag/>\n", { tag });
+      expect.unreachable("analyze should have failed");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TranslateError);
+      expect((error as TranslateError).message).toContain("`<tag>`: no good");
+      expect((error as TranslateError).line).toBe(3);
+    }
+  });
+
+  it("wraps a non-TranslateError thrown by analyze, naming the hook", () => {
+    const tag: CustomTag = {
+      analyze() {
+        throw new Error("boom");
+      },
+      transform: () => [],
+    };
+    expect(() => lowerWithTags("<tag/>\n", { tag })).toThrowError(
+      "`<tag>`: custom tag `analyze` threw: boom",
+    );
+  });
+
+  it("wraps a non-TranslateError thrown by finalize, naming the hook", () => {
+    const tag: CustomTag = {
+      transform: () => [],
+      finalize() {
+        throw new Error("boom");
+      },
+    };
+    expect(() => lowerWithTags("<tag/>\n", { tag })).toThrowError(
+      "`<tag>`: custom tag `finalize` threw: boom",
+    );
+  });
+
+  it("rejects a finalize that returns something other than an array", () => {
+    const tag = {
+      transform: () => [],
+      finalize: () => ({ kind: "Text", value: "nope" }),
+    } as unknown as CustomTag;
+    expect(() => lowerWithTags("<tag/>\n", { tag })).toThrowError(
+      "`<tag>`: `finalize` must return an array of IR nodes",
+    );
+  });
+
+  it("refuses ctx.build.hostTag in finalize", () => {
+    const tag: CustomTag = {
+      transform: () => [],
+      finalize: (ctx) => [ctx.build.hostTag("try", [], [])],
+    };
+    expect(() => lowerWithTags("<tag/>\n", { tag })).toThrowError(
+      "`<tag>`: `ctx.build.hostTag` is not available in `finalize`",
+    );
+  });
+
+  it("refuses ctx.build.template in finalize", () => {
+    const tag: CustomTag = {
+      transform: () => [],
+      finalize: (ctx) => ctx.build.template({} as TagCall),
+    };
+    expect(() => lowerWithTags("<tag/>\n", { tag })).toThrowError(
+      "`<tag>`: `ctx.build.template` is not available in `finalize`",
+    );
+  });
+
+  it("rejects a registration whose only hook is finalize", () => {
+    const tag = { finalize: () => [] } as unknown as CustomTag;
+    expect(() => lowerWithTags("<p>x</p>\n", { tag })).toThrowError(
+      /`<tag>`: a custom tag that defines only `finalize`/,
+    );
+  });
+
+  it("accepts a tag with analyze and transform but no finalize", () => {
+    const tag: CustomTag = {
+      analyze(calls, ctx) {
+        ctx.store.set("n", calls.length);
+      },
+      transform: (_call, ctx) => [
+        ctx.build.text(String(ctx.store.get<number>("n"))),
+      ],
+    };
+    const ir = lowerWithTags("<tag/><tag/>\n", { tag });
+    expect(ir.body.map(textOf)).toEqual(["2", "2"]);
+  });
+
+  it("does not emit the analyze pass's warnings a second time", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const dropping: CustomTag = {
+      attributeTags: { item: {} },
+      analyze: () => {},
+      transform: () => [],
+    };
+    lowerWithTags("<dropping><@item/></dropping>\n", { dropping });
+    const drops = warn.mock.calls.filter((call) =>
+      String(call[0]).includes("did not read its attributeTags"),
+    );
+    expect(drops).toHaveLength(1);
+    warn.mockRestore();
   });
 });
 
