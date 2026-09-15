@@ -1,0 +1,8 @@
+{
+  "name": "ls-bad-mx-tags",
+  "private": true,
+  "mx": {
+    "host": "html",
+    "tags": "does-not-exist"
+  }
+}

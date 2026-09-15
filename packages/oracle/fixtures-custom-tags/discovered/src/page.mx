@@ -1,0 +1,2 @@
+<icon name="check"/>
+<snippet>if (a < b) { id = "#main"; }</snippet>

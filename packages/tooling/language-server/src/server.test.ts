@@ -95,6 +95,92 @@ describe("stdio server (e2e)", () => {
     expect(params.diagnostics[0]?.message).toMatch(/let/i);
   }, 15000);
 
+  it("discovers a tag from the document's own path, given a file:// URI", async () => {
+    const conn = startClient();
+
+    await conn.sendRequest("initialize", {
+      processId: null,
+      rootUri: null,
+      capabilities: {},
+    });
+    conn.sendNotification("initialized", {});
+
+    const diagnosticsReceived = new Promise<{
+      uri: string;
+      diagnostics: Array<{ message: string; source?: string }>;
+    }>((resolve) => {
+      conn.onNotification(PublishDiagnosticsNotification, resolve);
+    });
+
+    // Opened the way an editor opens it: a `file://` URI, not a path. The
+    // server converts before scanning — `resolve("file:///a/page.mx")` yields
+    // `<cwd>/file:/a/page.mx`, which exists nowhere, so passing the raw URI
+    // through discovered no tags for any real document while a unit test that
+    // called `diagnoseDocument` with a plain path stayed green.
+    const uri = `file://${join(import.meta.dirname, "fixtures/discovered-tag/page.mx")}`;
+    conn.sendNotification("textDocument/didOpen", {
+      textDocument: {
+        uri,
+        languageId: "mx",
+        version: 1,
+        text: "<stamp/>\n",
+      },
+    });
+
+    const params = await diagnosticsReceived;
+
+    // No diagnostics at all: `<stamp>` resolved. Undiscovered, it would be a
+    // compile error naming the tag.
+    expect(params.uri).toBe(uri);
+    expect(params.diagnostics).toEqual([]);
+  }, 15000);
+
+  it("warns about a misconfigured mx.tags over stdio", async () => {
+    const conn = startClient();
+
+    await conn.sendRequest("initialize", {
+      processId: null,
+      rootUri: null,
+      capabilities: {},
+    });
+    conn.sendNotification("initialized", {});
+
+    const diagnosticsReceived = new Promise<{
+      uri: string;
+      diagnostics: Array<{
+        message: string;
+        source?: string;
+        severity?: number;
+      }>;
+    }>((resolve) => {
+      conn.onNotification(PublishDiagnosticsNotification, resolve);
+    });
+
+    // The document itself compiles fine; the problem is in its
+    // `package.json`. Without this the typo is silent everywhere and an
+    // author sees only that a tag never resolves.
+    const uri = `file://${join(import.meta.dirname, "fixtures/bad-mx-tags/page.mx")}`;
+    conn.sendNotification("textDocument/didOpen", {
+      textDocument: {
+        uri,
+        languageId: "mx",
+        version: 1,
+        text: "<p>hello</p>\n",
+      },
+    });
+
+    const params = await diagnosticsReceived;
+
+    expect(params.diagnostics).toHaveLength(1);
+    // A warning, not an error: the scan carried on and the rest of the
+    // package still compiles.
+    expect(params.diagnostics[0]?.severity).toBe(2);
+    // Names the file to fix, since LSP publishes against the open document
+    // and the problem is in a different one.
+    expect(params.diagnostics[0]?.message).toContain("package.json");
+    expect(params.diagnostics[0]?.message).toContain("does-not-exist");
+  }, 15000);
+
   it.each(["typescript", "marko"])(
     "diagnoses a .solid.mx URI with the %s language id",
     async (languageId) => {

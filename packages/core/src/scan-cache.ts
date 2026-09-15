@@ -106,13 +106,14 @@ function isFresh(entry: CacheEntry): boolean {
 }
 
 /**
- * A stable identity for a tag set: the names, and where each came from.
+ * The parser-facing identity of a tag set: the names, where each came from,
+ * and each one's `parseOptions`.
  *
- * Deliberately not the sidecars' contents — those are loaded lazily and may
- * never be read at all. Two scans that found the same files in the same
- * places produce the same map, which is the property the taglib id needs.
+ * This is what Marko's taglib id is derived from, so two scans agreeing here
+ * may share one lookup. It deliberately excludes the sidecars' *contents*,
+ * which are loaded lazily and may never be read at all.
  */
-function signatureOf(result: ScanResult): string {
+function parserSignatureOf(result: ScanResult): string {
   return [...result.tags.keys()]
     .sort()
     .map((name) => {
@@ -120,6 +121,26 @@ function signatureOf(result: ScanResult): string {
       return `${name}|${tag?.template ?? ""}|${tag?.sidecar ?? ""}|${JSON.stringify(tag?.parseOptions ?? null)}`;
     })
     .join("\n");
+}
+
+/**
+ * The identity of one *loaded* tag set: the above, plus every tag file's
+ * mtime.
+ *
+ * Two different questions hide behind "is this the same tag set", and
+ * conflating them is a real bug rather than a nicety. Marko's taglib only
+ * cares about names and parse options, so an edit that changes neither may
+ * keep its lookup. But a memoized `CustomTag` also holds the sidecar module
+ * it already loaded, so reusing that object after an edit serves the *old*
+ * hooks — measured: editing a `transform` changed nothing about the compiled
+ * output until this key gained the mtimes.
+ */
+function loadedSignatureOf(result: ScanResult): string {
+  const files = [...result.files]
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .map((file) => `${file.path}@${file.mtimeMs}`)
+    .join("\n");
+  return `${parserSignatureOf(result)}\n--\n${files}`;
 }
 
 /**
@@ -167,22 +188,29 @@ export function scanCached(
   if (cached && isFresh(cached)) return cached.result;
 
   const result = scanCustomTags(filePath, options);
-  const signature = signatureOf(result);
+  const loadedSignature = loadedSignatureOf(result);
+  const parserSignature = parserSignatureOf(result);
 
-  // Reuse the previously handed-out map for an unchanged tag set, so its
-  // identity — and therefore Marko's taglib id — is stable.
-  const existing = maps.get(signature);
+  // Reuse the previously handed-out map only when the tag files are byte-for-
+  // byte the same run of files, so a memoized sidecar can never outlive an
+  // edit to it.
+  const existing = maps.get(loadedSignature);
   if (existing) {
     result.customTags = existing;
   } else {
-    if (liveSignature !== undefined && liveSignature !== signature) {
-      // The set changed: the entries the old set left in Marko's caches can
-      // never be hit again, so drop them rather than leak them.
+    if (liveSignature !== undefined && liveSignature !== parserSignature) {
+      // The *parser-facing* set changed, so the entries the old one left in
+      // Marko's caches can never be hit again. An edit that changed only a
+      // hook body leaves those entries valid and does not evict them.
       evictTaglibCaches();
-      maps.clear();
     }
-    maps.set(signature, result.customTags);
-    liveSignature = signature;
+    // Only one loaded map per parser-facing set is useful: an older one
+    // describes files that have since been edited.
+    for (const key of maps.keys()) {
+      if (key.startsWith(`${parserSignature}\n--\n`)) maps.delete(key);
+    }
+    maps.set(loadedSignature, result.customTags);
+    liveSignature = parserSignature;
   }
 
   scans.set(key, snapshot(result));

@@ -1,4 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { clearScanCache } from "@mxlang/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { diagnoseDocument } from "./diagnose.ts";
 
 describe("diagnoseDocument", () => {
@@ -218,5 +228,102 @@ describe("the Hono host", () => {
     );
 
     expect(diagnostics).toEqual([]);
+  });
+
+  describe("custom tag discovery", () => {
+    const scratches: string[] = [];
+
+    afterEach(() => {
+      clearScanCache();
+      for (const dir of scratches.splice(0)) {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    function project(sidecar: string) {
+      const dir = mkdtempSync(join(tmpdir(), "mx-ls-tags-"));
+      scratches.push(dir);
+      writeFileSync(
+        join(dir, "package.json"),
+        '{"name":"l","mx":{"host":"html"}}',
+      );
+      mkdirSync(join(dir, "tags"), { recursive: true });
+      const tagFile = join(dir, "tags", "thing.tag.ts");
+      writeFileSync(tagFile, sidecar);
+      return { dir, tagFile, caller: join(dir, "caller.mx") };
+    }
+
+    it("accepts a call to a tag discovered with no import", () => {
+      const { caller } = project(
+        "export default { transform: (_c, ctx) => [ctx.build.text('ok')] };\n",
+      );
+
+      // Without discovery this would be a compile error naming `<thing>`, so
+      // an empty result is the assertion: the editor resolves the same tag a
+      // build does.
+      expect(diagnoseDocument("<thing/>\n", caller, { host: "html" })).toEqual(
+        [],
+      );
+    });
+
+    it("reports a sidecar with unreadable parseOptions as a diagnostic", () => {
+      const { caller } = project(
+        [
+          "const shared = { text: true };",
+          "export default { parseOptions: shared };",
+        ].join("\n"),
+      );
+
+      const diagnostics = diagnoseDocument("<thing/>\n", caller, {
+        host: "html",
+      });
+
+      // One diagnostic, naming the file the author has to fix — not a crash,
+      // and not silence that would leave the editor disagreeing with a build.
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]?.message).toContain("thing.tag.ts");
+      expect(diagnostics[0]?.source).toBe("mxlang");
+    });
+
+    it("reports a sidecar that throws on load as a diagnostic", () => {
+      const { tagFile, caller } = project(
+        "export default { transform: (_c, ctx) => [ctx.build.text('ok')] };\n",
+      );
+      expect(diagnoseDocument("<thing/>\n", caller, { host: "html" })).toEqual(
+        [],
+      );
+
+      // The author breaks the sidecar; the document they have open is
+      // untouched. The server must surface it rather than throw out of
+      // `diagnoseDocument`, which is what would take the connection down.
+      writeFileSync(tagFile, 'throw new Error("broken on purpose");\n');
+      const when = new Date(Date.now() + 10_000);
+      utimesSync(tagFile, when, when);
+
+      const diagnostics = diagnoseDocument("<thing/>\n", caller, {
+        host: "html",
+      });
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]?.message).toContain("thing.tag.ts");
+    });
+
+    it("sees a tag added to a tags/ directory after the first diagnose", () => {
+      const { dir, caller } = project(
+        "export default { transform: (_c, ctx) => [ctx.build.text('ok')] };\n",
+      );
+      expect(diagnoseDocument("<thing/>\n", caller, { host: "html" })).toEqual(
+        [],
+      );
+
+      writeFileSync(join(dir, "tags", "added.mx"), "<em>new</em>\n");
+
+      // Discovered, so the call reports P1's template-expansion gate rather
+      // than an unknown tag: an added file invalidates the cached scan.
+      const diagnostics = diagnoseDocument("<added/>\n", caller, {
+        host: "html",
+      });
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]?.message).toContain("has no transform");
+    });
   });
 });

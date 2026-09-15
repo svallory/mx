@@ -1,7 +1,8 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
-import { describe, expect, it } from "vitest";
+import { clearScanCache } from "@mxlang/core";
+import { afterEach, describe, expect, it } from "vitest";
 import { ASTRO_MX_EXT, ASTRO_SUFFIX, mxTemplates } from "./vite-templates.ts";
 
 const COMPONENT = `---
@@ -297,6 +298,37 @@ describe("mxTemplates()", () => {
 
       expect(result).toBeUndefined();
       expect(graph.invalidated).toHaveLength(0);
+    });
+  });
+
+  describe("custom tag discovery", () => {
+    afterEach(() => {
+      clearScanCache();
+    });
+
+    it("resolves a tag from a sibling tags/ directory with no import", () => {
+      // The `.mx` half of this host reaches discovery through `mx()` inside
+      // `@mxlang/vite-plugin`; `.amx` has its own `load`, so without the scan
+      // wired in here it would be the one file kind where a `tags/` directory
+      // is invisible.
+      const dir = mkdtempSync(join(tmpdir(), "mx-amx-tags-"));
+      writeFileSync(
+        join(dir, "package.json"),
+        '{"name":"a","mx":{"host":"astro"}}',
+      );
+      mkdirSync(join(dir, "tags"), { recursive: true });
+      writeFileSync(
+        join(dir, "tags", "stamp.tag.ts"),
+        "export default { transform: (_c, ctx) => [ctx.build.text('stamped')] };\n",
+      );
+      const amx = join(dir, `page${ASTRO_MX_EXT}`);
+      writeFileSync(amx, "---\n---\n<stamp/>\n");
+
+      const plugin = mxTemplates();
+      const load = plugin.load as (id: string) => string | null;
+      const lowered = load.call({}, amx + ASTRO_SUFFIX);
+
+      expect(lowered).toContain("stamped");
     });
   });
 });

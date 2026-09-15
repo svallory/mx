@@ -1,12 +1,14 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { convertToTSX } from "@astrojs/compiler/sync";
 import { decode } from "@jridgewell/sourcemap-codec";
-import type { CustomTag } from "@mxlang/core";
+import { type CustomTag, clearScanCache } from "@mxlang/core";
 import { print } from "@mxlang/parser";
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   AMX_LANGUAGE_ID,
   composeAmxMappings,
@@ -396,6 +398,137 @@ describe("MX language plugin", () => {
           mapping.sourceOffsets[0] === source.indexOf("input.answer"),
       ),
     ).toBe(true);
+  });
+
+  describe("custom tag discovery", () => {
+    const scratches: string[] = [];
+
+    afterEach(() => {
+      clearScanCache();
+      for (const dir of scratches.splice(0)) {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    function project(sidecar: string) {
+      const dir = mkdtempSync(join(tmpdir(), "mx-tsplugin-tags-"));
+      scratches.push(dir);
+      writeFileSync(
+        join(dir, "package.json"),
+        '{"name":"t","mx":{"host":"html"}}',
+      );
+      mkdirSync(join(dir, "tags"), { recursive: true });
+      writeFileSync(join(dir, "tags", "thing.tag.ts"), sidecar);
+      return { dir, caller: join(dir, "caller.mx") };
+    }
+
+    it("resolves a tag discovered beside the file, with no options", () => {
+      // No `customTags` is passed: `mx-tsc` and the tsserver plugin both build
+      // this plugin with none, so discovery per file is the only thing that
+      // can make a `tags/` directory reachable from either.
+      const { caller } = project(
+        "export default { transform: (_c, ctx) => [ctx.build.element('span', [], [ctx.build.text('ok')])] };\n",
+      );
+      const source = "<thing/>\n";
+      const plugin = createMxLanguagePlugin(ts);
+
+      const virtual = plugin.createVirtualCode?.(
+        caller,
+        MX_LANGUAGE_ID,
+        ts.ScriptSnapshot.fromString(source),
+        { getAssociatedScript: () => undefined },
+      );
+      if (!virtual) throw new Error("Expected MX virtual code");
+
+      // A file that fails to compile yields empty virtual code plus a recorded
+      // syntax error, so both assertions together are the proof.
+      expect(plugin.getSyntaxError(caller)).toBeUndefined();
+      expect(
+        virtual.snapshot.getText(0, virtual.snapshot.getLength()),
+      ).toContain("ok");
+    });
+
+    it("reports a broken sidecar as a syntax error naming that file", () => {
+      const { caller } = project(
+        [
+          "const shared = { text: true };",
+          "export default { parseOptions: shared };",
+        ].join("\n"),
+      );
+      const plugin = createMxLanguagePlugin(ts);
+
+      plugin.createVirtualCode?.(
+        caller,
+        MX_LANGUAGE_ID,
+        ts.ScriptSnapshot.fromString("<thing/>\n"),
+        { getAssociatedScript: () => undefined },
+      );
+
+      // Surfaced through the plugin's own diagnostic channel rather than
+      // thrown, so one bad sidecar does not blank out the whole project.
+      expect(plugin.getSyntaxError(caller)?.message).toContain("thing.tag.ts");
+    });
+
+    it("resolves a discovered tag in an .amx page too", () => {
+      // `createAmxLanguagePlugin` lowered with no options while
+      // `@mxlang/astro`'s Vite plugin passed `{ customTags }`, so a tag that
+      // compiled under `astro build` was an unknown tag in the editor and
+      // under `mx-tsc --astro` — the asymmetry already closed for
+      // `.solid.mx`.
+      const dir = mkdtempSync(join(tmpdir(), "mx-amx-tags-"));
+      scratches.push(dir);
+      writeFileSync(
+        join(dir, "package.json"),
+        '{"name":"a","mx":{"host":"astro"}}',
+      );
+      mkdirSync(join(dir, "tags"), { recursive: true });
+      writeFileSync(
+        join(dir, "tags", "stamp.tag.ts"),
+        "export default { transform: (_c, ctx) => [ctx.build.text('stamped')] };\n",
+      );
+
+      const amx = join(dir, "page.amx");
+      const source = "---\n---\n<stamp/>\n";
+      const plugin = createAmxLanguagePlugin(ts);
+      const virtual = plugin.createVirtualCode?.(
+        amx,
+        AMX_LANGUAGE_ID,
+        ts.ScriptSnapshot.fromString(source),
+        { getAssociatedScript: () => undefined },
+      );
+      if (!virtual) throw new Error("Expected AMX virtual code");
+
+      expect(plugin.getSyntaxError(amx)).toBeUndefined();
+      expect(
+        virtual.snapshot.getText(0, virtual.snapshot.getLength()),
+      ).toContain("stamped");
+    });
+
+    it("gives the second lowering the discovered tags too", () => {
+      // `createHtmlMappings` lowers the same source again; without the same
+      // map the file gets *no* mappings at all, not merely none inside the
+      // expansion (spec §4's TS-plugin note).
+      const { caller } = project(
+        "export default { transform: (call, ctx) => [ctx.build.element('span', call.attrs)] };\n",
+      );
+      const source = "<thing value=input.answer/>\n";
+      const plugin = createMxLanguagePlugin(ts);
+
+      const virtual = plugin.createVirtualCode?.(
+        caller,
+        MX_LANGUAGE_ID,
+        ts.ScriptSnapshot.fromString(source),
+        { getAssociatedScript: () => undefined },
+      );
+      if (!virtual) throw new Error("Expected MX virtual code");
+
+      expect(
+        virtual.mappings.some(
+          (mapping) =>
+            mapping.sourceOffsets[0] === source.indexOf("input.answer"),
+        ),
+      ).toBe(true);
+    });
   });
 
   it.each([
