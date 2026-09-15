@@ -132,6 +132,17 @@ function tagPositions(value: unknown, file: string, seen: Set<object>): void {
     for (const item of value) tagPositions(item, file, seen);
     return;
   }
+  if (value instanceof Map) {
+    for (const [key, child] of value) {
+      tagPositions(key, file, seen);
+      tagPositions(child, file, seen);
+    }
+    return;
+  }
+  if (value instanceof Set) {
+    for (const child of value) tagPositions(child, file, seen);
+    return;
+  }
   // An `Expr` carries no `loc` of its own — consumers read the position off
   // the Marko/Babel `node` it came from — so the file is recorded on the
   // expression itself. The TypeScript plugin's mapping pass asks exactly this
@@ -169,6 +180,10 @@ interface CompiledTemplate {
   body: IrNode[];
   /** Module-level nodes the template declared, hoisted into the caller's module. */
   module: IrNode[];
+  /** Calls nested anywhere in this template, including nested templates. */
+  customTagCalls: Map<string, TagCall[]>;
+  /** Custom tags used anywhere in this template, including nested templates. */
+  customTagsUsed: Set<string>;
 }
 
 interface CacheEntry extends CompiledTemplate {
@@ -267,12 +282,19 @@ function compileTemplate(
     // without it an editor's every keystroke would reuse the first expansion.
     cached.source === tag.source
   ) {
+    replayCustomTagMetadata(ctx, cached);
     return cached;
   }
 
   compileCount++;
   const compiled = lowerFile(ctx, tag);
   tagPositions(compiled, tag.filename, new Set());
+  replayCustomTagMetadata(ctx, compiled);
+  // An analyze-only lower deliberately suppresses every transform, so its IR
+  // is scratch output rather than a valid expansion. It may discover nested
+  // calls, but it must not poison the process-wide template cache that the
+  // real walk consults immediately afterward.
+  if (ctx.customTagAnalyzePass) return compiled;
   // A miss means this key's entry is stale or absent, so a stale one goes
   // whether or not the file still exists; and a file that has been deleted
   // cannot be compiled again, so its entry is dropped rather than kept
@@ -289,6 +311,30 @@ function compileTemplate(
     templateCache.delete(oldest.value);
   }
   return compiled;
+}
+
+/** Replays one template's transitive custom-tag facts into its caller. */
+function replayCustomTagMetadata(ctx: Ctx, compiled: CompiledTemplate): void {
+  for (const name of compiled.customTagsUsed) {
+    ctx.customTagsUsed ??= new Set();
+    ctx.customTagsUsed.add(name);
+  }
+
+  const destinations = [
+    ctx.customTagTemplateCalls,
+    ctx.customTagAnalyzePass?.calls,
+  ].filter(
+    (calls, index, all): calls is Map<string, TagCall[]> =>
+      calls !== undefined && all.indexOf(calls) === index,
+  );
+  for (const destination of destinations) {
+    for (const [name, calls] of compiled.customTagCalls) {
+      const recorded = destination.get(name);
+      const copies = calls.map((call) => cloneIr(call));
+      if (recorded) recorded.push(...copies);
+      else destination.set(name, copies);
+    }
+  }
 }
 
 /**

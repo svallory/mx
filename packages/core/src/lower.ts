@@ -46,6 +46,8 @@ import {
 import {
   type CustomTag,
   MAX_EXPANSION_DEPTH,
+  runAnalyzeHooks,
+  runFinalizeHooks,
   shadowedBuiltinMessage,
   type TagCall,
   transformCustomTag,
@@ -702,6 +704,14 @@ function lowerCustomTag(
       params: paramsOf(ctx, node),
       var: node.var ? declName(ctx, node.var) : null,
     };
+    // A core-owned built-in like `<try>` is not a registered tag the caller
+    // can finalize. The analyze scratch walk records into its own discarded
+    // set; a template lower also owns a local set which is stored with the
+    // compiled template and replayed into the caller on every cache hit.
+    if (!isBuiltin) {
+      ctx.customTagsUsed ??= new Set();
+      ctx.customTagsUsed.add(name);
+    }
     return transformCustomTag(ctx, definition, call, node);
   } finally {
     ctx.customTagDepth = depth - 1;
@@ -956,6 +966,18 @@ export function lowerChildren(ctx: Ctx, children: Node[]): IrNode[] {
  * filtering the tree for statement nodes.
  */
 export function lower(ctx: Ctx, body: Node[]): Ir {
+  // The file root owns the collecting hooks; a tag template's own lower is
+  // handed the caller's stores and must not run them a second time.
+  const isFileRoot = ctx.customTagStores === undefined;
+  if (isFileRoot) {
+    ctx.customTagStores = new Map();
+    // Created eagerly so a template's `Ctx` can share the same set by
+    // reference: a tag called only from inside a tag template must still be
+    // finalized in the file that called the template.
+    ctx.customTagsUsed ??= new Set();
+    runCustomTagAnalyze(ctx, body);
+  }
+
   const [nodes, prelude] = withPrelude(ctx, () => lowerChildren(ctx, body));
 
   const ir: Ir = {
@@ -995,7 +1017,64 @@ export function lower(ctx: Ctx, body: Node[]): Ir {
     }
   }
 
+  if (isFileRoot && ctx.customTags) {
+    // Prepended as one block, after the body is assembled: a `finalize` node
+    // is program-level output (a sprite sheet, a collected style block), not
+    // something that belongs inside whatever construct the last call site
+    // happened to sit in.
+    const prepended = runFinalizeHooks(
+      ctx,
+      ctx.customTags,
+      ctx.customTagsUsed ?? new Set<string>(),
+    );
+    if (prepended.length > 0) ir.body.unshift(...prepended);
+  }
+
   return ir;
+}
+
+/**
+ * Walks the body once on a scratch `Ctx`, then runs every `analyze`.
+ *
+ * The scratch `Ctx` is the whole trick. It shares what a lower needs to read —
+ * the source, the host's declarations, the taglib lookup, the registered tags
+ * and the file's stores — and owns fresh copies of everything a lower
+ * *writes*: its own prelude, bindings, defines, imports, warnings and template
+ * import map. So the pre-pass lowers each call exactly as the real pass will
+ * (same enclosing `<for>` params, same binding rewrites, same attribute
+ * lowering), which is what lets `analyze` be handed the identical `TagCall`
+ * its own `transform` will later receive, while the hoists, warnings and
+ * template imports it produces are discarded with the scratch `Ctx` instead of
+ * being emitted twice.
+ *
+ * Skipped entirely when no registered tag defines `analyze`, so a file using
+ * only ordinary tags pays for one walk as before.
+ */
+function runCustomTagAnalyze(ctx: Ctx, body: Node[]): void {
+  const customTags = ctx.customTags;
+  if (!customTags) return;
+  if (!Object.values(customTags).some((tag) => tag.analyze)) return;
+
+  const scratch = newCtx(
+    ctx.source,
+    ctx.generate,
+    ctx.declarations,
+    ctx.lookup,
+  );
+  scratch.customTags = customTags;
+  scratch.customTagStores = ctx.customTagStores;
+  scratch.customTagDepth = ctx.customTagDepth;
+  scratch.templateStack = [];
+  scratch.templateImports = new Map();
+  // Absorbed rather than forwarded: every warning this walk raises is raised
+  // again by the real walk, at the same position, and reporting a dropped
+  // attribute tag twice would read as two mistakes.
+  scratch.warnings = [];
+  const calls = new Map<string, TagCall[]>();
+  scratch.customTagAnalyzePass = { calls };
+
+  lowerChildren(scratch, body);
+  runAnalyzeHooks(ctx, customTags, calls);
 }
 
 /**
@@ -1030,6 +1109,23 @@ registerTemplateLowerer((ctx: Ctx, tag: TemplateTag) => {
   );
   templateCtx.customTags = ctx.customTags;
   templateCtx.customTagDepth = ctx.customTagDepth;
+  // Shared by reference, which is both the hook gate and the store's scope: a
+  // non-undefined `customTagStores` tells this nested `lower()` it is not the
+  // file root (so it runs no `analyze` and no `finalize`), and a tag called
+  // from inside a template writes into the same file-level store as one called
+  // at the top level — a template's `<icon>` contributes to the caller's
+  // sprite sheet rather than to a sheet nothing prepends.
+  templateCtx.customTagStores = ctx.customTagStores;
+  // Template-local collectors become cache metadata. They must not point at
+  // the caller's containers: `compileTemplate` replays the completed,
+  // transitive metadata exactly once on both misses and hits.
+  const templateCalls = new Map<string, TagCall[]>();
+  const templateUsed = new Set<string>();
+  templateCtx.customTagTemplateCalls = templateCalls;
+  templateCtx.customTagAnalyzePass = ctx.customTagAnalyzePass
+    ? { calls: templateCalls }
+    : undefined;
+  templateCtx.customTagsUsed = templateUsed;
   // Shared by reference, not copied, and that is what makes the cycle check
   // correct across the cache. The stack is pushed and popped by
   // `expandTemplate` *around* the cache lookup, so it reflects the call path
@@ -1050,6 +1146,8 @@ registerTemplateLowerer((ctx: Ctx, tag: TemplateTag) => {
     // is deliberately *not* carried over — it would collide with the caller's
     // own `Input`, which is the interface the caller's render function takes.
     module: [...ir.imports, ...ir.hoisted, ...ir.prelude],
+    customTagCalls: templateCalls,
+    customTagsUsed: templateUsed,
   };
 });
 

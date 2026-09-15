@@ -19,7 +19,11 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { rejectShadowedRegistration } from "./builtin-tags.ts";
 import { type Ctx, type MxWarning, type Node, newCtx } from "./core.ts";
-import { type CustomTag, customTagTaglib } from "./custom-tags.ts";
+import {
+  type CustomTag,
+  customTagTaglib,
+  rejectUnreachableHooks,
+} from "./custom-tags.ts";
 import type { Policy } from "./declarations.ts";
 import type { Ir } from "./ir.ts";
 import { lower } from "./lower.ts";
@@ -119,6 +123,7 @@ function printExpression(node: unknown): string {
  */
 export function createTranslator(host: TranslatorOptions = {}) {
   rejectShadowedRegistration(host.customTags);
+  rejectUnreachableHooks(host.customTags);
   const customTags = customTagTaglib(host.customTags);
   return {
     taglibs: [...(host.taglibs ?? []), ...(customTags ? [customTags] : [])],

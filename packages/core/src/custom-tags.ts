@@ -48,7 +48,17 @@ export interface CustomTagAttributeTag {
   required?: boolean;
 }
 
-/** A per-file store. Its runtime implementation arrives in phase 5. */
+/**
+ * One tag's private, per-file scratch space.
+ *
+ * Shared by that tag's `analyze`, `transform` and `finalize` for one file and
+ * nothing else: the map is created with the file's `Ctx` and dies with it, and
+ * it is keyed by tag name, so neither another file's compile nor another tag
+ * in the same file can read or write it. That isolation is what makes the
+ * collecting pair safe to use from a tag template's own call sites and from a
+ * long-lived language server, where one definition object is reused across
+ * every file it ever compiles.
+ */
 export interface TagStore {
   get<T>(key: string): T | undefined;
   set<T>(key: string, value: T): void;
@@ -223,7 +233,7 @@ function failAt(tagName: string, message: string, at: Position): never {
 function buildersFor(
   loc: Position,
   ctx: Ctx,
-  node: Node,
+  node: Node | null,
   tagName: string,
   definition: CustomTag,
 ): IrBuilders {
@@ -286,6 +296,13 @@ function buildersFor(
       loc,
     }),
     hostTag: (name, children, attributeTags) => {
+      if (node === null) {
+        return failAt(
+          tagName,
+          "`ctx.build.hostTag` is not available in `finalize`",
+          loc,
+        );
+      }
       if (ctx.declarations.claimsTag?.(name, ctx) !== true) {
         return failAt(
           tagName,
@@ -309,6 +326,13 @@ function buildersFor(
       };
     },
     template: (call) => {
+      if (node === null) {
+        return failAt(
+          tagName,
+          "`ctx.build.template` is not available in `finalize`",
+          loc,
+        );
+      }
       if (!hasTemplate(definition)) {
         return failAt(
           tagName,
@@ -345,6 +369,53 @@ function literalValue(attr: Attr): LiteralValue | null {
     default:
       return null;
   }
+}
+
+/**
+ * Whether an attribute's value is fixed at compile time.
+ *
+ * Wider than `literalValue`, deliberately. `literalValue` answers "which of
+ * `string`/`number`/`boolean` is this?" for the `type` and `enum` checks, so it
+ * is scalar by construction. `staticOnly` asks a different question — "can this
+ * tag read this value now, rather than emit code that reads it later?" — and a
+ * tag that takes a list (`<table-of columns=["name", "price"]>`) or a lookup
+ * map needs that answer to be yes for an array or object literal whose members
+ * are themselves static. Composite values are still not `literalValue`s, so
+ * declaring a `type` or an `enum` alongside keeps its scalar meaning.
+ */
+function isStaticNode(node: Node | null | undefined): boolean {
+  switch (node?.type) {
+    case "StringLiteral":
+    case "NumericLiteral":
+    case "BooleanLiteral":
+    case "NullLiteral":
+      return true;
+    case "ArrayExpression":
+      return (node.elements as Array<Node | null>).every((element) =>
+        isStaticNode(element),
+      );
+    case "ObjectExpression":
+      return (node.properties as Node[]).every(
+        (property) =>
+          property.type === "ObjectProperty" &&
+          property.computed !== true &&
+          (property.key.type === "Identifier" ||
+            property.key.type === "StringLiteral") &&
+          isStaticNode(property.value),
+      );
+    case "UnaryExpression":
+      // `-1` is a `UnaryExpression` over a `NumericLiteral`, not a literal of
+      // its own, and rejecting it would make a negative default unwritable.
+      return node.operator === "-" && isStaticNode(node.argument);
+    default:
+      return false;
+  }
+}
+
+function isStaticAttr(attr: Attr): boolean {
+  if (attr.kind === "static" || attr.kind === "boolean") return true;
+  if (attr.kind !== "dynamic") return false;
+  return isStaticNode(attr.value.node);
 }
 
 /**
@@ -454,7 +525,7 @@ export function validateCustomTagCall(
       present.add(attr.name);
 
       const literal = literalValue(attr);
-      if (declaration.staticOnly && !literal) {
+      if (declaration.staticOnly && !isStaticAttr(attr)) {
         failAt(
           call.name,
           `attribute \`${attr.name}\` must be a static literal`,
@@ -586,6 +657,187 @@ function countNodes(nodes: IrNode[]): number {
   return total;
 }
 
+/**
+ * The store for one tag in one file, created on first use.
+ *
+ * Hung off the file's `Ctx` rather than off the definition object: a
+ * definition is a module-level singleton that the scan hands to every file in
+ * a package, so keying by definition would leak one file's collected state
+ * into the next — the exact failure a sprite sheet would show as symbols from
+ * a page the reader never opened.
+ */
+export function storeFor(ctx: Ctx, tagName: string): TagStore {
+  ctx.customTagStores ??= new Map();
+  const stores = ctx.customTagStores;
+  const existing = stores.get(tagName);
+  const entries = existing ?? new Map<string, unknown>();
+  if (!existing) stores.set(tagName, entries);
+  return {
+    get<T>(key: string): T | undefined {
+      return entries.get(key) as T | undefined;
+    },
+    set<T>(key: string, value: T): void {
+      entries.set(key, value);
+    },
+  };
+}
+
+/**
+ * Rejects a registration whose hooks can never run.
+ *
+ * `finalize` reads what `analyze` or `transform` collected; on its own it has
+ * nothing to read and no call site to be reached from, so a tag that declares
+ * only `finalize` is a definition mistake — most often a `transform` that was
+ * renamed or deleted. Failing at registration names the tag once, before any
+ * file is parsed, instead of silently emitting a constant prelude into every
+ * file in the package.
+ *
+ * A tag with `analyze` but no `finalize` is *not* rejected: `transform` reads
+ * the same store, which is how a call's output legitimately depends on the set
+ * of calls without any prepended program node.
+ */
+export function rejectUnreachableHooks(
+  customTags: Readonly<Record<string, CustomTag>> | undefined,
+): void {
+  if (!customTags) return;
+  for (const [name, definition] of Object.entries(customTags)) {
+    if (!definition.finalize) continue;
+    if (definition.analyze || definition.transform || hasTemplate(definition)) {
+      continue;
+    }
+    throw new TranslateError(
+      `\`<${name}>\`: a custom tag that defines only \`finalize\` has no call site and nothing to collect; add a \`transform\`, an \`analyze\` or a template file`,
+      0,
+      0,
+    );
+  }
+}
+
+/**
+ * Runs every registered `analyze`, once per tag, over that tag's own calls.
+ *
+ * Ordered by tag name for the same reason `finalize` is: two tags whose
+ * `analyze` hooks both observe something about the file must observe it in an
+ * order that does not depend on `Object.keys` insertion, which follows
+ * registration and therefore the scan's directory listing.
+ *
+ * A tag with no calls in the file is skipped rather than analyzed with an
+ * empty array: "this file uses no icons" and "this file was not scanned for
+ * icons" are the same state to a `finalize` that reads an absent key, and
+ * skipping keeps the store untouched so a tag cannot accidentally prepend a
+ * sheet to a file that never called it.
+ */
+export function runAnalyzeHooks(
+  ctx: Ctx,
+  customTags: Readonly<Record<string, CustomTag>>,
+  calls: Map<string, TagCall[]>,
+): void {
+  const names = [...calls.keys()].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  for (const name of names) {
+    const definition = customTags[name];
+    const analyze = definition?.analyze;
+    if (!analyze) continue;
+    const tagCalls = calls.get(name) ?? [];
+    const first = tagCalls[0];
+    if (!first) continue;
+    // A bare `analyze` failure has no one call to blame, so it is positioned
+    // at the tag's first call in the file — the earliest place an author can
+    // start reading to understand what the whole set looked like.
+    const analyzeContext: AnalyzeContext = {
+      store: storeFor(ctx, name),
+      fail: (message, at) => failAt(name, message, at ?? first.loc),
+    };
+    try {
+      analyze(tagCalls, analyzeContext);
+    } catch (error) {
+      throw wrapHookError(error, name, "analyze", first.loc);
+    }
+  }
+}
+
+/**
+ * Runs every registered `finalize` and returns the nodes to prepend, in order.
+ *
+ * Two rules make the result reproducible on any machine: hooks run **sorted by
+ * tag name**, and each may only contribute nodes — it is handed no other tag's
+ * output and no way to reach the program, so ordering can never become
+ * semantically load-bearing (decision 80's coupling, reintroduced through the
+ * back door). The returned list is prepended to the program body as a whole,
+ * so tag `a`'s nodes precede tag `b`'s whatever order the calls appeared in.
+ *
+ * Only a tag actually *called in this file* is finalized. A package may
+ * register dozens of tags a given file never uses, and a `finalize` that ran
+ * regardless would prepend its (usually empty, occasionally not) output to
+ * every file in the package.
+ */
+export function runFinalizeHooks(
+  ctx: Ctx,
+  customTags: Readonly<Record<string, CustomTag>>,
+  used: ReadonlySet<string>,
+): IrNode[] {
+  const names = [...used].sort((left, right) => left.localeCompare(right));
+  const prepended: IrNode[] = [];
+  for (const name of names) {
+    const finalize = customTags[name]?.finalize;
+    if (!finalize) continue;
+    const loc: Position = { line: 0, column: 0 };
+    const finalizeContext: FinalizeContext = {
+      store: storeFor(ctx, name),
+      // A finalize node belongs to no call site, so its builders are stamped
+      // at the head of the file — the position a diagnostic about a prepended
+      // node can honestly point at.
+      build: buildersFor(loc, ctx, null, name, {}),
+      gensym: (hint) => gensymFor(ctx, name, hint),
+    };
+    let nodes: IrNode[];
+    try {
+      nodes = finalize(finalizeContext);
+    } catch (error) {
+      throw wrapHookError(error, name, "finalize", loc);
+    }
+    if (!Array.isArray(nodes)) {
+      failAt(name, "`finalize` must return an array of IR nodes", loc);
+    }
+    const total = countNodes(nodes);
+    if (total > MAX_EXPANSION_NODES) {
+      failAt(
+        name,
+        `\`finalize\` produced ${total} nodes, over the ${MAX_EXPANSION_NODES} limit`,
+        loc,
+      );
+    }
+    prepended.push(...nodes);
+  }
+  return prepended;
+}
+
+/** A hook's own `TranslateError` passes through; anything else is wrapped. */
+function wrapHookError(
+  error: unknown,
+  tagName: string,
+  hook: string,
+  loc: Position,
+): unknown {
+  if (error instanceof TranslateError) return error;
+  return new TranslateError(
+    `\`<${tagName}>\`: custom tag \`${hook}\` threw: ${error instanceof Error ? error.message : String(error)}`,
+    loc.line,
+    loc.column,
+    loc.file,
+  );
+}
+
+/** The per-file hygienic name generator, shared by every context that has one. */
+function gensymFor(ctx: Ctx, tagName: string, hint?: string): string {
+  ctx.customTagGensym = (ctx.customTagGensym ?? 0) + 1;
+  const serial = ctx.customTagGensym;
+  const safeTag = tagName.replace(/[^A-Za-z0-9_]/g, "_");
+  const safeHint = (hint ?? "t").replace(/[^A-Za-z0-9_]/g, "_");
+  return `$mx_${safeTag}_${safeHint}${serial}`;
+}
+
 function observedCall(call: TagCall): {
   call: TagCall;
   attributeTagsRead(): boolean;
@@ -609,17 +861,6 @@ export function transformCustomTag(
   call: TagCall,
   node: Node,
 ): IrNode[] {
-  if (definition.analyze || definition.finalize) {
-    const hooks = [
-      ...(definition.analyze ? ["analyze"] : []),
-      ...(definition.finalize ? ["finalize"] : []),
-    ];
-    failAt(
-      call.name,
-      `${hooks.join("/")} custom tag hooks are not implemented until P5`,
-      call.loc,
-    );
-  }
   if (!definition.transform && !hasTemplate(definition)) {
     failAt(
       call.name,
@@ -633,26 +874,46 @@ export function transformCustomTag(
     ...call,
     attrs: applyCustomTagDefaults(definition, call),
   };
+
+  // A real template compile must retain the calls its cached IR contains so
+  // a later analyze-pass cache hit can observe the same nested calls without
+  // rerunning transforms. Nested-template metadata is replayed into this map
+  // by `expandTemplate`, making the resulting cache entry transitive.
+  const templateCalls = ctx.customTagTemplateCalls;
+  if (templateCalls && templateCalls !== ctx.customTagAnalyzePass?.calls) {
+    const recorded = templateCalls.get(call.name);
+    if (recorded) recorded.push(withDefaults);
+    else templateCalls.set(call.name, [withDefaults]);
+  }
+
+  // The analyze pre-pass. Validation above has already run, so a bad call is
+  // reported once at its real position rather than twice or (worse) only on
+  // the second walk; from here the call is merely recorded and expands to
+  // nothing, because its `transform` must not run until every `analyze` in
+  // the file has seen every call. A template-backed tag is still expanded on
+  // this scratch walk: its own nested custom-tag calls are part of the file's
+  // call set, even though neither its transform nor any nested transform runs.
+  const analyzePass = ctx.customTagAnalyzePass;
+  if (analyzePass) {
+    const recorded = analyzePass.calls.get(call.name);
+    if (recorded) {
+      recorded.push(withDefaults);
+    } else {
+      analyzePass.calls.set(call.name, [withDefaults]);
+    }
+    if (hasTemplate(definition)) {
+      expandTemplate(ctx, definition as TemplateBackedTag, withDefaults);
+    }
+    return [];
+  }
   const observed = observedCall(withDefaults);
   const builders = buildersFor(call.loc, ctx, node, call.name, definition);
   const tagContext: TransformContext = {
     build: builders,
     hoist: (code) => ctx.hoist(code, node),
     fail: (message, at) => failAt(call.name, message, at ?? call.loc),
-    gensym: (hint) => {
-      ctx.customTagGensym = (ctx.customTagGensym ?? 0) + 1;
-      const serial = ctx.customTagGensym;
-      const safeTag = call.name.replace(/[^A-Za-z0-9_]/g, "_");
-      const safeHint = (hint ?? "t").replace(/[^A-Za-z0-9_]/g, "_");
-      return `$mx_${safeTag}_${safeHint}${serial}`;
-    },
-    get store(): TagStore {
-      return failAt(
-        call.name,
-        "ctx.store is not implemented until P5",
-        call.loc,
-      );
-    },
+    gensym: (hint) => gensymFor(ctx, call.name, hint),
+    store: storeFor(ctx, call.name),
   };
 
   let nodes: IrNode[];
