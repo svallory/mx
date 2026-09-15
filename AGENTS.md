@@ -647,6 +647,45 @@ Five facts worth knowing before editing it:
   only channel the in-tokenizer bridge has to the caller.
   `bun run oracle:custom-tags` is the six-host `<icon>` gate; every row,
   Solid included, renders and compares against `expected.html`.
+- **`<try>` is a core-owned custom tag (spec §5 P4), not per-host code.**
+  `packages/core/src/builtin-tags.ts` exports `BUILTIN_CUSTOM_TAGS`, and a
+  name it lists (today, only `try`) cannot be shadowed by a registered
+  `customTags` entry of the same name at either of two points: `lower.ts`'s
+  custom-tag branch consults it *before* a caller's own `ctx.customTags` (the
+  call-site check, for a name Marko has already agreed to parse as that tag),
+  and `rejectShadowedRegistration` in `builtin-tags.ts` rejects the whole
+  registration up front, from both `compile.ts` and `fragment.ts`, before any
+  parsing happens. The second check exists because a shadowing registration's
+  own `parseOptions` (e.g. `try: { parseOptions: { openTagOnly: true } }`)
+  changes how the parser itself reads `<try>`, which would otherwise surface
+  as an unrelated parser error instead of the shadow diagnostic — a name
+  cannot be shadowed even by a registration whose `transform` never runs.
+  Every rejection is the same positioned error, not a silent override. The
+  tag's `transform` validates the shape every host used to re-derive by hand
+  (no tag params, no `/var`, at most one `<@catch>`, at most one
+  `<@placeholder>` with no params of its own — the first two through the
+  tag's own checks, the attribute-tag shape through the tag's declared
+  `attributeTags` contract) and then asks for the primitive with
+  `ctx.build.hostTag("try", children, attributeTags)`. `lowerCustomTag`
+  passes an `isBuiltin` flag that skips the ordinary `hasContent` gate on a
+  custom tag's body: a template-authored tag treats a whitespace-only body as
+  "no children supplied", but `<try>` is a structural pass-through wrapper
+  and must reproduce the caller's body unchanged, matching what
+  `lowerHostTag` always did. Each host's `claimsTag`/`resolveHostTag` for
+  `"try"` only decides how the primitive renders now — `@mxlang/html`,
+  `@mxlang/solid`, and `@mxlang/preact`'s shared JSX emitter (reused by
+  `@mxlang/react`/`@mxlang/hono`) all shrank to that. `@mxlang/astro` never
+  claimed `"try"`; its rejection is an ordinary `tags["try"]` disposition
+  entry (`ctx.declarations.tags`), checked earlier in `lowerTag` than any
+  custom tag, so it is unrelated to this change and untouched. Error wording
+  for the shape checks changed from each host's hand-written phrasing (e.g.
+  "given twice") to the generic custom-tag messages (e.g. "may not be
+  repeated") — a wording change, not a behavior change, so the affected host
+  and SolidMX-bridge tests were updated to match rather than left failing. A
+  tag whose `attributes` is declared empty (`{}`, `<try>`'s own case) reports
+  a named or spread attribute the same way — "accepts no attributes" — rather
+  than the generic checker's own internal wording ("spread attributes cannot
+  be checked...") leaking into a user-facing message.
 
 ## `@mxlang/solid`: the Solid host on `@mxlang/core`
 
