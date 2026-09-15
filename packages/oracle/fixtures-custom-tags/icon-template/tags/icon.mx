@@ -1,0 +1,14 @@
+export interface Input { name: string; size?: number; class?: string }
+<svg xmlns="http://www.w3.org/2000/svg"
+     width=input.size ?? 24 height=input.size ?? 24
+     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+     class=input.class>
+  <title>${input.name}</title>
+  <if=(input.name === "check")><path d="M20 6 9 17l-5-5"/></if>
+  <else if=(input.name === "x")>
+    <path d="M18 6 6 18"/><path d="M6 6l12 12"/>
+  </else>
+  <else if=(input.name === "plus")>
+    <path d="M12 5v14"/><path d="M5 12h14"/>
+  </else>
+</svg>
