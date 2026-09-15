@@ -17,6 +17,7 @@
 
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
+import { rejectShadowedRegistration } from "./builtin-tags.ts";
 import { type Ctx, type Node, newCtx } from "./core.ts";
 import { type CustomTag, customTagTaglib } from "./custom-tags.ts";
 import type { Policy } from "./declarations.ts";
@@ -110,6 +111,7 @@ function printExpression(node: unknown): string {
  * `compileSync`.
  */
 export function createTranslator(host: TranslatorOptions = {}) {
+  rejectShadowedRegistration(host.customTags);
   const customTags = customTagTaglib(host.customTags);
   return {
     taglibs: [...(host.taglibs ?? []), ...(customTags ? [customTags] : [])],
