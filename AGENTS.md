@@ -147,7 +147,7 @@ Two syntax decisions are settled and encoded in `@mxlang/solid`'s lowering (`pac
   collides too.
 - **Tag params (`|a, b|`) come before `=value`.** `<if|u|=user()>`, not `<if=user()|u|>` — the latter parses but folds `|u|` into the condition expression and reports no params, matching `<for|item, i| of=...>`'s own order. `notes/solidmx-spec.md` §5.1 writes `<if=user()|u|>` as loose prose; the real grammar is params-first.
 
-## `.mx` is the official extension; `.marko` is an alias (decision 72)
+## `.mx` is the only template extension (decisions 72, 2026-09-15)
 
 Decision 68 retired the old `.mx` *dialect* (required explicit imports,
 `<fragment>`, required `export interface Input`, lowercase-by-scope) —
@@ -155,27 +155,54 @@ Decision 68 retired the old `.mx` *dialect* (required explicit imports,
 not come back. Decision 72 re-establishes `.mx` as MX's own **identity**,
 distinct from that dialect: MX is its own language with Marko as its origin,
 and MX 1.0 is a strict subset of Marko syntax — every MX 1.0 file is a valid
-Marko file with the same meaning for the structural core. `.mx` is the
-official extension; `.marko` is accepted everywhere with identical
-treatment, so porting a Marko component to MX is a rename or nothing.
-`.solid.mx` is unaffected — a different file kind (TSX with MX regions), not
-covered by this alias.
+Marko file with the same meaning for the structural core.
+
+**Decision 2026-09-15 (Saulo) superseded decision 72's `.marko` alias**:
+no product path of MX accepts or advertises `.marko` any more — MX only
+supports the MX 1.0 subset of Marko syntax, so treating an arbitrary
+`.marko` file as MX would silently claim support it does not have. `.mx`
+(plus `.solid.mx` and `.amx`, different file kinds) is the only template
+extension across every host loader (`@mxlang/html/bun`, `@mxlang/hono/bun`,
+`@mxlang/vite-plugin`), the language server, the TypeScript plugin/`mx-tsc`,
+and the VS Code/Zed extensions. Porting a Marko component that stays within
+the MX 1.0 subset is a rename. `@marko/compiler`'s own `tags/` auto-discovery
+convention (`tagDiscoveryDirs: ["tags"]`, used by `@mxlang/html` and
+`@mxlang/preact`) is the one narrow exception that still touches real
+`.marko` files: `@marko/compiler`'s `scanTagsDir` only discovers files whose
+*actual* extension is `.marko` (measured in 5.42.5's `loadTaglibFromDir.js`,
+`ext === ".marko"`) — a `.mx` file placed in a `tags/` directory is not
+discovered at all. This is Marko's own compiler behavior during a whole-file
+`.mx` compile, not a second entry point MX advertises.
+
+The oracle (`packages/oracle`, `packages/hosts/html/fixtures-marko/*`) still
+keeps its 43 stock fixtures as real `.marko` files, because Marko's own
+compiler and its `tags/` scan only accept `.marko` — but it feeds them to MX
+by reading the file content and compiling under a virtual sibling `.mx`
+filename in the same directory (`translator-render.ts`'s `renderTranslator`),
+not by the real `.marko` path. `tags/*.marko` fixture files stay on disk as
+real `.marko` (Marko's own discovery convention above), and every other
+fixture `.marko` file's `from "./x.marko"` imports are rewritten for the MX
+side the same way the oracle already rewrites them to `.ts`. `.solid.mx` is
+unaffected either way — a different file kind (TSX with MX regions), never
+covered by the `.marko` alias in the first place.
 
 - `parse(source, filename)` in `@mxlang/parser` — a `.solid.mx` file: a
   TypeScript module in which `<` in expression position opens an MX element,
   lowered to Solid 2 JSX by `@mxlang/solid` (see below). This is the parser
   package's only mode; there is no `mxMode` option. SolidMX is a separate
-  host from the vanilla one below, and is not affected by either the
-  `.mx`/`.marko` alias or decision 68's dialect retirement.
+  host from the vanilla one below, and is not affected by `.mx` being the
+  only template extension or by decision 68's dialect retirement.
 - `compile(source, filename)` in `@mxlang/html` — a whole-file MX
-  template (`.mx` or its `.marko` alias, both stock Marko syntax with no
-  dialect layered on top). `@marko/compiler` parses, validates and supplies
-  the tag registry; the package supplies only a translator
-  (`packages/hosts/html/src/translate.ts`) and its own taglib
-  (`packages/hosts/html/taglib/marko.json`). `@mxlang/parser` is not on this
-  path at all. The Bun loader (`@mxlang/html/bun`) and
-  `@mxlang/vite-plugin`'s `mx()` both accept `.mx` and `.marko` identically,
-  excluding `.solid.mx`.
+  template (`.mx`, stock Marko syntax with no dialect layered on top).
+  `@marko/compiler` parses, validates and supplies the tag registry; the
+  package supplies only a translator (`packages/hosts/html/src/translate.ts`)
+  and its own taglib (`packages/hosts/html/taglib/marko.json`).
+  `@mxlang/parser` is not on this path at all. `compile()`/`compileFile()`
+  themselves do not gate on the filename extension (it is inert in
+  `@mxlang/core`'s `compileSource` too — the extension check lives at the
+  loader boundary instead); the Bun loader (`@mxlang/html/bun`) and
+  `@mxlang/vite-plugin`'s `mx()` both accept only `.mx`, excluding
+  `.solid.mx`.
 
 Four Marko facts that are easy to get wrong (all measured against
 `@marko/compiler` 5.42.5, all cost real debugging time):
@@ -446,25 +473,27 @@ Two Marko-toolchain facts worth knowing before touching
 `@solidjs/vite-plugin`. Both plugins are `enforce: "pre"`, so their relative
 order is their order in the `plugins` array — `mx()` must come first.
 
-`mx()`'s default `extensions` is `[".solid.mx", ".mx", ".marko"]`: `.mx` (the
-official extension, decision 72) and its `.marko` alias both compile through
-`@mxlang/html`'s `compile()` instead of `print()`, to a plain
-`(input) => string` module (no JSX, no Solid) — `suffixFor` returns `.tsx` for
-every handled extension (it used to pick `.ts` for the `.mx` path): the suffix
-has to be decided identically by `resolveId`, which holds the real path, and
-`isMxModule`, which holds only the suffixed one — and the host is a property
-of the file's nearest `package.json`, so deriving it in both places would mean
-resolving a policy from a path that does not exist on disk. A `.tsx` file
-containing no JSX is ordinary TypeScript and rolldown's transform over it is a
-no-op. `.solid.mx` is otherwise byte-for-byte
-unchanged by this: same suffix, same `print()` call, same source map, and it
-keeps precedence over `.mx` regardless of `extensions` order (`.mx` is a
-literal string suffix of `.solid.mx`, so the longest-first sort at
-`index.ts`'s `matchExt`/`isMxModule` setup matters here the same way it did
-for the old `.marko`/`.solid.marko` collision). The `.mx`/`.marko` path
-returns `map: null` from `transform` — `compile()`'s map is presently an
-identity placeholder (see `packages/hosts/html`'s own doc comment: no AST is
-printed on that path), so there is nothing real to hand Vite yet.
+`mx()`'s default `extensions` is `[".solid.mx", ".mx"]`: `.mx` (the official
+and only template extension — `.marko` is not accepted, see "`.mx` is the
+only template extension" above) compiles through `compileMarko()` (routing
+to the resolved host's compiler — `@mxlang/html`'s `compile()`,
+`@mxlang/preact`'s `compilePreactMx()`, etc.) instead of `print()`, to a
+plain `(input) => string` module or a JSX component module per host —
+`suffixFor` returns `.tsx` for every handled extension (it used to pick
+`.ts` for the `.mx` path): the suffix has to be decided identically by
+`resolveId`, which holds the real path, and `isMxModule`, which holds only
+the suffixed one — and the host is a property of the file's nearest
+`package.json`, so deriving it in both places would mean resolving a policy
+from a path that does not exist on disk. A `.tsx` file containing no JSX is
+ordinary TypeScript and rolldown's transform over it is a no-op. `.solid.mx`
+is otherwise byte-for-byte unchanged by this: same suffix, same `print()`
+call, same source map, and it keeps precedence over `.mx` regardless of
+`extensions` order (`.mx` is a literal string suffix of `.solid.mx`, so the
+longest-first sort at `index.ts`'s `matchExt`/`isMxModule` setup matters
+here). The `.mx` path returns `map: null` from `transform` — `compile()`'s
+map is presently an identity placeholder (see `packages/hosts/html`'s own
+doc comment: no AST is printed on that path), so there is nothing real to
+hand Vite yet.
 
 `compileMarko()` inside the plugin dynamically `import()`s
 `@mxlang/html` rather than importing it statically at module top level,
@@ -472,7 +501,7 @@ and this is load-bearing, not a style choice: `@mxlang/html` has no
 compiled entry (`main` is `src/index.ts`), and its `translate.ts` pulls in
 `@marko/compiler`. A static import would load that dependency the instant
 `vite.config.ts` imports this plugin — including for a `.solid.mx`-only
-project like `examples/counter-app` that never touches `.mx`/`.marko` — and
+project like `examples/counter-app` that never touches `.mx` — and
 previously broke `vite build` for such projects, because Vite's own config
 loader (and, separately, Node's plain `import()`/`require()`) reads
 TypeScript through Node's native strip-only mode, which used to reject a
@@ -739,7 +768,7 @@ third knob, `mxClassModule`, lets `mxClass` import from this package's own
 `@mxlang/hono` dependency, through the same resolver used by Vite, the
 language server and the TypeScript plugin.
 
-`@mxlang/hono/bun` registers a Bun plugin loading `.mx`/`.marko` as
+`@mxlang/hono/bun` registers a Bun plugin loading `.mx` as
 `loader: "tsx"` — the same shape as `@mxlang/html/bun`'s plugin, `"tsx"`
 instead of `"ts"` since this host's compiled output contains JSX. Bun honors
 the emitted `/** @jsxImportSource hono/jsx */` pragma per compiled file; a
@@ -993,7 +1022,7 @@ The lowering table and the full error list live in
 degrades: every construct this target cannot express is a build error naming
 the construct, the reason and the `.amx` line.
 
-Astro projects get per-file `.mx`/`.marko` types from
+Astro projects get per-file `.mx` types from
 `@mxlang/typescript-plugin`, not an ambient wildcard. The old
 `packages/hosts/astro/types/mx.d.ts` and `@mxlang/astro/types` export are
 deleted: they erased every component's real `Input`. Configure one Volar
@@ -1107,7 +1136,7 @@ so this only bites a standalone `vitest run` of this package.
 ## `@mxlang/typescript-plugin` and `@mxlang/tsc`: TypeScript for MX files (decision 81)
 
 `packages/tooling/typescript-plugin` and `packages/tooling/tsc` are the two
-halves of one job: type-check `.solid.mx`, `.mx`, and `.marko` from the TS/TSX
+halves of one job: type-check `.solid.mx` and `.mx` from the TS/TSX
 each host emits.
 Each package's own `README.md` carries the full story; this is the package-map
 entry.
@@ -1120,7 +1149,7 @@ entry.
   map. A `print` failure yields empty virtual code plus one recorded syntax
   error, appended to `getSyntacticDiagnostics` so a bad region reports once,
   at its own position, instead of silently becoming an empty file.
-  `src/mx-language.ts` compiles whole-file `.mx`/`.marko` through the host
+  `src/mx-language.ts` compiles whole-file `.mx` through the host
   `@mxlang/core`'s `resolveHostPolicy` picks from the nearest `package.json`
   (one resolver, shared with the language server, so an editor and a `tsc` run
   cannot disagree about a file's host); because the HTML compiler's map is
@@ -1156,7 +1185,7 @@ Four facts worth knowing before editing either:
   `packages/parser/src/mx/bridge.ts` repositioning each Babel node onto the
   source expression it was copied from. `decodeMappings` then keeps only spans
   whose generated and source text match, and merges contiguous ones.
-  Whole-file `.mx`/`.marko` is the exception: its HTML map is empty, so the
+  Whole-file `.mx` is the exception: its HTML map is empty, so the
   plugin maps from the core IR node locations — per expression for every
   `Expr`, and **whole-block** for the five statement kinds (`Static`,
   `Import`, `Export`, `InputInterface`, `Hoisted`), which carry an `end`
@@ -1192,10 +1221,12 @@ typecheck inputs.
 ## Bun loader
 
 `packages/hosts/html/src/bun.ts` (`@mxlang/html/bun`) is the Bun-side
-`.marko` integration, decision 58 roadmap item 2, half A (moved here from the
+`.mx` integration, decision 58 roadmap item 2, half A (moved here from the
 retired `@mxlang/html/bun` by decision 68). It exports a `BunPlugin` that
-registers `build.onLoad({ filter: /\.marko$/ }, ...)`: on each `.marko` file
-it reads the source, runs it through `compile()`, and returns
+registers `build.onLoad({ filter: MX_FILTER }, ...)` — `MX_FILTER` is
+`/(?<!\.solid)\.mx$/`, `.mx` only; `.marko` is deliberately not registered
+(see "`.mx` is the only template extension" above). On each matched `.mx`
+file it reads the source, runs it through `compile()`, and returns
 `{ contents: code, loader: "ts" }` — `compile()`'s output is plain TypeScript
 (an `import`, an optional `export interface Input`, a default-exported
 function, no JSX), so Bun's own TS stripper handles it directly with no
@@ -1205,7 +1236,7 @@ The plugin object self-registers at import time (`Bun.plugin(markoPlugin)`
 runs at module scope, in addition to the `export default`): `bunfig.toml`'s
 `preload = ["@mxlang/html/bun"]` runs a preloaded module purely for its
 side effects — it does **not** call `Bun.plugin` on a default export
-automatically — so without the self-registration call, `.mx`/`.marko`
+automatically — so without the self-registration call, `.mx`
 imports silently fall through to Bun's default loader and resolve to the
 file's path string, not a compiled function. `Bun.plugin` is idempotent for
 an already-registered plugin object, so `import markoPlugin from
@@ -1213,10 +1244,8 @@ an already-registered plugin object, so `import markoPlugin from
 still works without double-registering.
 
 `examples/mx-site` uses this loader: `bunfig.toml` preloads it, `.mx` pages
-import each other directly (`import Layout from "./layout.mx"`), one partial
-(`partials/callout.marko`) is kept as the `.marko` alias to exercise it end
-to end, and `src/server.ts`/`src/build.ts` import pages directly with no
-prebuild step.
+import each other directly (`import Layout from "./layout.mx"`), and
+`src/server.ts`/`src/build.ts` import pages directly with no prebuild step.
 The compiled-output equality check decision 58 calls for ("cannot paper over
 an emit bug") lives in the e2e suite's own content assertions
 (`e2e/routes.spec.ts`), run against both the dev server and the static
@@ -1229,11 +1258,11 @@ only), run via `bun run test:bun` in that package. `packages/hosts/html`'s
 own `vitest.config.ts` excludes it from the vitest project so the root
 `bun run test` does not try to load `bun:test` under Node/Vite.
 
-## `.mx`/`.marko` import typing
+## `.mx` import typing
 
-`packages/hosts/html/types/marko.d.ts` declares `declare module "*.mx"` and
-`declare module "*.marko"`, both typing the import as `(input: any) =>
-string`. `any`, not each file's real `Input` interface: per-file typing
+`packages/hosts/html/types/marko.d.ts` declares `declare module "*.mx"`,
+typing the import as `(input: any) => string`. `any`, not each file's real
+`Input` interface: per-file typing
 needs a virtual-file projection of the compiled module (the same shape
 `@mxlang/typescript-plugin` now does for `.solid.mx` — see its own section
 below), which is the phase-3 language server's job for this file kind, not
@@ -1321,7 +1350,7 @@ not resolve bare specifiers through `tsconfig.json` `paths` the same way.
 `examples/astro-static` is the Astro host's example: an Astro 7.3.2 site
 (`output: "static"`, pinned exact in its own `package.json`) with `.mx`
 components — props and a default slot, a named slot, and one component
-composed from another with a `.marko` alias import inside — and, per decision
+composed from another — and, per decision
 76b, `.mx` **pages** directly under `src/pages`: `mx-page.mx` (a `layout`
 export, props from a `static` block, `<if>`, `<for>`), `no-layout.mx` (no
 `layout`, writes its own full document), and `posts/[slug].mx` (`getStaticPaths`
@@ -1350,8 +1379,9 @@ since each spec runs a real `astro build`.
 
 **`.mx` pages** (decision 76b, `packages/hosts/astro/src/index.ts` +
 `packages/hosts/astro/src/vite-pages.ts`): the integration calls Astro's
-`addPageExtension(".mx")` — `.marko` is deliberately not registered as a page
-extension, staying a component-only alias. A second Vite plugin (`mxPages`,
+`addPageExtension(".mx")` — `.marko` is not a registered extension for this
+integration at all (see "`.mx` is the only template extension" above), so
+there is no separate question of whether it is a page. A second Vite plugin (`mxPages`,
 `enforce: "post"`, scoped to `<srcDir>/pages/`) runs after
 `@mxlang/vite-plugin`'s own `.mx` → TS compile in the *same* transform pass
 and rewrites the already-compiled module — by the time this stage runs the
@@ -1392,7 +1422,7 @@ own frontmatter does.
 under `src/pages/`, a tiny `src/build.ts` that imports both and writes
 `dist/*.html`, and a `vite.config.ts` whose `build.ssr` is that script rather
 than a browser entry — `vite build` bundles it through the plugin's
-`.mx`/`.marko` transform, then `bun run dist-ssr/build.js` actually runs it
+`.mx` transform, then `bun run dist-ssr/build.js` actually runs it
 and writes the
 HTML. `vite.config.ts`'s `ssr.external: ["@mxlang/html"]` keeps that
 package's own `import { escape } from "@mxlang/html"` (present in
