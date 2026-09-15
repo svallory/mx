@@ -2,7 +2,7 @@
  * `@mxlang/preact` — MX's Preact host, the fourth emitter on `@mxlang/core`'s
  * IR (decisions 71, 79, 81, 82).
  *
- * A `.mx` (or `.marko`) template becomes a Preact component module: a JSX file
+ * A `.mx` template becomes a Preact component module: a JSX file
  * carrying its own `@jsxImportSource` pragma, the author's imports and `static`
  * blocks at module scope, their `export interface Input` as the component's
  * props type, and one default-exported function returning JSX.
@@ -82,9 +82,12 @@ export type { CompileResult, RawSourceMap };
 
 const host = {
   /**
-   * Marko's own convention: a `.marko`/`.mx` file in a `tags/` directory
-   * beside the template is callable as a tag with no import. Kept because this
-   * is a host for stock Marko syntax, the same as `@mxlang/html`.
+   * Marko's own convention: `@marko/compiler`'s `scanTagsDir` only
+   * auto-discovers files whose extension is literally `.marko` (measured in
+   * 5.42.5's `loadTaglibFromDir.js`, `ext === ".marko"`), so a `tags/*.marko`
+   * file is callable as a tag with no import. A `.mx` file in `tags/` is not
+   * discovered. Kept because this is a host for stock Marko syntax, the same
+   * as `@mxlang/html`.
    */
   tagDiscoveryDirs: ["tags"],
 };
@@ -185,7 +188,11 @@ export function emitModuleWithMappings(
     // under a capitalized alias. Where the author imported the name, the
     // alias is a local binding; where Marko *discovered* it from a `tags/`
     // directory there is no import at all — that is the point of discovery —
-    // so one is synthesized against Marko's own convention.
+    // so one is synthesized against Marko's own convention. The synthesized
+    // path is always `.marko`, never `.mx`: `@marko/compiler`'s own
+    // `scanTagsDir` only discovers files whose extension is literally
+    // `.marko` (see the `tagDiscoveryDirs` doc comment above), so a
+    // discovered tag can only ever be a real `.marko` file on disk.
     ...[...emitter.aliases].map((name) =>
       importedNames.has(name)
         ? `const ${componentAlias(name)} = ${name};`
@@ -241,7 +248,7 @@ export interface CompilePreactResult extends CompileResult {
 }
 
 /**
- * Compiles a `.mx`/`.marko` template to a Preact component module.
+ * Compiles a `.mx` template to a Preact component module.
  *
  * The returned map is a placeholder identity map, as `@mxlang/html`'s is: the
  * emitter builds text rather than printing a Babel AST, so there are no node

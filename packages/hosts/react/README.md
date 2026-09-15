@@ -1,6 +1,6 @@
 # `@mxlang/react`
 
-MX's React host compiles a `.mx` (or `.marko`) template to a React component
+MX's React host compiles a `.mx` template to a React component
 module: TSX with `/** @jsxImportSource react */`, the author's imports and
 `static` blocks at module scope, and `export interface Input` as the component
 props type.

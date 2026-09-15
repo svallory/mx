@@ -3,8 +3,8 @@
  *
  * MX (Markup eXtended) is a template language born from Marko, MX 1.0 being a
  * strict subset of Marko's syntax (decision 72). This package renders `.mx`
- * (and its `.marko` alias) components inside an Astro project as **static
- * markup**: they are compiled by `@mxlang/html` to a runtime-free
+ * components inside an Astro project as **static markup**: they are compiled
+ * by `@mxlang/html` to a runtime-free
  * `(input) => string` function, called during Astro's build, and never shipped
  * to a browser.
  *
@@ -49,16 +49,18 @@ interface AstroIntegration {
 
 export interface MxIntegrationOptions {
   /**
-   * File extensions compiled as MX. Defaults to `.mx` and its `.marko` alias.
+   * File extensions compiled as MX. Defaults to `.mx`.
    *
    * `.solid.mx` is deliberately absent: that is a different file kind (TSX
    * with MX regions, lowered to Solid JSX), and it belongs to the Solid host,
-   * not this one.
+   * not this one. `.marko` is not accepted either: MX only supports the MX
+   * 1.0 subset of Marko syntax, so treating a real `.marko` file as MX would
+   * silently claim support it does not have.
    */
   extensions?: string[];
 }
 
-const DEFAULT_EXTENSIONS = [".mx", ".marko"];
+const DEFAULT_EXTENSIONS = [".mx"];
 
 /**
  * The Astro integration.
@@ -102,6 +104,16 @@ const DEFAULT_EXTENSIONS = [".mx", ".marko"];
 export default function mxAstro(
   options: MxIntegrationOptions = {},
 ): AstroIntegration {
+  // MX only supports the MX 1.0 subset of Marko syntax, so a caller cannot
+  // opt back into `.marko` through `extensions` — that would silently claim
+  // support this integration does not have. Rejected eagerly, at
+  // integration construction, rather than left to surface later as a
+  // confusing build-time mismatch.
+  if (options.extensions?.some((ext) => ext.endsWith(".marko"))) {
+    throw new Error(
+      "@mxlang/astro: '.marko' is not a supported extension — MX only compiles the MX 1.0 subset of Marko syntax under '.mx'.",
+    );
+  }
   const extensions = options.extensions ?? DEFAULT_EXTENSIONS;
 
   return {
@@ -129,11 +141,10 @@ export default function mxAstro(
           );
         }
 
-        // `.mx` files under `src/pages` are pages (decision 76b), not
-        // components: `.marko` stays a component-only alias and is
-        // deliberately not registered here, so a `.marko` file placed under
-        // `src/pages` is invisible to Astro's router rather than half-page,
-        // half-component.
+        // `.mx` files under `src/pages` are pages (decision 76b). `.marko`
+        // is not a registered extension for this integration at all (see
+        // `MxIntegrationOptions.extensions`'s own doc comment), so a
+        // `.marko` file anywhere in an Astro project is simply not MX's.
         addPageExtension(".mx");
 
         // `.amx` files are AstroMX: an Astro component whose template is MX,

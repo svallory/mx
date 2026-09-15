@@ -3,6 +3,16 @@ import { build } from "astro";
 import { describe, expect, it } from "vitest";
 import mxAstro from "./index.ts";
 
+describe("extensions guard", () => {
+  it("throws a clear error if extensions includes .marko", () => {
+    // MX only supports the MX 1.0 subset of Marko syntax, so a caller
+    // cannot opt back into `.marko` through `extensions`.
+    expect(() => mxAstro({ extensions: [".mx", ".marko"] })).toThrow(
+      /'\.marko' is not a supported extension/,
+    );
+  });
+});
+
 describe("addPageExtension guard", () => {
   it("registers .mx and .amx when addPageExtension is present", () => {
     const integration = mxAstro();

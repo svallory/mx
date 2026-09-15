@@ -2,11 +2,11 @@
 
 `packages/editors/zed` ships three languages for Zed:
 
-- `MX` (`.mx`, decision 72's official extension; `.marko` is an accepted
-  alias with identical treatment), backed by the **unmodified**
+- `MX` (`.mx`, decision 72's official and only extension — MX only supports
+  the MX 1.0 subset of Marko syntax), backed by the **unmodified**
   `marko-js/tree-sitter` grammar. Restored after decision 68's retirement:
   decision 72 re-establishes `.mx` as MX's own identity (a strict subset of
-  Marko syntax, not the retired dialect), which is what lets it alias onto
+  Marko syntax, not the retired dialect), which is what lets it reuse
   Marko's grammar and queries with zero changes.
 - `SolidMX`, backed by this monorepo's own `packages/editors/tree-sitter-solidmx` — a
   patched `tree-sitter-typescript` (tsx dialect) with an `mx_element`

@@ -193,7 +193,7 @@ export function isUnderPagesDir(path: string, pagesRoot: string): boolean {
 
 /**
  * `enforce: "post"`, so it runs after `@mxlang/vite-plugin`'s own `pre`
- * transform of the same `.mx.ts`/`.marko.ts` id within the same build.
+ * transform of the same `.mx.ts` id within the same build.
  */
 export function mxPages(srcDir: URL): Plugin {
   const pagesRoot = new URL("pages/", srcDir).pathname;
@@ -205,7 +205,7 @@ export function mxPages(srcDir: URL): Plugin {
     transform(code: string, id: string) {
       const path = id.split("?")[0] ?? id;
       if (!isUnderPagesDir(path, pagesRoot)) return null;
-      if (!/\.(?:mx|marko)\.tsx?$/.test(path)) return null;
+      if (!/\.mx\.tsx?$/.test(path)) return null;
 
       const wrapped = wrapAsPage(code);
       if (wrapped === null) {

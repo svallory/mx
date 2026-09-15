@@ -165,7 +165,7 @@ describe("stdio server (e2e)", () => {
     expect(params.diagnostics[0]?.message).toMatch(/let/i);
   }, 15000);
 
-  it("diagnoses a .marko document resolved to the Solid host", async () => {
+  it("diagnoses a .mx document resolved to the Solid host", async () => {
     const conn = startClient();
 
     await conn.sendRequest("initialize", {
@@ -182,11 +182,11 @@ describe("stdio server (e2e)", () => {
       conn.onNotification(PublishDiagnosticsNotification, resolve);
     });
 
-    const uri = `file://${join(import.meta.dirname, "fixtures/solid-dependency/App.marko")}`;
+    const uri = `file://${join(import.meta.dirname, "fixtures/solid-dependency/App.mx")}`;
     conn.sendNotification("textDocument/didOpen", {
       textDocument: {
         uri,
-        languageId: "marko",
+        languageId: "mx",
         version: 1,
         text: "<let/count=1/>\n",
       },
@@ -202,6 +202,13 @@ describe("stdio server (e2e)", () => {
     expect(isMxDocument("untitled:App", "solidmx")).toBe(true);
     expect(isMxDocument("untitled:App", "SolidMX")).toBe(true);
     expect(isMxDocument("file:///project/App.ts", "typescript")).toBe(false);
+  });
+
+  it("does not recognize a .marko document or the marko language id", () => {
+    // MX only supports the MX 1.0 subset of Marko syntax, so a real .marko
+    // file is not diagnosed as MX even though it shares a taglib origin.
+    expect(isMxDocument("file:///project/App.marko", "marko")).toBe(false);
+    expect(isMxDocument("untitled:App", "marko")).toBe(false);
   });
 
   it("resolves the policy correctly for a file:// URI with a percent-encoded space in its path", async () => {

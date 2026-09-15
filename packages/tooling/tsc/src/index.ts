@@ -14,7 +14,7 @@ import { runTsc } from "@volar/typescript/lib/quickstart/runTsc";
  * both halves, because TypeScript's own module resolver appends the terminal
  * segment when probing for declaration files.
  */
-const EXTRA_SUPPORTED_EXTENSIONS = [".solid.mx", ".mx", ".marko"];
+const EXTRA_SUPPORTED_EXTENSIONS = [".solid.mx", ".mx"];
 const ASTRO_SUPPORTED_EXTENSIONS = [
   ...EXTRA_SUPPORTED_EXTENSIONS,
   ".astro",

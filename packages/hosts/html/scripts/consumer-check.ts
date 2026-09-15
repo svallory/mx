@@ -142,7 +142,7 @@ try {
   run(["bun", "add", tarballPath, "@marko/compiler@5.42.5"], scratchDir);
 
   writeFileSync(
-    join(scratchDir, "hello.marko"),
+    join(scratchDir, "hello.mx"),
     "export interface Input { name: string }\n<h1>Hello, ${input.name}!</h1>\n",
   );
 
@@ -152,8 +152,8 @@ try {
     [
       'import { compile } from "@mxlang/html";',
       'import { readFileSync } from "node:fs";',
-      'const source = readFileSync("hello.marko", "utf8");',
-      'const { code } = compile(source, "hello.marko");',
+      'const source = readFileSync("hello.mx", "utf8");',
+      'const { code } = compile(source, "hello.mx");',
       'if (!code.includes("Hello, ")) throw new Error("compile() did not produce the expected template body");',
       'console.log("via-api: ok");',
     ].join("\n"),
@@ -162,7 +162,8 @@ try {
   if (!apiOutput.includes("via-api: ok"))
     fail(`public API check produced: ${apiOutput}`);
 
-  // 2. Bun loader.
+  // 2. Bun loader. `.mx` only — MX only supports the MX 1.0 subset of Marko
+  // syntax, so the loader does not claim a real `.marko` file.
   writeFileSync(
     join(scratchDir, "bunfig.toml"),
     'preload = ["@mxlang/html/bun"]\n',
@@ -170,7 +171,7 @@ try {
   writeFileSync(
     join(scratchDir, "via-loader.ts"),
     [
-      'import render from "./hello.marko";',
+      'import render from "./hello.mx";',
       'const html = render({ name: "World" });',
       'if (html !== "<h1>Hello, World!</h1>") throw new Error(`unexpected render: ${html}`);',
       'console.log("via-loader: ok");',

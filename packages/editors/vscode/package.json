@@ -50,8 +50,7 @@
           "mx"
         ],
         "extensions": [
-          ".mx",
-          ".marko"
+          ".mx"
         ],
         "configuration": "./language-configuration.json"
       },

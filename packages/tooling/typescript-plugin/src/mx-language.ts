@@ -28,7 +28,7 @@ import type * as ts from "typescript";
 import { codeInformation, decodeMappings, mergeMappings } from "./language.ts";
 
 export const MX_LANGUAGE_ID = "mx";
-export const MX_EXTENSIONS = ["mx", "marko"] as const;
+export const MX_EXTENSIONS = ["mx"] as const;
 
 export interface MxSyntaxError {
   fileName: string;

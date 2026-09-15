@@ -1,8 +1,8 @@
 /**
  * `@mxlang/html` — MX's vanilla HTML host, on `@mxlang/core`.
  *
- * A `.mx` (or `.marko`) template becomes a pure `(input) => string` function:
- * no runtime beyond the `escape` helper, no framework. Everything generic —
+ * A `.mx` template becomes a pure `(input) => string` function: no runtime
+ * beyond the `escape` helper, no framework. Everything generic —
  * the Marko-node consumer, the `config.translator` seam, the emit model —
  * lives in `@mxlang/core`; this package supplies the *policy* (`translate.ts`)
  * and the integrations (the Bun loader, the `escape` runtime, the taglib).
@@ -34,10 +34,14 @@ export type { CompileResult, RawSourceMap };
 /**
  * This host's options for the core's whole-file front door.
  *
- * `tagDiscoveryDirs: ["tags"]` is Marko's own convention, so a `.marko`/`.mx`
- * file in a `tags/` directory beside the template is callable as a tag with no
- * import — one of the things that makes this a host for *stock* Marko syntax
- * rather than for a dialect.
+ * `tagDiscoveryDirs: ["tags"]` is Marko's own convention: `@marko/compiler`'s
+ * `scanTagsDir` only auto-discovers files whose extension is literally
+ * `.marko` (measured in `@marko/compiler` 5.42.5's `loadTaglibFromDir.js`,
+ * `ext === ".marko"`) — a `.mx` file in a `tags/` directory is not
+ * discovered as a tag at all. This host still accepts only `.mx` at the
+ * loader boundary; a `tags/*.marko` file is real Marko syntax read by
+ * `@marko/compiler` itself during discovery, not a second entry point this
+ * host advertises.
  *
  * `postEmit` is `translate.ts`'s `finalizeModule` wrapper, which appends the
  * `classValue`/`styleValue`/`escapeComment`/`renderDynamic` helpers a template
@@ -74,7 +78,7 @@ export interface CompileHtmlResult extends CompileResult {
 }
 
 /**
- * Compiles a `.mx`/`.marko` template to a runtime-free TypeScript module.
+ * Compiles a `.mx` template to a runtime-free TypeScript module.
  *
  * The emitted module imports `escape` and default-exports
  * `(input: Input) => string` — nothing else is required at run time. This is

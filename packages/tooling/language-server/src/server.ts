@@ -31,14 +31,13 @@ const DEBOUNCE_MS = 150;
  * addition to the file suffix, since some clients open a buffer with no
  * `file://` URI (e.g. `untitled:`) — the suffix check alone would miss it.
  */
-const MX_LANGUAGE_IDS = new Set(["mx", "marko"]);
+const MX_LANGUAGE_IDS = new Set(["mx"]);
 
 function isMxDocument(uri: string, languageId: string): boolean {
   return (
     isSolidMxDocument(uri, languageId) ||
     MX_LANGUAGE_IDS.has(languageId) ||
-    uri.endsWith(".mx") ||
-    uri.endsWith(".marko")
+    uri.endsWith(".mx")
   );
 }
 

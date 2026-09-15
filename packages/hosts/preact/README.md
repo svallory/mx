@@ -1,6 +1,6 @@
 # `@mxlang/preact`
 
-MX's Preact host: a `.mx` (or `.marko`) template compiles to a **Preact
+MX's Preact host: a `.mx` template compiles to a **Preact
 component module** — JSX text carrying its own `@jsxImportSource` pragma, with
 the author's imports and `static` blocks at module scope and their
 `export interface Input` as the component's props type.
