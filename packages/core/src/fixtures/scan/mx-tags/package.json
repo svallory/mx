@@ -1,0 +1,9 @@
+{
+  "name": "scan-mx-tags",
+  "private": true,
+  "mx": {
+    "tags": [
+      { "dir": "shared", "prefix": "ui-", "parseOptions": { "text": true } }
+    ]
+  }
+}

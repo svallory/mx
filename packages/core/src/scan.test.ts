@@ -1,0 +1,414 @@
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+import { TranslateError } from "./core.ts";
+import { normalizeMxTags, readParseOptions, scanCustomTags } from "./scan.ts";
+import {
+  clearScanCache,
+  getCustomTags,
+  liveTagMapCount,
+  scanCached,
+} from "./scan-cache.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const fixtures = join(here, "fixtures", "scan");
+
+function fixture(...parts: string[]): string {
+  return join(fixtures, ...parts);
+}
+
+/** Scratch directories this file created, removed after each test. */
+const scratches: string[] = [];
+
+function scratch(): string {
+  const dir = mkdtempSync(join(tmpdir(), "mx-scan-"));
+  scratches.push(dir);
+  return dir;
+}
+
+/**
+ * Moves a file's mtime forward explicitly.
+ *
+ * An editor's save produces a new mtime, but two writes inside one test can
+ * land in the same filesystem timestamp tick; stamping the future makes the
+ * change the cache must notice unambiguous rather than clock-dependent.
+ */
+function touchInFuture(path: string): void {
+  const when = new Date(Date.now() + 10_000);
+  utimesSync(path, when, when);
+}
+
+afterEach(() => {
+  clearScanCache();
+  for (const dir of scratches.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe("scanCustomTags", () => {
+  it("discovers a sidecar in a sibling tags/ directory with no import", () => {
+    const result = scanCustomTags(fixture("parse-options", "caller.mx"));
+
+    expect([...result.tags.keys()]).toEqual(["raw"]);
+    expect(result.tags.get("raw")?.sidecar).toBe(
+      fixture("parse-options", "tags", "raw.tag.ts"),
+    );
+    expect(Object.keys(result.customTags)).toEqual(["raw"]);
+  });
+
+  it("reads parseOptions statically, before any hook runs", () => {
+    const result = scanCustomTags(fixture("parse-options", "caller.mx"));
+
+    // The value is present on the map handed to the compiler, which is what
+    // lets it reach Marko's taglib before the *caller* is parsed.
+    expect(result.customTags.raw?.parseOptions).toEqual({
+      text: true,
+      preserveWhitespace: true,
+    });
+  });
+
+  it("loads a sidecar's hooks only when one is used", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"lazy"}');
+    // Evaluating this module appends to a global; reading `parseOptions` must
+    // not, and reading `transform` must.
+    writeFileSync(
+      join(dir, "tags", "counted.tag.ts"),
+      [
+        "(globalThis as Record<string, unknown>).mxScanLoadCount =",
+        "  ((globalThis as Record<string, number>).mxScanLoadCount ?? 0) + 1;",
+        "export default { parseOptions: { text: true }, transform: () => [] };",
+      ].join("\n"),
+    );
+
+    const globals = globalThis as unknown as { mxScanLoadCount?: number };
+    globals.mxScanLoadCount = 0;
+
+    const tags = scanCustomTags(join(dir, "caller.mx")).customTags;
+    expect(tags.counted?.parseOptions).toEqual({ text: true });
+    expect(globals.mxScanLoadCount).toBe(0);
+
+    expect(typeof tags.counted?.transform).toBe("function");
+    expect(globals.mxScanLoadCount).toBe(1);
+
+    // A second read reuses the loaded module rather than evaluating again.
+    void tags.counted?.transform;
+    expect(globals.mxScanLoadCount).toBe(1);
+  });
+
+  it("lets the nearest tags/ directory win a shared name", () => {
+    const deep = scanCustomTags(fixture("nearest", "deep", "caller.mx"));
+    const shallow = scanCustomTags(fixture("nearest", "caller.mx"));
+
+    // Which definition won is proven by its declared attribute, not just by
+    // the path: the nearer file declares `nearest`, the outer one `where`.
+    expect(deep.tags.get("badge")?.sidecar).toBe(
+      fixture("nearest", "deep", "tags", "badge.tag.ts"),
+    );
+    expect(Object.keys(deep.customTags.badge?.attributes ?? {})).toEqual([
+      "nearest",
+    ]);
+
+    expect(shallow.tags.get("badge")?.sidecar).toBe(
+      fixture("nearest", "tags", "badge.tag.ts"),
+    );
+    expect(Object.keys(shallow.customTags.badge?.attributes ?? {})).toEqual([
+      "where",
+    ]);
+  });
+
+  it("discovers a template-only tag with no sidecar", () => {
+    const result = scanCustomTags(fixture("template-only", "caller.mx"));
+
+    const note = result.tags.get("note");
+    expect(note?.template).toBe(fixture("template-only", "tags", "note.mx"));
+    expect(note?.sidecar).toBeUndefined();
+    // Registered, so a call reports P1's template-expansion gate rather than
+    // "unknown tag" — discovery is this phase's job, expansion is P3's.
+    expect(result.customTags.note).toBeDefined();
+    expect(result.customTags.note?.transform).toBeUndefined();
+  });
+
+  it("extends the walk with package.json#mx.tags, prefix included", () => {
+    const result = scanCustomTags(fixture("mx-tags", "src", "caller.mx"));
+
+    expect([...result.tags.keys()].sort()).toEqual(["ui-override", "ui-panel"]);
+  });
+
+  it("lets a sidecar override a directory-level parseOptions default", () => {
+    const result = scanCustomTags(fixture("mx-tags", "src", "caller.mx"));
+
+    // `panel` declares none and inherits the entry's default.
+    expect(result.customTags["ui-panel"]?.parseOptions).toEqual({ text: true });
+    // `override` declares `text: false` and that wins.
+    expect(result.customTags["ui-override"]?.parseOptions).toEqual({
+      text: false,
+    });
+  });
+
+  it("reports an mx.tags entry naming a directory that does not exist", () => {
+    expect(() =>
+      scanCustomTags(fixture("mx-tags-missing", "caller.mx")),
+    ).toThrow(/mx\.tags` names a directory that does not exist/);
+  });
+
+  it("reports a sidecar whose parseOptions is not a literal", () => {
+    let error: unknown;
+    try {
+      scanCustomTags(fixture("bad-parse-options", "caller.mx"));
+    } catch (cause) {
+      error = cause;
+    }
+
+    expect(error).toBeInstanceOf(TranslateError);
+    const translate = error as TranslateError;
+    // Names the offending file and points into it, so the author can act.
+    expect(translate.message).toContain("computed.tag.ts");
+    expect(translate.message).toContain("must be an object literal");
+    expect(translate.line).toBeGreaterThan(0);
+  });
+
+  it("reports a sidecar that throws while loading, rather than crashing", () => {
+    // Discovery itself succeeds: the throw happens only when hooks are read.
+    const result = scanCustomTags(fixture("broken-sidecar", "caller.mx"));
+    expect(result.tags.has("boom")).toBe(true);
+
+    let error: unknown;
+    try {
+      void result.customTags.boom?.transform;
+    } catch (cause) {
+      error = cause;
+    }
+
+    expect(error).toBeInstanceOf(TranslateError);
+    expect((error as Error).message).toContain("boom.tag.ts");
+    expect((error as Error).message).toContain("sidecar failed to load");
+  });
+
+  it("ignores files in a tags/ directory that are not tag files", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"mixed"}');
+    writeFileSync(join(dir, "tags", "README.md"), "# tags\n");
+    writeFileSync(join(dir, "tags", "helper.ts"), "export const x = 1;\n");
+    writeFileSync(join(dir, "tags", "card.mx"), "<div/>\n");
+
+    const result = scanCustomTags(join(dir, "caller.mx"));
+    expect([...result.tags.keys()]).toEqual(["card"]);
+  });
+
+  it("stops the upward walk at the package root", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "outer", "tags"), { recursive: true });
+    mkdirSync(join(dir, "outer", "pkg"), { recursive: true });
+    writeFileSync(join(dir, "outer", "tags", "outside.mx"), "<div/>\n");
+    writeFileSync(
+      join(dir, "outer", "pkg", "package.json"),
+      '{"name":"inner"}',
+    );
+
+    // The `tags/` directory above the nearest package.json is out of scope:
+    // a tag belongs to a package, not to whatever happens to sit above it.
+    const result = scanCustomTags(join(dir, "outer", "pkg", "caller.mx"));
+    expect(result.tags.has("outside")).toBe(false);
+  });
+});
+
+describe("normalizeMxTags", () => {
+  it("accepts a bare string as one directory", () => {
+    expect(normalizeMxTags("shared", "/pkg", "/pkg/package.json")).toEqual([
+      { dir: join("/pkg", "shared") },
+    ]);
+  });
+
+  it("rejects a shape it cannot honor", () => {
+    expect(() => normalizeMxTags(42, "/pkg", "/pkg/package.json")).toThrow(
+      /`mx\.tags` must be a string or an array/,
+    );
+    expect(() =>
+      normalizeMxTags([{ prefix: "ui-" }], "/pkg", "/pkg/package.json"),
+    ).toThrow(/must be a string or an object with a `dir` string/);
+  });
+
+  it("rejects a parse option that is not one of the three", () => {
+    expect(() =>
+      normalizeMxTags(
+        [{ dir: "shared", parseOptions: { html: true } }],
+        "/pkg",
+        "/pkg/package.json",
+      ),
+    ).toThrow(/is not a parse option/);
+  });
+});
+
+describe("readParseOptions", () => {
+  it("reads an inline default export", () => {
+    expect(
+      readParseOptions(
+        "export default { parseOptions: { text: true } };",
+        "a.tag.ts",
+      ),
+    ).toEqual({ text: true });
+  });
+
+  it("follows a module-scope binding to its literal", () => {
+    const source = [
+      "import type { CustomTag } from '@mxlang/core';",
+      "const tag: CustomTag = { parseOptions: { openTagOnly: true } };",
+      "export default tag;",
+    ].join("\n");
+
+    expect(readParseOptions(source, "a.tag.ts")).toEqual({ openTagOnly: true });
+  });
+
+  it("returns undefined for a sidecar that declares none", () => {
+    expect(
+      readParseOptions("export default { transform: () => [] };", "a.tag.ts"),
+    ).toBeUndefined();
+  });
+
+  it("rejects a non-boolean option value", () => {
+    expect(() =>
+      readParseOptions(
+        'export default { parseOptions: { text: "yes" } };',
+        "a.tag.ts",
+      ),
+    ).toThrow(/`parseOptions\.text` must be a boolean/);
+  });
+
+  it("rejects a spread it cannot read without executing the module", () => {
+    expect(() =>
+      readParseOptions(
+        "const base = { text: true };\nexport default { parseOptions: { ...base } };",
+        "a.tag.ts",
+      ),
+    ).toThrow(/spread or computed key/);
+  });
+
+  it("reports a file it cannot parse at that file's own position", () => {
+    let error: unknown;
+    try {
+      readParseOptions("export default { parseOptions: {", "a.tag.ts");
+    } catch (cause) {
+      error = cause;
+    }
+    expect(error).toBeInstanceOf(TranslateError);
+    expect((error as Error).message).toContain("could not be parsed");
+  });
+});
+
+describe("the scan cache", () => {
+  it("returns one map object while the tag set is unchanged", () => {
+    const first = getCustomTags(fixture("parse-options", "caller.mx"));
+    const second = getCustomTags(fixture("parse-options", "caller.mx"));
+
+    // Identity, not just equality: Marko keys its taglib cache on the id this
+    // map's contents derive, so a new object per compile is the leak.
+    expect(second).toBe(first);
+  });
+
+  it("does not grow the live map count across repeated compiles", () => {
+    clearScanCache();
+    for (let index = 0; index < 50; index++) {
+      getCustomTags(fixture("parse-options", `caller${index}.mx`));
+    }
+
+    // One tag set was scanned, so exactly one map is live regardless of how
+    // many files were compiled against it.
+    expect(liveTagMapCount()).toBe(1);
+  });
+
+  it("invalidates when a tag file's contents change", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"edited"}');
+    const tagFile = join(dir, "tags", "thing.tag.ts");
+    writeFileSync(
+      tagFile,
+      "export default { parseOptions: { text: true } };\n",
+    );
+
+    const before = getCustomTags(join(dir, "caller.mx"));
+    expect(before.thing?.parseOptions).toEqual({ text: true });
+
+    // A different mtime is what an editor's save produces; write one
+    // explicitly so the test does not depend on the clock's resolution.
+    writeFileSync(
+      tagFile,
+      "export default { parseOptions: { text: false } };\n",
+    );
+    touchInFuture(tagFile);
+
+    const after = getCustomTags(join(dir, "caller.mx"));
+    expect(after.thing?.parseOptions).toEqual({ text: false });
+  });
+
+  it("invalidates when a tag file is added to a scanned directory", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"added"}');
+    writeFileSync(join(dir, "tags", "one.mx"), "<div/>\n");
+
+    expect(Object.keys(getCustomTags(join(dir, "caller.mx")))).toEqual(["one"]);
+
+    writeFileSync(join(dir, "tags", "two.mx"), "<p/>\n");
+    expect(Object.keys(getCustomTags(join(dir, "caller.mx"))).sort()).toEqual([
+      "one",
+      "two",
+    ]);
+  });
+
+  it("invalidates when a tag file is removed", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"removed"}');
+    writeFileSync(join(dir, "tags", "one.mx"), "<div/>\n");
+    writeFileSync(join(dir, "tags", "two.mx"), "<p/>\n");
+
+    expect(Object.keys(getCustomTags(join(dir, "caller.mx"))).sort()).toEqual([
+      "one",
+      "two",
+    ]);
+
+    rmSync(join(dir, "tags", "two.mx"));
+    expect(Object.keys(getCustomTags(join(dir, "caller.mx")))).toEqual(["one"]);
+  });
+
+  it("invalidates when package.json#mx.tags changes", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "shared"), { recursive: true });
+    writeFileSync(join(dir, "shared", "extra.mx"), "<div/>\n");
+    const manifest = join(dir, "package.json");
+    writeFileSync(manifest, '{"name":"config"}');
+
+    expect(Object.keys(getCustomTags(join(dir, "caller.mx")))).toEqual([]);
+
+    writeFileSync(manifest, '{"name":"config","mx":{"tags":"shared"}}');
+    touchInFuture(manifest);
+
+    expect(Object.keys(getCustomTags(join(dir, "caller.mx")))).toEqual([
+      "extra",
+    ]);
+  });
+
+  it("records the evidence an integration needs for its own watcher", () => {
+    const result = scanCached(fixture("parse-options", "caller.mx"));
+
+    expect(result.directories).toContain(fixture("parse-options", "tags"));
+    expect(result.packageFiles).toContain(
+      fixture("parse-options", "package.json"),
+    );
+    expect(result.files.map((file) => file.path)).toContain(
+      fixture("parse-options", "tags", "raw.tag.ts"),
+    );
+  });
+});
