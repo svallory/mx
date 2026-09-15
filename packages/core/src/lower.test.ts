@@ -4,10 +4,10 @@ import type { Ctx, Node } from "./core.ts";
 import { expr, newCtx } from "./core.ts";
 import type { Policy } from "./declarations.ts";
 import type { Ir, IrNode } from "./ir.ts";
-import { resolve } from "./resolve.ts";
+import { lower } from "./lower.ts";
 
 /**
- * The resolver (decision 79): one fixture per IR kind, plus the error cases.
+ * The lowerer (decision 79): one fixture per IR kind, plus the error cases.
  *
  * These are the tests that keep the IR honest. `compileSource`'s own emitted
  * output is asserted elsewhere (`@mxlang/html`'s suite and both
@@ -30,7 +30,7 @@ import { resolve } from "./resolve.ts";
  * `<define>`'s name has to route to a component call for the define to be
  * callable at all. A fake that answered a flat `false` would make
  * `<Row('a')/>` an unbound capitalized tag, which is a property of the fake
- * rather than of the resolver.
+ * rather than of the lowerer.
  */
 function fakeDeclarations(overrides: Partial<Policy> = {}): Policy {
   return {
@@ -42,19 +42,19 @@ function fakeDeclarations(overrides: Partial<Policy> = {}): Policy {
 }
 
 /**
- * Resolves `source` to an IR, through the real Marko parse.
+ * Lowers `source` to an IR, through the real Marko parse.
  *
  * `compileSource` is driven for its parse and its taglib lookup, and the
- * translate visitor is hijacked to resolve rather than emit — the resolver has
+ * translate visitor is hijacked to lower rather than emit — the lowerer has
  * to see exactly the nodes a real compile produces, not a hand-built tree.
  */
-function resolveSource(source: string, policy = fakeDeclarations()): Ir {
+function lowerSource(source: string, policy = fakeDeclarations()): Ir {
   let ir: Ir | null = null;
   let thrown: unknown = null;
 
-  // This helper needs `resolve` over the compiler's real parsed body.
+  // This helper needs `lower` over the compiler's real parsed body.
   // `newCtx` plus the compiler's parse is the seam: a
-  // translator whose Program visitor resolves instead of emitting.
+  // translator whose Program visitor lowers instead of emitting.
   const translator = {
     taglibs: [] as Array<[string, unknown]>,
     tagDiscoveryDirs: [] as string[],
@@ -63,7 +63,7 @@ function resolveSource(source: string, policy = fakeDeclarations()): Ir {
         exit(path: { node: { body: Node[] } }) {
           const ctx: Ctx = newCtx(source, printExpression, policy);
           try {
-            ir = resolve(ctx, path.node.body);
+            ir = lower(ctx, path.node.body);
           } catch (error) {
             thrown = error;
           }
@@ -75,13 +75,13 @@ function resolveSource(source: string, policy = fakeDeclarations()): Ir {
 
   const require = createRequire(import.meta.url);
   const compiler = require("@marko/compiler");
-  compiler.compileSync(source, "/tmp/mx-core-test/resolve.mx", {
+  compiler.compileSync(source, "/tmp/mx-core-test/lower.mx", {
     translator,
     output: "html",
     writeVersionComment: false,
   });
   if (thrown) throw thrown;
-  if (!ir) throw new Error("resolver produced no IR");
+  if (!ir) throw new Error("lowerer produced no IR");
   return ir;
 }
 
@@ -130,28 +130,28 @@ function tryFind<K extends IrNode["kind"]>(
 
 describe("one fixture per IR kind", () => {
   it("Text carries the value Marko already normalized", () => {
-    const ir = resolveSource("<p>hello</p>\n");
+    const ir = lowerSource("<p>hello</p>\n");
     const text = find(ir.body, "Text");
     expect(text.value).toBe("hello");
-    // Decision 33 is Marko's own `onText`, applied before the resolver sees
+    // Decision 33 is Marko's own `onText`, applied before the lowerer sees
     // the node; a second normalization here would collapse twice.
     expect(text.loc.line).toBe(1);
   });
 
   it("Interpolation records escaped and raw placeholders apart", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: Marko placeholder syntax in template source
-    const escaped = resolveSource("<p>${input.a}</p>\n");
+    const escaped = lowerSource("<p>${input.a}</p>\n");
     expect(find(escaped.body, "Interpolation")).toMatchObject({
       escaped: true,
       expr: { code: "input.a" },
     });
 
-    const raw = resolveSource("<p>$!{input.a}</p>\n");
+    const raw = lowerSource("<p>$!{input.a}</p>\n");
     expect(find(raw.body, "Interpolation").escaped).toBe(false);
   });
 
   it("Element carries its name, attrs and children", () => {
-    const ir = resolveSource('<div class="card" hidden>x</div>\n');
+    const ir = lowerSource('<div class="card" hidden>x</div>\n');
     const element = find(ir.body, "Element");
     expect(element.name).toBe("div");
     expect(element.void).toBe(false);
@@ -163,16 +163,14 @@ describe("one fixture per IR kind", () => {
   });
 
   it("Element marks a void tag and takes no children", () => {
-    const ir = resolveSource("<input>\n");
+    const ir = lowerSource("<input>\n");
     const element = find(ir.body, "Element");
     expect(element.void).toBe(true);
     expect(element.children).toEqual([]);
   });
 
   it("Attr separates static, dynamic, bound and spread", () => {
-    const ir = resolveSource(
-      '<div id="a" title=input.t ...input.rest>x</div>\n',
-    );
+    const ir = lowerSource('<div id="a" title=input.t ...input.rest>x</div>\n');
     expect(find(ir.body, "Element").attrs).toMatchObject([
       { kind: "static", name: "id", value: "a" },
       { kind: "dynamic", name: "title", value: { code: "input.t" } },
@@ -181,7 +179,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("Expr records its parsed value shape during resolution", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: Marko placeholder syntax in template source
       '<div object={active: true} array=[1] other=input.value>${"text"}</div>\n',
     );
@@ -196,7 +194,7 @@ describe("one fixture per IR kind", () => {
 
   it("lets the host order attributes before they enter the IR", () => {
     const calls: Array<[string, string]> = [];
-    const ir = resolveSource(
+    const ir = lowerSource(
       '<input type="text" value=input.value disabled>\n',
       fakeDeclarations({
         orderAttrs(name, attrs, on) {
@@ -219,7 +217,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("IfChain groups every branch, with a null condition for else", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       [
         "<if=input.a>",
         "  <p>a</p>",
@@ -243,7 +241,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("For normalizes `of=`, with params and their bindings", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       '<for|item, i| of=input.xs by="id"><p>x</p></for>\n',
     );
     const loop = find(ir.body, "For");
@@ -272,7 +270,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("For normalizes `in=`", () => {
-    const ir = resolveSource("<for|k, v| in=input.obj><p>x</p></for>\n");
+    const ir = lowerSource("<for|k, v| in=input.obj><p>x</p></for>\n");
     expect(find(ir.body, "For").source).toMatchObject({
       kind: "in",
       object: { code: "input.obj" },
@@ -280,7 +278,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("For normalizes the inclusive and exclusive ranges apart", () => {
-    const inclusive = resolveSource(
+    const inclusive = lowerSource(
       "<for|n| from=1 to=5 step=2><p>x</p></for>\n",
     );
     expect(find(inclusive.body, "For").source).toMatchObject({
@@ -291,7 +289,7 @@ describe("one fixture per IR kind", () => {
       step: { code: "2" },
     });
 
-    const exclusive = resolveSource("<for|n| until=5><p>x</p></for>\n");
+    const exclusive = lowerSource("<for|n| until=5><p>x</p></for>\n");
     expect(find(exclusive.body, "For").source).toMatchObject({
       kind: "range",
       inclusive: false,
@@ -304,7 +302,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("Define carries its name, params and body", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       "<define/Row|item|><li>x</li></define>\n<Row('a')/>\n",
     );
     const define = find(ir.body, "Define");
@@ -314,7 +312,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("Const carries the declared name and its initializer", () => {
-    const ir = resolveSource("<const/doubled=input.n * 2/>\n<p>x</p>\n");
+    const ir = lowerSource("<const/doubled=input.n * 2/>\n<p>x</p>\n");
     expect(find(ir.body, "Const")).toMatchObject({
       name: "doubled",
       init: { code: "input.n * 2" },
@@ -322,7 +320,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("Import and Static are lifted out of the body to module scope", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       'import Panel from "./panel.marko"\nstatic const G = 1\n<p>x</p>\n',
     );
     expect(ir.imports).toMatchObject([
@@ -348,7 +346,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("Export hoists verbatim and InputInterface is kept apart", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       "export interface Input { n: number }\nexport const prerender = true;\n<p>x</p>\n",
     );
     expect(ir.inputInterface).toMatchObject({
@@ -368,22 +366,22 @@ describe("one fixture per IR kind", () => {
   });
 
   it("DocumentType keeps the value with its delimiters stripped", () => {
-    const ir = resolveSource("<!doctype html>\n<p>x</p>\n");
+    const ir = lowerSource("<!doctype html>\n<p>x</p>\n");
     expect(find(ir.body, "DocumentType").value).toBe("doctype html");
   });
 
   it("Comment records whether the source spelled an HTML comment", () => {
-    const ir = resolveSource("<!-- keep -->\n<p>x</p>\n");
+    const ir = lowerSource("<!-- keep -->\n<p>x</p>\n");
     const comment = find(ir.body, "Comment");
     // Marko strips the delimiters, so only the source can tell an HTML comment
-    // from a `//` line comment — the resolver reads it back rather than
+    // from a `//` line comment — the lowerer reads it back rather than
     // guessing from the value.
     expect(comment.html).toBe(true);
     expect(comment.value).toBe(" keep ");
   });
 
   it("Component resolves an import binding as its target", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       'import Panel from "./panel.marko"\n<Panel title="t">body</Panel>\n',
       fakeDeclarations({ isComponent: (name) => name === "Panel" }),
     );
@@ -396,7 +394,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("Component collects attribute tags as props, in source order", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       [
         'import Panel from "./panel.marko"',
         "<Panel>",
@@ -418,7 +416,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("Component records a define target with its declared params", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       "<define/Row|item|><li>x</li></define>\n<Row('a')/>\n",
       fakeDeclarations({ isComponent: (name) => name === "Row" }),
     );
@@ -433,8 +431,8 @@ describe("one fixture per IR kind", () => {
     expect(component.args.map((a) => a.code)).toEqual(["'a'"]);
   });
 
-  it("HostTag hands a claimed tag over with its parts resolved", () => {
-    const ir = resolveSource(
+  it("HostTag hands a claimed tag over with its parts lowered", () => {
+    const ir = lowerSource(
       "<signal/count=1>body</signal>\n",
       fakeDeclarations({
         claimsTag: (name) => name === "signal",
@@ -446,13 +444,13 @@ describe("one fixture per IR kind", () => {
     expect(hosted.var).toBe("count");
     expect(hosted.attrs).toMatchObject([{ kind: "dynamic", name: "value" }]);
     expect(find(hosted.children, "Text").value).toBe("body");
-    // The opaque slot the host filled at resolve time, so its emitter never
+    // The opaque slot the host filled at lower time, so its emitter never
     // re-inspects a Marko node to recover its own decision.
     expect(hosted.data).toEqual({ seen: "signal" });
   });
 
   it("Hoisted lands ahead of the construct that produced it", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       "<if=input.on>\n  <signal/count=7/>\n</if>\n<p>x</p>\n",
       fakeDeclarations({
         claimsTag: (name) => name === "signal",
@@ -475,7 +473,7 @@ describe("one fixture per IR kind", () => {
   });
 
   it("an inert tag is accepted and contributes nothing", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       "<p>a</p>\n<mytag/>\n",
       fakeDeclarations({
         tags: {
@@ -493,7 +491,7 @@ describe("one fixture per IR kind", () => {
 
 describe("positions", () => {
   it("records a 1-based line and 0-based column on every node", () => {
-    const ir = resolveSource("<p>a</p>\n<div>b</div>\n");
+    const ir = lowerSource("<p>a</p>\n<div>b</div>\n");
     const first = ir.body.find(
       (n) => n.kind === "Element" && n.name === "p",
     ) as Extract<IrNode, { kind: "Element" }>;
@@ -505,7 +503,7 @@ describe("positions", () => {
   });
 
   it("records the position of a nested node, not its parent's", () => {
-    const ir = resolveSource("<div>\n  <span>x</span>\n</div>\n");
+    const ir = lowerSource("<div>\n  <span>x</span>\n</div>\n");
     const span = find(find(ir.body, "Element").children, "Element");
     expect(span.loc).toEqual({ line: 2, column: 2 });
   });
@@ -556,12 +554,12 @@ describe("errors keep their message and position", () => {
     ["tag params on an element", "<div|a|>x</div>\n", /tag params/],
     ["a scriptlet", "$ const x = 1\n<p>y</p>\n", /scriptlets/],
   ])("rejects %s", (_what, source, message) => {
-    expect(() => resolveSource(source)).toThrow(message);
+    expect(() => lowerSource(source)).toThrow(message);
   });
 
   it("rejects an unknown lowercase tag rather than emitting it literally", () => {
     expect(() =>
-      resolveSource(
+      lowerSource(
         "<mystery>x</mystery>\n",
         fakeDeclarations({ isElement: () => false }),
       ),
@@ -570,7 +568,7 @@ describe("errors keep their message and position", () => {
 
   it("rejects an unbound capitalized tag as a missing component", () => {
     expect(() =>
-      resolveSource(
+      lowerSource(
         "<Missing>x</Missing>\n",
         fakeDeclarations({ isElement: () => false }),
       ),
@@ -580,7 +578,7 @@ describe("errors keep their message and position", () => {
   it("reports an error's position, not just its message", () => {
     let caught: { line?: number; column?: number } | null = null;
     try {
-      resolveSource("<p>a</p>\n<for of=input.xs><li>x</li></for>\n");
+      lowerSource("<p>a</p>\n<for of=input.xs><li>x</li></for>\n");
     } catch (error) {
       caught = error as { line?: number; column?: number };
     }
@@ -590,7 +588,7 @@ describe("errors keep their message and position", () => {
 
   it("raises a host's error disposition by name", () => {
     expect(() =>
-      resolveSource(
+      lowerSource(
         "<await>x</await>\n",
         fakeDeclarations({
           tags: { await: { kind: "error", reason: "`<await>` suspends" } },
@@ -607,19 +605,19 @@ describe("errors keep their message and position", () => {
       },
     });
 
-    resolveSource("<const/ok=1/>\n<p>x</p>\n", declarations);
+    lowerSource("<const/ok=1/>\n<p>x</p>\n", declarations);
     expect(seen).toEqual(["ok"]);
 
     // A tag param opens a nested scope where an ordinary JS shadow is correct,
     // so it is deliberately not offered to `checkBinding` — Marko draws the
     // same line, rendering `<for|input|>` while rejecting `<let/input>`.
     seen.length = 0;
-    resolveSource("<for|item| of=input.xs><p>x</p></for>\n", declarations);
+    lowerSource("<for|item| of=input.xs><p>x</p></for>\n", declarations);
     expect(seen).toEqual([]);
   });
 });
 
-describe("the resolver runs under the real front door", () => {
+describe("the lowerer runs under the real front door", () => {
   it("requires and drives a host emitter after resolving", () => {
     const { code } = compileSource(
       "<p>hi</p>\n",
@@ -675,7 +673,7 @@ describe("binding scopes are per JS block", () => {
   });
 
   it("restores a name shadowed inside an <if> branch after the branch", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       [
         "<signal/count=1/>",
         "<if=input.on>",
@@ -701,7 +699,7 @@ describe("binding scopes are per JS block", () => {
   });
 
   it("restores a name shadowed inside a <for> body after the loop", () => {
-    const ir = resolveSource(
+    const ir = lowerSource(
       [
         "<signal/count=1/>",
         "<for|item| of=input.xs>",
@@ -739,7 +737,7 @@ describe("binding scopes are per JS block", () => {
      * host's own tests.
      */
     it("keeps a generic call's type arguments when rewriting a registered identifier", () => {
-      const ir = resolveSource(
+      const ir = lowerSource(
         [
           "<signal/count=1/>",
           // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
@@ -756,7 +754,7 @@ describe("binding scopes are per JS block", () => {
 
     /** The identifier being rewritten is itself the one carrying type arguments as a callee. */
     it("keeps type arguments when the registered identifier is not itself rewritten", () => {
-      const ir = resolveSource(
+      const ir = lowerSource(
         [
           "<signal/count=1/>",
           // biome-ignore lint/suspicious/noTemplateCurlyInString: MX placeholder syntax in template source
@@ -806,15 +804,15 @@ describe("binding scopes are per JS block", () => {
   });
 });
 
-describe("a claimed tag's children are resolved exactly once", () => {
+describe("a claimed tag's children are lowered exactly once", () => {
   /**
-   * `resolveHostTag` receives children the core has *already* resolved. A host
-   * that walked the Marko nodes again replayed every resolver side effect —
-   * each `ctx.hoist` ran twice — and nested tags resolved exponentially.
+   * `resolveHostTag` receives children the core has *already* lowered. A host
+   * that walked the Marko nodes again replayed every lowerer side effect —
+   * each `ctx.hoist` ran twice — and nested tags lowered exponentially.
    */
   it("hoists once for a <const>-like host tag inside a claimed tag's body", () => {
     let hoists = 0;
-    const ir = resolveSource(
+    const ir = lowerSource(
       [
         "<dyn>",
         "  <signal/inner=1/>",

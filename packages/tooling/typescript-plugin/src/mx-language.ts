@@ -7,10 +7,10 @@ import {
   type Ir,
   type IrNode,
   type Lookup,
+  lower,
   type Node,
   newCtx,
   parseFragment,
-  resolve,
   resolveHostPolicy,
 } from "@mxlang/core";
 import { compileHonoMx, honoDeclarations } from "@mxlang/hono";
@@ -200,7 +200,7 @@ function createVirtualCode(
  * consume: every expression carries its original Babel node (and exact `loc`)
  * plus the source text emitted into the TypeScript module.
  *
- * `declarations` selects the host to resolve under, because a construct one
+ * `declarations` selects the host to lower under, because a construct one
  * host accepts another rejects — resolving a Preact template under the HTML
  * policy would throw on the first `<try>` and yield no mappings at all.
  */
@@ -228,7 +228,7 @@ export function createHtmlMappings(
     declarations ?? (strict ? strictPolicy : policy),
     compiler.taglib.buildLookup(dirname(fileName), translator),
   );
-  const ir = resolve(ctx, body);
+  const ir = lower(ctx, body);
   const mappedCode = collectMappedCode(ir);
   const sourceLines = lineOffsets(source);
   const mappings: CodeMapping[] = recordedMappings(emittedMappings);

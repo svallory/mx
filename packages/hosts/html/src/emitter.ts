@@ -2,9 +2,9 @@
  * The vanilla HTML host's string emitter, over `@mxlang/core`'s IR
  * (decision 79).
  *
- * The core resolves a template to an `Ir`; this file turns that tree into the
+ * The core lowers a template to an `Ir`; this file turns that tree into the
  * emitted module's lines. Nothing here walks a Marko node: every decision was
- * already made by `resolve()`, and what arrives is kinds, printed expressions
+ * already made by `lower()`, and what arrives is kinds, printed expressions
  * and positions.
  *
  * ## Byte compatibility is the whole contract
@@ -362,7 +362,7 @@ export function createEmitter(): StringEmitter {
 
     text(node) {
       // Already decision 33: Marko's own `onText` dropped newline-bearing
-      // whitespace runs and collapsed the rest before the resolver saw them.
+      // whitespace runs and collapsed the rest before the lowerer saw them.
       literal(node.value);
     },
 
@@ -662,8 +662,8 @@ export function createEmitter(): StringEmitter {
         // The children are the ones the **core** already resolved into
         // `tag.children`. Re-resolving them in `resolveHostTag` (the shape
         // this replaced) walked the same Marko nodes a second time, which
-        // replayed every resolver side effect — hoists and binding
-        // registrations — and made nested dynamic tags resolve exponentially.
+        // replayed every lowerer side effect — hoists and binding
+        // registrations — and made nested dynamic tags lower exponentially.
         const content: Block | null =
           tag.children.length > 0
             ? {

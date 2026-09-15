@@ -4,10 +4,10 @@
  * Before the IR existed, one `Policy` object carried both: `isComponent` and
  * the `tags` table (queries the walk asks) sat beside `emitComponent` and
  * `emitSpecial` (callbacks that pushed text into a buffer mid-walk). That is
- * exactly the mix an IR cannot have — resolve has to classify a tag without
+ * exactly the mix an IR cannot have — lower has to classify a tag without
  * emitting anything, and a host has to emit without re-walking Marko nodes.
  *
- * So the object splits in two. This file is the half `resolve()` consults:
+ * So the object splits in two. This file is the half `lower()` consults:
  * every member is a *question* about a tag name or a binding, and none of them
  * can write output. `Emitter<Out>` in `emit.ts` is the other half.
  *
@@ -25,10 +25,10 @@ import type { Attr } from "./ir.ts";
 export type { Disposition };
 
 /**
- * The questions `resolve()` asks a host about a template.
+ * The questions `lower()` asks a host about a template.
  *
  * Every member is side-effect free by contract. A member that wanted to emit
- * would have nowhere to emit *to*: resolve builds an IR, and the buffer does
+ * would have nowhere to emit *to*: lower builds an IR, and the buffer does
  * not exist yet.
  */
 export interface HostDeclarations {
@@ -59,7 +59,7 @@ export interface HostDeclarations {
    * Records whatever this host decided about a claimed tag, into the
    * `HostTag` node's `data` slot.
    *
-   * Called once per claimed tag, during resolve, with the Marko node still in
+   * Called once per claimed tag, during lower, with the Marko node still in
    * hand. Without it a host's emitter would have no resolved record of the
    * decision; the original Marko node is deliberately absent from `HostTag`,
    * so emission cannot fall back to walking parser nodes.
@@ -93,7 +93,7 @@ export interface HostDeclarations {
    * Rejects an attribute method in this host's own words.
    *
    * Marko represents an attribute method as a `FunctionExpression` value in
-   * some parser paths and through `arguments` in others. The resolver detects
+   * some parser paths and through `arguments` in others. The lowerer detects
    * both before constructing an `Attr`; a host may replace the generic
    * standalone-string diagnostic here.
    */
@@ -106,17 +106,17 @@ export interface HostDeclarations {
    * Attribute tags are represented in the IR only for component calls. A host
    * whose target has a more specific concept (Astro named slots, for example)
    * can explain the invalid element case while the Marko node and its precise
-   * position are still available during resolve.
+   * position are still available during lower.
    */
   rejectElementAttributeTags?(name: string, node: Node, ctx: Ctx): void;
   /**
    * Rejects a component call this host will not route, in its own words.
    *
-   * Called from `resolveComponent` *before* the `Component` node is built, so
+   * Called from `lowerComponent` *before* the `Component` node is built, so
    * a construct the host refuses never reaches an emitter at all. The vanilla
    * HTML host uses it for Marko's own rule that a lowercase tag name is never
    * resolved through a local variable (`import layout …` then `<layout>`),
-   * which Marko rejects outright — a check that has to happen at resolve time
+   * which Marko rejects outright — a check that has to happen at lower time
    * now that the emitter no longer sees the Marko node.
    */
   rejectComponentTag?(name: string, node: Node, ctx: Ctx): void;
@@ -161,5 +161,5 @@ export interface HostDeclarations {
   keepComments?: boolean;
 }
 
-/** Backwards-compatible name for a host's resolver declarations. */
+/** Backwards-compatible name for a host's lowering declarations. */
 export type Policy = HostDeclarations;

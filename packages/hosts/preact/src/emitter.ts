@@ -7,7 +7,7 @@
  * structural kind lowers to an *expression* — a ternary chain for `<if>`, a
  * `.map` call for `<for>` — exactly as a Preact author would write by hand.
  *
- * Nothing here walks a Marko node: `resolve()` already decided every
+ * Nothing here walks a Marko node: `lower()` already decided every
  * host-specific question through `preactDeclarations` below, and what arrives
  * is IR kinds, printed expressions and positions.
  *
@@ -464,7 +464,7 @@ export class PreactEmitter implements Emitter<string> {
    *
    * No merging or duplicate checking happens here, and that is deliberate:
    * Marko folds `.card class=value` into one synthetic array attribute before
-   * the resolver ever sees it (the helper joins that array), and it rejects
+   * the lowerer ever sees it (the helper joins that array), and it rejects
    * `#id` beside an explicit `id=` in its own parser — *"Cannot have shorthand
    * id and id attribute"* — so a check here would be unreachable code
    * pretending to be a guard.

@@ -175,7 +175,7 @@ export interface Ctx {
   lines: string[];
   /**
    * Statements to place at the head of the function currently being emitted
-   * (decision 70's hoist hook). `hoist()` appends here; the resolver drains it
+   * (decision 70's hoist hook). `hoist()` appends here; the lowerer drains it
    * at the nearest function boundary.
    */
   prelude: Array<{ code: string; node: Node }>;
@@ -195,7 +195,7 @@ export interface Ctx {
   /** Local bindings introduced by the template's `import` statements. */
   imports: Set<string>;
   generate: (node: Node) => string;
-  /** What the host declares, as `resolve()` consults it (decision 79). */
+  /** What the host declares, as `lower()` consults it (decision 79). */
   declarations: HostDeclarations;
   /** Set by a dialect that resolves tags through Marko's taglib lookup. */
   lookup?: { getTag(name: string): { taglibId?: string } | undefined };
@@ -234,7 +234,7 @@ export function quote(text: string): string {
  *   registered. A parameter, `const`/`let`, or catch-clause binding of the same
  *   name inside the expression shadows it and is left alone, so
  *   `xs.map(count => count)` is untouched while `xs.map(x => x + count)` is
- *   rewritten. Both pinned in `resolve.test.ts`.
+ *   rewritten. Both pinned in `lower.test.ts`.
  * - The walk runs only when something is registered, so a host that uses no
  *   stateful tags pays nothing.
  */
@@ -648,9 +648,9 @@ export function bindingIdentifiers(pattern: Node): string[] {
  */
 export const DYNAMIC_TAG = "\u0000dynamic";
 /**
- * A fresh resolve context, with the stateful-tag hooks wired.
+ * A fresh lower context, with the stateful-tag hooks wired.
  *
- * Exported because fragment hosts and resolver tests need a context without
+ * Exported because fragment hosts and lowerer tests need a context without
  * going through the whole-file compiler seam.
  */
 export function newCtx(

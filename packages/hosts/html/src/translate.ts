@@ -358,7 +358,7 @@ export type HostTagData =
 /** Tag names this host lowers itself, rather than as a component or element. */
 const CLAIMED = new Set([
   // `<const>` is deliberately absent: the core's own switch dispatches it to
-  // `resolveConst` before `claimsTag` is ever consulted, so an entry here
+  // `lowerConst` before `claimsTag` is ever consulted, so an entry here
   // would be dead code that reads as though this host owned the tag.
   "let",
   "server",

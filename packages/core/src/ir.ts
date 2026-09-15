@@ -28,10 +28,10 @@
  * ## Expressions
  *
  * An expression appears as `Expr`: its source text, parsed shape, and the
- * Marko/Babel node it came from. The resolver computes the shape once so an
+ * Marko/Babel node it came from. The lowerer computes the shape once so an
  * emitter never has to inspect that parser node to distinguish an object,
  * array, string, or other expression. The text is what every host ultimately
- * emits, and printing it once during resolve keeps hosts from each reaching
+ * emits, and printing it once during lower keeps hosts from each reaching
  * for a Babel generator.
  */
 
@@ -165,7 +165,7 @@ export interface HostTag<Data = unknown> extends IrBase {
   /** The tag's `/var` binding, as source text, when it declares one. */
   var: string | null;
   /**
-   * Whatever the host decided about this tag at *resolve* time, from its
+   * Whatever the host decided about this tag at *lower* time, from its
    * `resolveHostTag` hook.
    *
    * The point of the slot is that a host records its decision once, while the
@@ -228,7 +228,7 @@ export type IrNode =
   | ({
       kind: "For";
       source: ForSource;
-      /** The tag params, as source text; at least one, enforced at resolve. */
+      /** The tag params, as source text; at least one, enforced at lower. */
       params: string[];
       /** Original parser nodes for the params, retained for source mapping. */
       paramNodes: Node[];

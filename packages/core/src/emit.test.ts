@@ -64,7 +64,7 @@ describe("drive", () => {
   });
 
   it("throws on a module-level kind reaching the body walk", () => {
-    // `resolve()` lifts these into `Ir`'s own fields, so one arriving here
+    // `lower()` lifts these into `Ir`'s own fields, so one arriving here
     // means the IR was hand-built; emitting it into the body would put an
     // `import` in the middle of a render function.
     const emitter = recordingEmitter();
