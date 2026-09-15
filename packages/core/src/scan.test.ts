@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { TranslateError } from "./core.ts";
+import { customTagTaglib } from "./custom-tags.ts";
 import { normalizeMxTags, readParseOptions, scanCustomTags } from "./scan.ts";
 import {
   clearScanCache,
@@ -521,5 +522,42 @@ describe("the scan cache", () => {
     expect(result.files.map((file) => file.path)).toContain(
       fixture("parse-options", "tags", "raw.tag.ts"),
     );
+  });
+
+  it("mints one Marko taglib id across many compiles of one tag set", () => {
+    // The P1 review's deferred item. `@marko/compiler` keys
+    // `loadedTranslatorsTaglibs` on the translator object and `lookupCache` on
+    // the sorted taglib ids, and evicts neither, so a long-lived process that
+    // minted a fresh id per compile would grow without bound. Those caches are
+    // module-closure state with no public accessor, so the invariant is
+    // asserted where MX actually controls it: the id MX hands the compiler.
+    clearScanCache();
+    const ids = new Set<string>();
+    for (let index = 0; index < 50; index++) {
+      const entry = customTagTaglib(
+        getCustomTags(fixture("parse-options", `caller${index}.mx`)),
+      );
+      if (entry) ids.add(entry[0]);
+    }
+
+    expect(ids.size).toBe(1);
+    expect(liveTagMapCount()).toBe(1);
+  });
+
+  it("mints a different taglib id once the tag set changes", () => {
+    // The other half: an id that never changed would be a correctness bug,
+    // reusing one lookup for two different tag sets.
+    const dir = scratch();
+    mkdirSync(join(dir, "tags"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{"name":"changing"}');
+    writeFileSync(join(dir, "tags", "one.mx"), "<div/>\n");
+
+    const before = customTagTaglib(getCustomTags(join(dir, "caller.mx")))?.[0];
+
+    writeFileSync(join(dir, "tags", "two.mx"), "<p/>\n");
+    const after = customTagTaglib(getCustomTags(join(dir, "caller.mx")))?.[0];
+
+    expect(before).toBeDefined();
+    expect(after).not.toBe(before);
   });
 });
