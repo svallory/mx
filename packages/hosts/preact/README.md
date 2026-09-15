@@ -11,6 +11,10 @@ first whose target has no control-flow components at all. Where
 syntax, Preact has plain JSX plus JavaScript — so every structural kind lowers
 to an *expression*, exactly as a Preact author would write it by hand.
 
+Project [custom tags](../../../apps/docs/docs/custom-tags/index.md) expand to
+that same ordinary IR before this emitter runs; a tag definition never needs
+Preact-specific code.
+
 ## Install
 
 ```jsonc

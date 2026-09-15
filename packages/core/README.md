@@ -174,6 +174,10 @@ for the bridge's own side of that hand-off. Documented limits:
 
 ## Programmatic custom tags
 
+For the author-facing path from a zero-config template through sidecars,
+discovery, and the complete API, see the docs site's
+[Custom tags](../../apps/docs/docs/custom-tags/index.md) section.
+
 Every front door and host compiler accepts a `customTags` map whose keys are
 the names written at call sites and whose values implement `CustomTag`:
 

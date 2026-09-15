@@ -5,14 +5,15 @@ description: "What MX is, what it is not, and how the subset rule works."
 
 # MX
 
-MX (Markup eXtended) is a template language born from Marko. It takes Marko's syntax — the syntax people already know from Marko — and brings it to wherever JSX lives today: React, Preact, Solid, Astro, and server-side HTML. MX itself defines the markup and the structural tags; each **host** decides what state, reactivity, and output mean.
+MX (Markup eXtended) is a template language born from Marko. It takes Marko's syntax — the syntax people already know from Marko — and brings it to wherever JSX lives today: React, Preact, Solid, Hono, Astro, and server-side HTML. MX itself defines the markup and the structural tags; each **host** decides what state, reactivity, and output mean.
 
-`.mx` is the official file extension. `.marko` is accepted everywhere with identical treatment, so porting a Marko component to MX is a rename or nothing.
+`.mx` is the official and only whole-template file extension. Porting a Marko component that stays within the MX 1.0 subset is a rename.
 
 ## What MX is
 
 - **The language.** A markup grammar plus a small set of structural tags: `<if>` / `<else if>` / `<else>`, every `<for>` form, attribute tags, tag params, `<define>`, `<const>`, `static`, `import`. These work identically on every host and render exactly the way Marko renders them.
-- **The core.** One package (`@mxlang/core`) that consumes Marko's AST, applies the structural lowerings, and exposes a `Policy` interface plus three hooks so a host can add its own stateful tags.
+- **Custom tags.** Define project vocabulary as an MX template or a TypeScript sidecar. Calls are discovered without imports and expand to ordinary IR before any emitter runs, so one definition works on all six hosts. Start with [Custom tags](/custom-tags/).
+- **The core.** One package (`@mxlang/core`) that consumes Marko's AST, applies structural and custom-tag lowerings, and exposes `HostDeclarations` plus hooks so a host can add its own stateful tags.
 - **The hosts.** Each host is a policy over the core, plus the integration that makes it usable in that ecosystem:
   - **HTML** — a `.mx` file compiles to a pure `(input) => string` function. No runtime, no framework.
   - **Astro** — `.mx` components and pages render to static markup at build time, no islands, no client JavaScript.
@@ -28,9 +29,9 @@ MX (Markup eXtended) is a template language born from Marko. It takes Marko's sy
 
 ## The subset rule
 
-Every MX 1.0 file is a valid Marko file, with the same meaning for the structural core. A host may *forbid* a tag it cannot honor — the Astro host rejects `<let>` because it has no reactive target — but no host may add syntax, attribute forms, or file conventions that Marko's own parser and language server would reject. This is what lets MX borrow Marko's whole toolchain (its tree-sitter grammar, its Prettier plugin, its language server) by aliasing alone, with nothing forked.
+Every MX 1.0 file is a valid Marko file, with the same meaning for the structural core. A host may *forbid* a tag it cannot honor — the Astro host rejects `<let>` because it has no reactive target — but no host may add syntax, attribute forms, or file conventions that Marko's own parser would reject. This lets MX reuse Marko's parser, formatting rules, and tree-sitter grammar while MX's own integrations keep the `.mx` identity and apply host policy.
 
-The rule holds until MX 2. From MX 2 on, MX may diverge from Marko, but only deliberately and one recorded step at a time.
+The rule holds until MX 2. From MX 2 on, MX may diverge from Marko, but only deliberately and one recorded step at a time. Custom tags do not break the rule: a call uses ordinary Marko tag syntax and expands only after parsing.
 
 ## Divergence policy
 
@@ -38,18 +39,20 @@ Every deliberate divergence from Marko syntax is recorded in a table — what ch
 
 ## Start here
 
-If you are new to MX, read these four in order — about twenty minutes end to end:
+If you are new to MX, read these five in order — about twenty minutes end to end:
 
 1. [Structural tags](/language/structural-tags/) — `<if>`, `<for>`, and the rest of the portable core. This is the part that means the same thing on every host.
 2. [Interpolation and escaping](/language/interpolation/) — `${}` versus `$!{}`, and the whitespace rule that surprises people coming from JSX.
-3. Pick your host and follow its install: [HTML](/hosts/html/) for a plain string, [Astro](/hosts/astro/) for static markup, [React](/hosts/react/) or [Preact](/hosts/preact/) for components, [SolidMX](/hosts/solidmx/) for MX inside a Solid file.
-4. [Stateful tags](/language/stateful-tags/) — what `<let>` and friends mean, which is the one place hosts deliberately disagree.
+3. [Custom tags](/custom-tags/) — define reusable project vocabulary without coupling it to a host.
+4. Pick your host and follow its install: [HTML](/hosts/html/) for a plain string, [Astro](/hosts/astro/) for static markup, [React](/hosts/react/) or [Preact](/hosts/preact/) for components, [Hono](/hosts/hono/) for server JSX, [SolidMX](/hosts/solidmx/) for MX inside a Solid file.
+5. [Stateful tags](/language/stateful-tags/) — what `<let>` and friends mean, which is the one place hosts deliberately disagree.
 
 Then set up your editor: [Zed](/editors/zed/), [VS Code](/editors/vscode/), and the [TypeScript](/editors/typescript/) integration that type-checks MX files.
 
 ## Reference
 
 - [Language](/language/structural-tags/) — the structural tags, attribute tags, interpolation, and what a host is free to define itself.
+- [Custom tags](/custom-tags/reference/) — template and sidecar authoring, discovery, API types, and diagnostics.
 - [Architecture](/architecture/core-and-hosts/) — how the core and hosts fit together.
 - [Editors](/editors/zed/) — Zed, VS Code, and the diagnostics language server.
 - [Contributing](/contributing/) — repo layout, the verification chain, and how to add a host.

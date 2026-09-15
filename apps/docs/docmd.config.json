@@ -51,6 +51,17 @@
       ]
     },
     {
+      "title": "Custom tags",
+      "icon": "tags",
+      "children": [
+        { "title": "Overview", "path": "/custom-tags/" },
+        { "title": "Template tags", "path": "/custom-tags/templates/" },
+        { "title": "Sidecars", "path": "/custom-tags/sidecars/" },
+        { "title": "Discovery", "path": "/custom-tags/discovery/" },
+        { "title": "Reference", "path": "/custom-tags/reference/" }
+      ]
+    },
+    {
       "title": "Hosts",
       "icon": "server",
       "children": [

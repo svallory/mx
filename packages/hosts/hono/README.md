@@ -5,6 +5,10 @@ module: TSX with `/** @jsxImportSource hono/jsx */`, the author's imports and
 `static` blocks at module scope, and `export interface Input` as the component
 props type.
 
+Project [custom tags](../../../apps/docs/docs/custom-tags/index.md) are
+discovered and expanded before Hono emission, so they share one definition
+with every other host.
+
 ## Why it shares the Preact emitter
 
 Hono's JSX makes the same structural lowering choices as Preact and React:
